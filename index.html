@@ -118,22 +118,30 @@
     </iframe>
   </div>
 
-  <script>
-    // Refresh function na sumisira sa lumang cache ng URL
-    function refreshReport() {
-      const iframe = document.getElementById('reportFrame');
-      const baseUrl = iframe.src.split('&_t=')[0];
-      iframe.src = baseUrl + '&_t=' + new Date().getTime();
-    }
+<script>
+  // Function para pilitin ang iframe na mag-load ng pinakabagong timestamp (bypasses browser cache)
+  function refreshReport() {
+    const iframe = document.getElementById('reportFrame');
+    // Kukunin ang base URL at lalagyan ng natatanging timestamp query
+    const baseUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSRVakF5GCBFh4HridCtcz6vQ9mYbH6zLfM0vEGbgC9lQKG-429i03Sgmd2cCsLNSxQ98ZeiWSYediR/pubhtml";
+    
+    // Ang URL na ito ay magkakaroon ng natatanging numero para hindi i-cache ng browser
+    iframe.src = `${baseUrl}?widget=false&headers=false&chrome=false&t=${new Date().getTime()}`;
+  }
 
-    // Service Worker Registration
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('Service Worker Registered!'))
-          .catch(err => console.error('Registration Failed:', err));
-      });
-    }
-  </script>
+  // Automatic Auto-Refresh kada 1 minuto (60,000 milliseconds)
+  setInterval(() => {
+    refreshReport();
+  }, 60000);
+
+  // Service Worker Registration
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('Service Worker Registered!'))
+        .catch(err => console.error('Registration Failed:', err));
+    });
+  }
+</script>
 </body>
 </html>
