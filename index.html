@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GALLOPVISION NETWORK DASHBOARD</title>
 
+  <!-- Resource Hints para mabilis ang DNS Lookup sa Google Domains -->
+  <link rel="preconnect" href="https://docs.google.com" crossorigin>
+  <link rel="dns-prefetch" href="https://docs.google.com">
+
   <!-- PWA Manifest Link -->
   <link rel="manifest" href="manifest.json">
   <!-- Converge/Gallopvision Teal Theme Color -->
@@ -104,16 +108,22 @@
     <button class="refresh-btn" onclick="refreshReport()">REFRESH</button>
   </header>
 
-  <!-- Google Sheet Embed -->
+  <!-- Google Sheet Embed (In-optimize ang Parameters at Loading Attributes) -->
   <div class="iframe-container">
-    <iframe id="reportFrame" src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSRVakF5GCBFh4HridCtcz6vQ9mYbH6zLfM0vEGbgC9lQKG-429i03Sgmd2cCsLNSxQ98ZeiWSYediR/pubhtml?widget=true&amp;headers=false"></iframe>
+    <iframe 
+      id="reportFrame" 
+      src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSRVakF5GCBFh4HridCtcz6vQ9mYbH6zLfM0vEGbgC9lQKG-429i03Sgmd2cCsLNSxQ98ZeiWSYediR/pubhtml?widget=false&amp;headers=false&amp;chrome=false"
+      loading="lazy"
+      fetchpriority="high">
+    </iframe>
   </div>
 
   <script>
-    // Refresh function para sa dynamic Google Sheet update
+    // Refresh function na sumisira sa lumang cache ng URL
     function refreshReport() {
       const iframe = document.getElementById('reportFrame');
-      iframe.src = iframe.src;
+      const baseUrl = iframe.src.split('&_t=')[0];
+      iframe.src = baseUrl + '&_t=' + new Date().getTime();
     }
 
     // Service Worker Registration
