@@ -1,4 +1,4 @@
-const CACHE_NAME = 'report-app-v3'; // Binago mula v2/v1 papuntang v3
+const CACHE_NAME = 'report-app-v4'; // Binago mula v2/v1 papuntang v3
 const urlsToCache = [
   './index.html',
   './manifest.json',
