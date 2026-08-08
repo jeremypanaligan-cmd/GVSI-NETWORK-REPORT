@@ -1,7 +1,7 @@
 {
-  "name": "NLZ Network Status",
-  "short_name": "GVSI NMS",
-  "description": "Gallopvision Network Status",
+  "name": "GVSI Network Status Portal",
+  "short_name": "GVSI NetPulse",
+  "description": "Gallopvision Services Inc. Network Status Portal",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f8fafc",
