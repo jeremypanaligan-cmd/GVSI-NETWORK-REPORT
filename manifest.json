@@ -1,6 +1,6 @@
 {
   "name": "NLZ Network Status",
-  "short_name": "NAP Report",
+  "short_name": "GVSI NMS",
   "description": "Gallopvision Network Status",
   "start_url": "./index.html",
   "display": "standalone",
