@@ -165,45 +165,53 @@
     </iframe>
   </div>
 
-  <script>
-    const loader = document.getElementById('loadingOverlay');
-    const iframe = document.getElementById('reportFrame');
+<script>
+  const loader = document.getElementById('loadingOverlay');
+  const iframe = document.getElementById('reportFrame');
 
-    function showLoader() {
-      loader.classList.remove('fade-out');
-    }
+  function showLoader() {
+    if (loader) loader.classList.remove('fade-out');
+  }
 
-    function hideLoader() {
-      loader.classList.add('fade-out');
-    }
+  function hideLoader() {
+    if (loader) loader.classList.add('fade-out');
+  }
 
-    // Makikinig sa mismong load event ng iframe sa pamamagitan ng JS Event Listener
-    iframe.addEventListener('load', () => {
-      // Maglalagay ng kaunting delay (500ms) para siguradong na-render na ang Google Sheet visual elements
+  // Piliting maging visible ang loader sa unang load nang hindi bababa sa 1.5 seconds
+  let isInitialLoad = true;
+
+  iframe.addEventListener('load', () => {
+    if (isInitialLoad) {
+      setTimeout(() => {
+        hideLoader();
+        isInitialLoad = false;
+      }, 1500); // 1.5 seconds minimum display
+    } else {
       setTimeout(() => {
         hideLoader();
       }, 500);
+    }
+  });
+
+  function refreshReport() {
+    showLoader();
+    const baseUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSRVakF5GCBFh4HridCtcz6vQ9mYbH6zLfM0vEGbgC9lQKG-429i03Sgmd2cCsLNSxQ98ZeiWSYediR/pubhtml";
+    iframe.src = `${baseUrl}?widget=false&headers=false&chrome=false&t=${new Date().getTime()}`;
+  }
+
+  // Auto-refresh kada 1 minuto
+  setInterval(() => {
+    refreshReport();
+  }, 60000);
+
+  // Service Worker Registration
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('Service Worker Registered!'))
+        .catch(err => console.error('Registration Failed:', err));
     });
-
-    function refreshReport() {
-      showLoader();
-      const baseUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSRVakF5GCBFh4HridCtcz6vQ9mYbH6zLfM0vEGbgC9lQKG-429i03Sgmd2cCsLNSxQ98ZeiWSYediR/pubhtml";
-      iframe.src = `${baseUrl}?widget=false&headers=false&chrome=false&t=${new Date().getTime()}`;
-    }
-
-    // Auto-refresh kada 1 minuto
-    setInterval(() => {
-      refreshReport();
-    }, 60000);
-
-    // Service Worker Registration
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('Service Worker Registered!'))
-          .catch(err => console.error('Registration Failed:', err));
-      });
-    }
-  </script>
+  }
+</script>
 </body>
 </html>

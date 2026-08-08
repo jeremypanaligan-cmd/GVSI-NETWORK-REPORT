@@ -1,21 +1,17 @@
-const CACHE_NAME = 'report-app-v4'; // Binago mula v2/v1 papuntang v3
+const CACHE_NAME = 'report-app-v5'; // Nilipat sa v5
 const urlsToCache = [
-  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
 ];
 
-// Install Event
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
   );
 });
 
-// Activate Event - Buburahin nito ang lumang cache
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -30,12 +26,13 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch Event
 self.addEventListener('fetch', event => {
+  // Huwag galawin ang Google Domains
   if (event.request.url.includes('google.com') || event.request.url.includes('gstatic.com')) {
     return;
   }
 
+  // Network First Strategy para sa index.html para laging updated ang code
   event.respondWith(
     fetch(event.request)
       .then(response => {
