@@ -1,4 +1,4 @@
-const CACHE_NAME = 'report-app-v2';
+const CACHE_NAME = 'report-app-v3'; // Binago mula v2/v1 papuntang v3
 const urlsToCache = [
   './index.html',
   './manifest.json',
@@ -6,7 +6,7 @@ const urlsToCache = [
   './icon-512.png'
 ];
 
-// Install Event - Caching App Shell
+// Install Event
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
@@ -15,7 +15,7 @@ self.addEventListener('install', event => {
   );
 });
 
-// Activate Event - Clear old caches
+// Activate Event - Buburahin nito ang lumang cache
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -30,9 +30,8 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch Event - Network First with Cache Fallback for Local Assets Only
+// Fetch Event
 self.addEventListener('fetch', event => {
-  // Huwag i-intercept ang requests papuntang Google Sheets
   if (event.request.url.includes('google.com') || event.request.url.includes('gstatic.com')) {
     return;
   }
@@ -40,7 +39,6 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // I-update ang cache sa background
         if (response.status === 200) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
