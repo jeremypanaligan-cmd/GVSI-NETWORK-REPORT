@@ -1,7 +1,7 @@
 {
   "name": "NLZ Network Status",
   "short_name": "NAP Report",
-  "description": "Gallopvision Converge NAP Outages Mobile Dashboard",
+  "description": "Gallopvision Network Status",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f8fafc",

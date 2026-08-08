@@ -631,6 +631,13 @@
     
     let currentTab = 'nap';
 
+    // I-track ang kasalukuyang sorting state
+    let currentSortState = {
+      napTableBody: { col: 0, asc: true, isNum: false },
+      lcpAgingTableBody: { col: 0, asc: true, isNum: false },
+      lcpImpactTableBody: { col: 0, asc: true, isNum: false }
+    };
+
     // Dark Mode Toggle Logic
     function initTheme() {
       const savedTheme = localStorage.getItem('theme');
@@ -757,6 +764,13 @@
         <td style="text-align: center;">${grandTotal}</td>
       `;
       tbody.appendChild(totalTr);
+
+      // Re-apply saved sort order automatically after rendering live data
+      const state = currentSortState['napTableBody'];
+      const thElem = document.querySelectorAll('#tab-nap table th')[state.col];
+      if (thElem) {
+        sortTable('napTableBody', state.col, null, state.isNum);
+      }
     }
 
     // 2. LCP Data Fetcher & Renderer
@@ -884,6 +898,19 @@
       } else {
         impactBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No impact summary data available.</td></tr>';
       }
+
+      // Re-apply saved sort order for LCP tables
+      const agingState = currentSortState['lcpAgingTableBody'];
+      const agingTh = document.querySelectorAll('#tab-lcp table')[0]?.querySelectorAll('th')[agingState.col];
+      if (agingTh) {
+        sortTable('lcpAgingTableBody', agingState.col, null, agingState.isNum);
+      }
+
+      const impactState = currentSortState['lcpImpactTableBody'];
+      const impactTh = document.querySelectorAll('#tab-lcp table')[1]?.querySelectorAll('th')[impactState.col];
+      if (impactTh) {
+        sortTable('lcpImpactTableBody', impactState.col, null, impactState.isNum);
+      }
     }
 
     function getBadgeHtml(val, type) {
@@ -898,24 +925,25 @@
       
       if (rows.length === 0) return;
 
-      // Hihiwalayin ang Total Row sa regular Data Rows
       const totalRow = rows.find(r => r.classList.contains('total-row'));
       const dataRows = rows.filter(r => !r.classList.contains('total-row'));
 
-      // Alamin kung Ascending o Descending ang kasalukuyang state
-      const isAsc = headerElem.classList.contains('sort-asc');
-      const direction = isAsc ? -1 : 1;
+      // Determine direction
+      let isAsc = headerElem ? headerElem.classList.contains('sort-asc') : currentSortState[tbodyId].asc;
+      if (headerElem) {
+        isAsc = !isAsc; // Toggle state when clicked
+      }
+      const direction = isAsc ? 1 : -1;
 
-      // Linisin ang sort indicators sa lahat ng headers sa parehong table
-      const table = headerElem.closest('table');
-      table.querySelectorAll('th').forEach(th => {
-        th.classList.remove('sort-asc', 'sort-desc');
-      });
+      // Save state
+      currentSortState[tbodyId] = { col: colIndex, asc: isAsc, isNum: isNumeric };
 
-      // I-set ang bagong indicator
-      headerElem.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+      if (headerElem) {
+        const table = headerElem.closest('table');
+        table.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+        headerElem.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+      }
 
-      // I-sort ang data rows lamang
       dataRows.sort((rowA, rowB) => {
         let cellA = rowA.children[colIndex] ? rowA.children[colIndex].textContent.trim() : '';
         let cellB = rowB.children[colIndex] ? rowB.children[colIndex].textContent.trim() : '';
@@ -929,14 +957,9 @@
         }
       });
 
-      // I-clear ang tbody at i-re-render nang maayos
       tbody.innerHTML = '';
       dataRows.forEach(row => tbody.appendChild(row));
-
-      // Ibalik ang Total Row sa pinakaibaba
-      if (totalRow) {
-        tbody.appendChild(totalRow);
-      }
+      if (totalRow) tbody.appendChild(totalRow);
     }
 
     // Initializations
