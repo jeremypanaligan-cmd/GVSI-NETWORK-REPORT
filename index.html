@@ -2,138 +2,430 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GALLOPVISION NETWORK DASHBOARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GALLOPVISION NETWORK STATUS</title>
 
-  <!-- Resource Hints -->
-  <link rel="preconnect" href="https://docs.google.com" crossorigin>
-  <link rel="dns-prefetch" href="https://docs.google.com">
-
-  <!-- PWA Manifest Link -->
-  <link rel="manifest" href="manifest.json">
+  <!-- PWA Settings & Meta Tags -->
   <meta name="theme-color" content="#0d8a80">
-  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Standard Favicons para sa Desktop at Android -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+
+  <!-- Apple / iOS Home Screen Icon -->
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <style>
     :root {
       --primary-teal: #0d8a80;
-      --dark-charcoal: #212529;
-      --light-bg: #f8f9fa;
-      --border-color: #e0e0e0;
+      --primary-dark: #085f58;
+      --dark-charcoal: #1e293b;
+      --light-bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border-color: #e2e8f0;
+      --text-muted: #64748b;
+      --header-bg: #ffffff;
+      --row-hover: #f1f5f9;
+      
+      /* Status Badge Colors (Light) */
+      --badge-green: #dcfce7;
+      --badge-green-text: #15803d;
+      --badge-yellow: #fef9c3;
+      --badge-yellow-text: #a16207;
+      --badge-red: #fee2e2;
+      --badge-red-text: #b91c1c;
+    }
+
+    /* Dark Mode Theme Variables */
+    body.dark-mode {
+      --primary-teal: #14b8a6;
+      --primary-dark: #0d9488;
+      --dark-charcoal: #f8fafc;
+      --light-bg: #0f172a;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --text-muted: #94a3b8;
+      --header-bg: #1e293b;
+      --row-hover: #334155;
+
+      /* Status Badge Colors (Dark) */
+      --badge-green: #064e3b;
+      --badge-green-text: #6ee7b7;
+      --badge-yellow: #713f12;
+      --badge-yellow-text: #fde047;
+      --badge-red: #7f1d1d;
+      --badge-red-text: #fca5a5;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
+    body {
       background-color: var(--light-bg);
+      color: var(--dark-charcoal);
       display: flex;
       flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      transition: background-color 0.3s ease, color 0.3s ease;
     }
 
-    /* App Header Branding */
+    /* Top App Bar */
     .app-header {
-      background-color: #ffffff;
-      border-bottom: 3px solid var(--primary-teal);
-      padding: 10px 16px;
+      background-color: var(--header-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
       z-index: 10;
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
 
     .brand-title {
-      color: var(--dark-charcoal);
-      font-size: 16px;
-      font-weight: 700;
+      font-size: 15px;
+      font-weight: 800;
       letter-spacing: 0.5px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
 
     .brand-title span {
       color: var(--primary-teal);
     }
 
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .theme-toggle-btn {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--dark-charcoal);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .theme-toggle-btn:hover {
+      background-color: var(--row-hover);
+    }
+
     .refresh-btn {
       background-color: var(--primary-teal);
       color: #ffffff;
       border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
+      padding: 6px 14px;
+      border-radius: 6px;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s;
+      box-shadow: 0 2px 4px rgba(13, 138, 128, 0.2);
     }
 
     .refresh-btn:active {
-      background-color: #085f58;
+      background-color: var(--primary-dark);
+      transform: scale(0.98);
     }
 
-    /* Container para sa Embedded Sheet */
-    .iframe-container {
+    /* Navigation Tabs Header Bar */
+    .nav-tabs-container {
+      background-color: var(--header-bg);
+      border-bottom: 2px solid var(--border-color);
+      display: flex;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      z-index: 9;
+      transition: background-color 0.3s ease, border-color 0.3s ease;
+    }
+
+    .nav-tabs-container::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab-btn {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .tab-btn.active {
+      color: var(--primary-teal);
+      border-bottom-color: var(--primary-teal);
+      background-color: rgba(13, 138, 128, 0.08);
+    }
+
+    /* Main Scrollable Content Area */
+    .main-container {
       flex: 1;
-      width: 100%;
-      height: 100%;
+      overflow-y: auto;
+      padding: 12px;
       position: relative;
     }
 
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
+    .tab-content {
+      display: none;
     }
 
-    /* FORCE LOADER OVERLAY TO BE VISIBLE BY DEFAULT */
+    .tab-content.active {
+      display: block;
+    }
+
+    .page-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Top Summary Cards Matrix */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 10px 6px;
+      text-align: center;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
+    }
+
+    .stat-card .label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      white-space: nowrap;
+    }
+
+    .stat-card .value {
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .stat-card.c-green .value { color: var(--badge-green-text); }
+    .stat-card.c-yellow .value { color: var(--badge-yellow-text); }
+    .stat-card.c-red .value { color: var(--badge-red-text); }
+    .stat-card.c-total .value { color: var(--primary-teal); }
+
+    /* Sortable Header Styles */
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 20px !important;
+      transition: background-color 0.2s ease;
+    }
+
+    th.sortable:hover {
+      background-color: var(--primary-dark);
+    }
+
+    th.sortable::after {
+      content: '↕';
+      position: absolute;
+      right: 6px;
+      opacity: 0.5;
+      font-size: 10px;
+    }
+
+    th.sort-asc::after {
+      content: '▲';
+      opacity: 1;
+    }
+
+    th.sort-desc::after {
+      content: '▼';
+      opacity: 1;
+    }
+    
+    /* Custom Responsive Table Container */
+    .table-card {
+      background: var(--card-bg);
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
+      margin-bottom: 14px;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--primary-teal);
+      color: #ffffff;
+      font-weight: 600;
+      padding: 10px 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+      color: var(--dark-charcoal);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr.total-row {
+      background-color: var(--row-hover);
+      font-weight: 800;
+      border-top: 2px solid var(--border-color);
+    }
+
+    tr.total-row td {
+      color: var(--primary-teal);
+      font-size: 13px;
+    }
+
+    /* Badges for Values */
+    .badge {
+      display: inline-block;
+      min-width: 24px;
+      padding: 2px 6px;
+      border-radius: 12px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .badge-green { background: var(--badge-green); color: var(--badge-green-text); }
+    .badge-yellow { background: var(--badge-yellow); color: var(--badge-yellow-text); }
+    .badge-red { background: var(--badge-red); color: var(--badge-red-text); }
+    .badge-gray { background: var(--row-hover); color: var(--text-muted); }
+
+    /* Placeholder Box for Modules */
+    .placeholder-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--text-muted);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
+    }
+
+    .placeholder-card h3 {
+      color: var(--dark-charcoal);
+      margin-bottom: 8px;
+    }
+
+    /* About Section Specific Styling */
+    .about-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
+    }
+
+    .about-title {
+      color: var(--primary-teal);
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .developer-box {
+      background-color: var(--light-bg);
+      border-left: 4px solid var(--primary-teal);
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin: 16px 0;
+      transition: background-color 0.3s ease;
+    }
+
+    .developer-box .dev-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .developer-box .dev-name {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--dark-charcoal);
+      margin-top: 2px;
+    }
+
+    /* Full Page Loader */
     .loader-overlay {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: #ffffff;
-      display: flex !important;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.85);
+      display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      z-index: 9999; /* Pinakamataas na layer */
-      opacity: 1;
-      visibility: visible;
-      transition: opacity 0.5s ease, visibility 0.5s ease;
+      z-index: 100;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
     }
 
-    /* Class na magtatago sa loader */
-    .loader-overlay.fade-out {
-      opacity: 0 !important;
-      visibility: hidden !important;
+    body:not(.dark-mode) .loader-overlay {
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .loader-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
       pointer-events: none;
     }
 
     .spinner {
-      width: 48px;
-      height: 48px;
-      border: 5px solid #e0e0e0;
-      border-top: 5px solid var(--primary-teal);
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--border-color);
+      border-top: 4px solid var(--primary-teal);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
-    }
-
-    .loading-text {
-      margin-top: 14px;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--dark-charcoal);
-      letter-spacing: 0.5px;
     }
 
     @keyframes spin {
@@ -144,74 +436,527 @@
 </head>
 <body>
 
-  <!-- Top Header bar -->
+  <!-- App Header Bar -->
   <header class="app-header">
-    <div class="brand-title">
-      GALLOPVISION <span>| CONVERGE</span>
+    <div class="brand-title">GALLOPVISION <span>| CONVERGE</span></div>
+    <div class="header-actions">
+      <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme">🌙</button>
+      <button class="refresh-btn" onclick="refreshCurrentTab()">REFRESH</button>
     </div>
-    <button class="refresh-btn" onclick="refreshReport()">REFRESH</button>
   </header>
 
-  <div class="iframe-container">
-    <!-- Loader Overlay (Naka-unang pwesto bago ang iframe) -->
-    <div id="loadingOverlay" class="loader-overlay">
+  <!-- Navigation Tabs Header -->
+  <nav class="nav-tabs-container">
+    <button class="tab-btn active" onclick="switchTab('nap')">NAP</button>
+    <button class="tab-btn" onclick="switchTab('lcp')">LCP</button>
+    <button class="tab-btn" onclick="switchTab('olt')">OLT</button>
+    <button class="tab-btn" onclick="switchTab('node')">NODE</button>
+    <button class="tab-btn" onclick="switchTab('backbone')">BACKBONE LINKS</button>
+    <button class="tab-btn" onclick="switchTab('about')">ABOUT</button>
+  </nav>
+
+  <!-- Content Container -->
+  <div class="main-container">
+    <!-- Loader -->
+    <div id="loader" class="loader-overlay">
       <div class="spinner"></div>
-      <div class="loading-text">Fetching latest report data...</div>
+      <p style="margin-top: 12px; font-weight: 600; font-size: 13px; color: var(--dark-charcoal);">Loading Data...</p>
     </div>
 
-    <iframe 
-      id="reportFrame" 
-      src="https://docs.google.com/spreadsheets/d/e/2PACX-1vSRVakF5GCBFh4HridCtcz6vQ9mYbH6zLfM0vEGbgC9lQKG-429i03Sgmd2cCsLNSxQ98ZeiWSYediR/pubhtml?widget=false&amp;headers=false&amp;chrome=false">
-    </iframe>
+    <!-- 1. NAP MODULE TAB -->
+    <div id="tab-nap" class="tab-content active">
+      <div class="page-title">NAP Outages Report</div>
+
+      <!-- Top Summary Cards -->
+      <div class="stats-grid">
+        <div class="stat-card c-green">
+          <div class="label">&lt;24 HRS</div>
+          <div class="value" id="card24">0</div>
+        </div>
+        <div class="stat-card c-yellow">
+          <div class="label">1-3 DAYS</div>
+          <div class="value" id="card13">0</div>
+        </div>
+        <div class="stat-card c-red">
+          <div class="label">&gt;3 DAYS</div>
+          <div class="value" id="card3">0</div>
+        </div>
+        <div class="stat-card c-total">
+          <div class="label">TOTAL</div>
+          <div class="value" id="cardTotal">0</div>
+        </div>
+      </div>
+
+      <!-- Main Data Table Card -->
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortTable('napTableBody', 0, this)">AREA</th>
+                <th class="sortable" onclick="sortTable('napTableBody', 1, this)">PROVINCE</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('napTableBody', 2, this, true)">&lt;24HOURS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('napTableBody', 3, this, true)">1-3 DAYS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('napTableBody', 4, this, true)">&gt;3DAYS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('napTableBody', 5, this, true)">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody id="napTableBody">
+              <!-- Dynamic Data Will Load Here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. LCP MODULE TAB -->
+    <div id="tab-lcp" class="tab-content">
+      <div class="page-title">LCP Outages Report</div>
+
+      <!-- Top Summary Cards para sa LCP Aging -->
+      <div class="stats-grid">
+        <div class="stat-card c-green">
+          <div class="label">&lt;24 HRS</div>
+          <div class="value" id="lcpCard24">0</div>
+        </div>
+        <div class="stat-card c-yellow">
+          <div class="label">1-3 DAYS</div>
+          <div class="value" id="lcpCard13">0</div>
+        </div>
+        <div class="stat-card c-red">
+          <div class="label">&gt;3 DAYS</div>
+          <div class="value" id="lcpCard3">0</div>
+        </div>
+        <div class="stat-card c-total">
+          <div class="label">TOTAL</div>
+          <div class="value" id="lcpCardTotal">0</div>
+        </div>
+      </div>
+
+      <!-- LCP Aging Table -->
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortTable('lcpAgingTableBody', 0, this)">AREA</th>
+                <th class="sortable" onclick="sortTable('lcpAgingTableBody', 1, this)">PROVINCE</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('lcpAgingTableBody', 2, this, true)">&lt;24HOURS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('lcpAgingTableBody', 3, this, true)">1-3 DAYS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('lcpAgingTableBody', 4, this, true)">&gt;3DAYS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('lcpAgingTableBody', 5, this, true)">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody id="lcpAgingTableBody">
+              <!-- Dynamic Data -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- LCP Impact Summary Table (TT Count, LCP Count, Clients) -->
+      <div class="page-title" style="margin-top: 18px;">LCP Impact Summary</div>
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortTable('lcpImpactTableBody', 0, this)">AREA</th>
+                <th class="sortable" onclick="sortTable('lcpImpactTableBody', 1, this)">PROVINCE</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('lcpImpactTableBody', 2, this, true)">TT COUNT</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('lcpImpactTableBody', 3, this, true)">LCP COUNT</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('lcpImpactTableBody', 4, this, true)">CLIENTS AFFECTED</th>
+              </tr>
+            </thead>
+            <tbody id="lcpImpactTableBody">
+              <!-- Dynamic Data -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. OLT MODULE TAB -->
+    <div id="tab-olt" class="tab-content">
+      <div class="page-title">OLT Status Report</div>
+      <div class="placeholder-card">
+        <h3>OLT Module</h3>
+        <p>I-connect ang OLT Apps Script API URL para ma-render ang data dito.</p>
+      </div>
+    </div>
+
+    <!-- 4. NODE MODULE TAB -->
+    <div id="tab-node" class="tab-content">
+      <div class="page-title">NODE Status Report</div>
+      <div class="placeholder-card">
+        <h3>NODE Module</h3>
+        <p>I-connect ang NODE Apps Script API URL para ma-render ang data dito.</p>
+      </div>
+    </div>
+
+    <!-- 5. BACKBONE LINKS TAB -->
+    <div id="tab-backbone" class="tab-content">
+      <div class="page-title">Backbone Links Status</div>
+      <div class="placeholder-card">
+        <h3>Backbone Links Module</h3>
+        <p>I-connect ang Backbone Links Apps Script API URL para ma-render ang data dito.</p>
+      </div>
+    </div>
+
+    <!-- 6. ABOUT TAB -->
+    <div id="tab-about" class="tab-content">
+      <div class="page-title">About System</div>
+      <div class="about-card">
+        <div class="about-title">Gallopvision Network Status</div>
+        <p style="font-size: 13px; line-height: 1.6; color: var(--dark-charcoal);">
+          Ang Progressive Web Application (PWA) na ito ay idinisenyo para sa real-time monitoring ng network infrastructure status gaya ng NAP, LCP, OLT, NODE, at Backbone Links ng Gallopvision / Converge.
+        </p>
+
+        <!-- Developer Credit Card -->
+        <div class="developer-box">
+          <div class="dev-label">Nilikha at Idinisenyo Ni:</div>
+          <div class="dev-name">Jeremy S. Panaligan</div>
+        </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+        <p style="font-size: 12px; color: var(--text-muted);">Version: 1.0.0 (PWA Enabled)</p>
+      </div>
+    </div>
+
   </div>
 
-<script>
-  const loader = document.getElementById('loadingOverlay');
-  const iframe = document.getElementById('reportFrame');
+  <script>
+    // General API Web App URL
+    const BASE_API_URL = "https://script.google.com/macros/s/AKfycbzDpSJYYwCSiXmKhlvQC-uORhuSqVVV2XA4Kj_w_tNoSXlHTbZNSm3vhcWq1OUivCsexQ/exec";
+    
+    let currentTab = 'nap';
 
-  function showLoader() {
-    if (loader) loader.classList.remove('fade-out');
-  }
-
-  function hideLoader() {
-    if (loader) loader.classList.add('fade-out');
-  }
-
-  // Piliting maging visible ang loader sa unang load nang hindi bababa sa 1.5 seconds
-  let isInitialLoad = true;
-
-  iframe.addEventListener('load', () => {
-    if (isInitialLoad) {
-      setTimeout(() => {
-        hideLoader();
-        isInitialLoad = false;
-      }, 1500); // 1.5 seconds minimum display
-    } else {
-      setTimeout(() => {
-        hideLoader();
-      }, 500);
+    // Dark Mode Toggle Logic
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        document.getElementById('themeBtn').textContent = '☀️';
+      } else {
+        document.body.classList.remove('dark-mode');
+        document.getElementById('themeBtn').textContent = '🌙';
+      }
     }
-  });
 
-  function refreshReport() {
-    showLoader();
-    const baseUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSRVakF5GCBFh4HridCtcz6vQ9mYbH6zLfM0vEGbgC9lQKG-429i03Sgmd2cCsLNSxQ98ZeiWSYediR/pubhtml";
-    iframe.src = `${baseUrl}?widget=false&headers=false&chrome=false&t=${new Date().getTime()}`;
-  }
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      const isDark = document.body.classList.contains('dark-mode');
+      document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
 
-  // Auto-refresh kada 1 minuto
-  setInterval(() => {
-    refreshReport();
-  }, 60000);
+    // Tab Switching Function
+    function switchTab(tabName) {
+      currentTab = tabName;
 
-  // Service Worker Registration
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('Service Worker Registered!'))
-        .catch(err => console.error('Registration Failed:', err));
-    });
-  }
-</script>
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      const selectedTab = document.getElementById(`tab-${tabName}`);
+      if (selectedTab) selectedTab.classList.add('active');
+
+      if (tabName === 'nap') {
+        fetchNapData();
+      } else if (tabName === 'lcp') {
+        fetchLcpData();
+      }
+    }
+
+    function refreshCurrentTab() {
+      if (currentTab === 'nap') {
+        fetchNapData();
+      } else if (currentTab === 'lcp') {
+        fetchLcpData();
+      } else {
+        alert(`Refreshing ${currentTab.toUpperCase()} data...`);
+      }
+    }
+
+    // 1. NAP Data Fetcher
+    async function fetchNapData() {
+      const loader = document.getElementById('loader');
+      if (loader) loader.classList.remove('hidden');
+
+      try {
+        const response = await fetch(BASE_API_URL + "?type=nap");
+        const data = await response.json();
+
+        if (Array.isArray(data) && data.length > 0) {
+          renderNapReport(data);
+        } else {
+          document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;">No data found.</td></tr>';
+        }
+      } catch (error) {
+        console.error('Error fetching NAP data:', error);
+        document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
+      } finally {
+        if (loader) {
+          setTimeout(() => {
+            loader.classList.add('hidden');
+          }, 300);
+        }
+      }
+    }
+
+    function renderNapReport(data) {
+      const tbody = document.getElementById('napTableBody');
+      tbody.innerHTML = '';
+
+      let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
+
+      data.forEach(row => {
+        const area = row['AREA'] || row['Area'] || '';
+        const provinceRaw = row['PROVINCE'] || row['Province'] || '';
+        const province = provinceRaw.toString().replace(/_/g, ' '); 
+
+        const h24 = parseInt(row['<24HOURS'] || row['<24hrs'] || 0) || 0;
+        const d13 = parseInt(row['1-3 DAYS'] || row['1-3Days'] || 0) || 0;
+        const d3 = parseInt(row['>3DAYS'] || row['>3Days'] || 0) || 0;
+        const rowTotal = parseInt(row['TOTAL'] || row['Total'] || (h24 + d13 + d3)) || 0;
+
+        if (area.toString().trim().toUpperCase() !== 'TOTAL') {
+          total24 += h24;
+          total13 += d13;
+          total3 += d3;
+          grandTotal += rowTotal;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${area}</strong></td>
+            <td>${province}</td>
+            <td style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
+            <td style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
+            <td style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
+            <td style="text-align: center;"><strong>${rowTotal}</strong></td>
+          `;
+          tbody.appendChild(tr);
+        }
+      });
+
+      // Update Top Stat Cards
+      if (document.getElementById('card24')) document.getElementById('card24').textContent = total24;
+      if (document.getElementById('card13')) document.getElementById('card13').textContent = total13;
+      if (document.getElementById('card3')) document.getElementById('card3').textContent = total3;
+      if (document.getElementById('cardTotal')) document.getElementById('cardTotal').textContent = grandTotal;
+
+      // Add Total Row
+      const totalTr = document.createElement('tr');
+      totalTr.className = 'total-row';
+      totalTr.innerHTML = `
+        <td colspan="2">TOTAL</td>
+        <td style="text-align: center;">${total24}</td>
+        <td style="text-align: center;">${total13}</td>
+        <td style="text-align: center;">${total3}</td>
+        <td style="text-align: center;">${grandTotal}</td>
+      `;
+      tbody.appendChild(totalTr);
+    }
+
+    // 2. LCP Data Fetcher & Renderer
+    async function fetchLcpData() {
+      const loader = document.getElementById('loader');
+      if (loader) loader.classList.remove('hidden');
+
+      try {
+        const response = await fetch(BASE_API_URL + "?type=lcp");
+        const data = await response.json();
+
+        if (data && data.lcpAging) {
+          renderLcpReport(data.lcpAging, data.lcpImpact || []);
+        } else if (Array.isArray(data)) {
+          renderLcpReport(data, []);
+        }
+      } catch (error) {
+        console.error('Error fetching LCP data:', error);
+      } finally {
+        if (loader) {
+          setTimeout(() => {
+            loader.classList.add('hidden');
+          }, 300);
+        }
+      }
+    }
+
+    function renderLcpReport(agingData, impactData) {
+      // Render LCP Aging
+      const agingBody = document.getElementById('lcpAgingTableBody');
+      agingBody.innerHTML = '';
+
+      let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
+
+      agingData.forEach(row => {
+        const area = row['AREA'] || row['Area'] || '';
+        const provinceRaw = row['PROVINCE'] || row['Province'] || '';
+        const province = provinceRaw.toString().replace(/_/g, ' '); 
+
+        const h24 = parseInt(row['<24HOURS'] || row['<24hrs'] || 0) || 0;
+        const d13 = parseInt(row['1-3 DAYS'] || row['1-3Days'] || 0) || 0;
+        const d3 = parseInt(row['>3DAYS'] || row['>3Days'] || 0) || 0;
+        const rowTotal = parseInt(row['TOTAL'] || row['Total'] || (h24 + d13 + d3)) || 0;
+
+        if (area.toString().trim().toUpperCase() !== 'TOTAL') {
+          total24 += h24;
+          total13 += d13;
+          total3 += d3;
+          grandTotal += rowTotal;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${area}</strong></td>
+            <td>${province}</td>
+            <td style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
+            <td style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
+            <td style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
+            <td style="text-align: center;"><strong>${rowTotal}</strong></td>
+          `;
+          agingBody.appendChild(tr);
+        }
+      });
+
+      // Update LCP Stat Cards
+      if (document.getElementById('lcpCard24')) document.getElementById('lcpCard24').textContent = total24;
+      if (document.getElementById('lcpCard13')) document.getElementById('lcpCard13').textContent = total13;
+      if (document.getElementById('lcpCard3')) document.getElementById('lcpCard3').textContent = total3;
+      if (document.getElementById('lcpCardTotal')) document.getElementById('lcpCardTotal').textContent = grandTotal;
+
+      // LCP Aging Total Row
+      const agingTotalTr = document.createElement('tr');
+      agingTotalTr.className = 'total-row';
+      agingTotalTr.innerHTML = `
+        <td colspan="2">TOTAL</td>
+        <td style="text-align: center;">${total24}</td>
+        <td style="text-align: center;">${total13}</td>
+        <td style="text-align: center;">${total3}</td>
+        <td style="text-align: center;">${grandTotal}</td>
+      `;
+      agingBody.appendChild(agingTotalTr);
+
+      // Render LCP Impact Summary (TT Count, LCP Count, Clients)
+      const impactBody = document.getElementById('lcpImpactTableBody');
+      impactBody.innerHTML = '';
+
+      let totalTT = 0, totalLCP = 0, totalClients = 0;
+
+      impactData.forEach(row => {
+        const area = row['AREA'] || row['Area'] || '';
+        const provinceRaw = row['PROVINCE'] || row['Province'] || '';
+        const province = provinceRaw.toString().replace(/_/g, ' ');
+
+        const ttCount = parseInt(row['TT COUNT'] || row['TT_COUNT'] || 0) || 0;
+        const lcpCount = parseInt(row['LCP COUNT'] || row['LCP_COUNT'] || 0) || 0;
+        const clients = parseInt(row['CLIENTS'] || row['CLIENTS AFFECTED'] || 0) || 0;
+
+        if (area.toString().trim().toUpperCase() !== 'TOTAL') {
+          totalTT += ttCount;
+          totalLCP += lcpCount;
+          totalClients += clients;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${area}</strong></td>
+            <td>${province}</td>
+            <td style="text-align: center;">${ttCount}</td>
+            <td style="text-align: center;">${lcpCount}</td>
+            <td style="text-align: center; color: var(--primary-teal); font-weight: 700;">${clients}</td>
+          `;
+          impactBody.appendChild(tr);
+        }
+      });
+
+      // LCP Impact Total Row
+      if (impactData.length > 0) {
+        const impactTotalTr = document.createElement('tr');
+        impactTotalTr.className = 'total-row';
+        impactTotalTr.innerHTML = `
+          <td colspan="2">TOTAL</td>
+          <td style="text-align: center;">${totalTT}</td>
+          <td style="text-align: center;">${totalLCP}</td>
+          <td style="text-align: center; color: var(--primary-teal);">${totalClients}</td>
+        `;
+        impactBody.appendChild(impactTotalTr);
+      } else {
+        impactBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No impact summary data available.</td></tr>';
+      }
+    }
+
+    function getBadgeHtml(val, type) {
+      if (val === 0) return `<span class="badge badge-gray">0</span>`;
+      return `<span class="badge badge-${type}">${val}</span>`;
+    }
+
+    // Generic Sorting Function na HINDI isinasama ang Total Row
+    function sortTable(tbodyId, colIndex, headerElem, isNumeric = false) {
+      const tbody = document.getElementById(tbodyId);
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      
+      if (rows.length === 0) return;
+
+      // Hihiwalayin ang Total Row sa regular Data Rows
+      const totalRow = rows.find(r => r.classList.contains('total-row'));
+      const dataRows = rows.filter(r => !r.classList.contains('total-row'));
+
+      // Alamin kung Ascending o Descending ang kasalukuyang state
+      const isAsc = headerElem.classList.contains('sort-asc');
+      const direction = isAsc ? -1 : 1;
+
+      // Linisin ang sort indicators sa lahat ng headers sa parehong table
+      const table = headerElem.closest('table');
+      table.querySelectorAll('th').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+      });
+
+      // I-set ang bagong indicator
+      headerElem.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+
+      // I-sort ang data rows lamang
+      dataRows.sort((rowA, rowB) => {
+        let cellA = rowA.children[colIndex] ? rowA.children[colIndex].textContent.trim() : '';
+        let cellB = rowB.children[colIndex] ? rowB.children[colIndex].textContent.trim() : '';
+
+        if (isNumeric) {
+          let valA = parseFloat(cellA.replace(/,/g, '')) || 0;
+          let valB = parseFloat(cellB.replace(/,/g, '')) || 0;
+          return (valA - valB) * direction;
+        } else {
+          return cellA.localeCompare(cellB) * direction;
+        }
+      });
+
+      // I-clear ang tbody at i-re-render nang maayos
+      tbody.innerHTML = '';
+      dataRows.forEach(row => tbody.appendChild(row));
+
+      // Ibalik ang Total Row sa pinakaibaba
+      if (totalRow) {
+        tbody.appendChild(totalRow);
+      }
+    }
+
+    // Initializations
+    initTheme();
+    fetchNapData();
+
+    // Auto Refresh bawat 60 seconds
+    setInterval(() => {
+      if (currentTab === 'nap') fetchNapData();
+      else if (currentTab === 'lcp') fetchLcpData();
+    }, 300000);
+
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => {
+          console.log('Service Worker Registration failed: ', err);
+        });
+      });
+    }
+  </script>
 </body>
 </html>
