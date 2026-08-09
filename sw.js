@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gvsi-v4';
+const CACHE_VERSION = 'gvsi-v5';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
