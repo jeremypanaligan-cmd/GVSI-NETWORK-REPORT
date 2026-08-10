@@ -28,13 +28,17 @@
       --header-bg: #ffffff;
       --row-hover: #f1f5f9;
       
-      /* Status Badge Colors (Light) */
+      /* Status Badge & Stat Card Colors (Light) */
       --badge-green: #dcfce7;
       --badge-green-text: #15803d;
       --badge-yellow: #fef9c3;
       --badge-yellow-text: #a16207;
       --badge-red: #fee2e2;
       --badge-red-text: #b91c1c;
+      --badge-orange: #ffedd5;
+      --badge-orange-text: #c2410c;
+      --badge-purple: #f3e8ff;
+      --badge-purple-text: #7e22ce;
     }
 
     /* Dark Mode Theme Variables */
@@ -49,13 +53,17 @@
       --header-bg: #1e293b;
       --row-hover: #334155;
 
-      /* Status Badge Colors (Dark) */
+      /* Status Badge & Stat Card Colors (Dark) */
       --badge-green: #064e3b;
       --badge-green-text: #6ee7b7;
       --badge-yellow: #713f12;
       --badge-yellow-text: #fde047;
       --badge-red: #7f1d1d;
       --badge-red-text: #fca5a5;
+      --badge-orange: #7c2d12;
+      --badge-orange-text: #ff8d4d;
+      --badge-purple: #581c87;
+      --badge-purple-text: #d8b4fe;
     }
 
     * {
@@ -193,12 +201,18 @@
       display: block;
     }
 
+    .page-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
     .page-title {
       font-size: 14px;
       font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
-      margin-bottom: 10px;
       letter-spacing: 0.5px;
     }
 
@@ -210,6 +224,13 @@
       margin-bottom: 14px;
     }
 
+    .olt-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
     .stat-card {
       background: var(--card-bg);
       border-radius: 8px;
@@ -217,15 +238,30 @@
       text-align: center;
       border: 1px solid var(--border-color);
       box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-      transition: background-color 0.3s ease, border-color 0.3s ease;
+      transition: all 0.2s ease;
+    }
+
+    .stat-card.clickable {
+      cursor: pointer;
+    }
+
+    .stat-card.clickable:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+    }
+
+    .stat-card.clickable.active-filter {
+      border: 2px solid var(--primary-teal);
+      background-color: rgba(13, 138, 128, 0.05);
     }
 
     .stat-card .label {
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
       color: var(--text-muted);
       margin-bottom: 4px;
       white-space: nowrap;
+      text-transform: uppercase;
     }
 
     .stat-card .value {
@@ -236,7 +272,43 @@
     .stat-card.c-green .value { color: var(--badge-green-text); }
     .stat-card.c-yellow .value { color: var(--badge-yellow-text); }
     .stat-card.c-red .value { color: var(--badge-red-text); }
+    .stat-card.c-orange .value { color: var(--badge-orange-text); }
+    .stat-card.c-purple .value { color: var(--badge-purple-text); }
     .stat-card.c-total .value { color: var(--primary-teal); }
+
+    /* Filter Toolbar for OLT Table */
+    .filter-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+      scrollbar-width: none;
+    }
+
+    .filter-toolbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .filter-btn {
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 20px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      color: var(--dark-charcoal);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+
+    .filter-btn.active {
+      background: var(--primary-teal);
+      color: #ffffff;
+      border-color: var(--primary-teal);
+    }
 
     /* Sortable Header Styles */
     th.sortable {
@@ -308,6 +380,15 @@
       color: var(--dark-charcoal);
     }
 
+    tr.clickable-row {
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    tr.clickable-row:hover {
+      background-color: var(--row-hover);
+    }
+
     tr:last-child td {
       border-bottom: none;
     }
@@ -327,17 +408,102 @@
     .badge {
       display: inline-block;
       min-width: 24px;
-      padding: 2px 6px;
+      padding: 3px 8px;
       border-radius: 12px;
       text-align: center;
       font-weight: 700;
-      font-size: 12px;
+      font-size: 11px;
+      text-transform: uppercase;
     }
 
     .badge-green { background: var(--badge-green); color: var(--badge-green-text); }
     .badge-yellow { background: var(--badge-yellow); color: var(--badge-yellow-text); }
     .badge-red { background: var(--badge-red); color: var(--badge-red-text); }
+    .badge-orange { background: var(--badge-orange); color: var(--badge-orange-text); }
+    .badge-purple { background: var(--badge-purple); color: var(--badge-purple-text); }
     .badge-gray { background: var(--row-hover); color: var(--text-muted); }
+
+    /* Modal / Popup Box */
+    .modal-backdrop {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 200;
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal-card {
+      background: var(--card-bg);
+      width: 100%;
+      max-width: 500px;
+      border-top-left-radius: 16px;
+      border-top-right-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+    }
+
+    .modal-backdrop.open .modal-card {
+      transform: translateY(0);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--primary-teal);
+    }
+
+    .close-btn {
+      background: transparent;
+      border: none;
+      font-size: 20px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .modal-item {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px dashed var(--border-color);
+      padding-bottom: 6px;
+    }
+
+    .modal-item .label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .modal-item .val {
+      font-weight: 700;
+      color: var(--dark-charcoal);
+    }
 
     /* Placeholder Box for Modules */
     .placeholder-card {
@@ -465,7 +631,9 @@
 
     <!-- 1. NAP MODULE TAB -->
     <div id="tab-nap" class="tab-content active">
-      <div class="page-title">NAP Outages Report</div>
+      <div class="page-title-row">
+        <div class="page-title">NAP Outages Report</div>
+      </div>
 
       <!-- Top Summary Cards -->
       <div class="stats-grid">
@@ -511,7 +679,9 @@
 
     <!-- 2. LCP MODULE TAB -->
     <div id="tab-lcp" class="tab-content">
-      <div class="page-title">LCP Outages Report</div>
+      <div class="page-title-row">
+        <div class="page-title">LCP Outages Report</div>
+      </div>
 
       <!-- Top Summary Cards para sa LCP Aging -->
       <div class="stats-grid">
@@ -578,10 +748,65 @@
 
     <!-- 3. OLT MODULE TAB -->
     <div id="tab-olt" class="tab-content">
-      <div class="page-title">OLT Status Report</div>
-      <div class="placeholder-card">
-        <h3>OLT Module</h3>
-        <p>I-connect ang OLT Apps Script API URL para ma-render ang data dito.</p>
+      <div class="page-title-row">
+        <div class="page-title">OLT Status Summary</div>
+      </div>
+
+      <!-- Top Summary Cards Matrix para sa OLT -->
+      <div class="olt-stats-grid">
+        <div class="stat-card c-total clickable" onclick="setOltFilter('ALL')">
+          <div class="label">TOTAL OLT</div>
+          <div class="value" id="oltCardTotal">0</div>
+        </div>
+        <div class="stat-card c-green clickable" onclick="setOltFilter('UP')">
+          <div class="label">UP</div>
+          <div class="value" id="oltCardUp">0</div>
+        </div>
+        <div class="stat-card c-red clickable" id="cardOltDown" onclick="setOltFilter('DOWN')">
+          <div class="label">DOWN</div>
+          <div class="value" id="oltCardDown">0</div>
+        </div>
+        <div class="stat-card c-orange clickable" id="cardOltLowPower" onclick="setOltFilter('LOW POWER')">
+          <div class="label">LOW POWER</div>
+          <div class="value" id="oltCardLowPower">0</div>
+        </div>
+        <div class="stat-card c-yellow clickable" id="cardOltUplinkDown" onclick="setOltFilter('UPLINK DOWN')">
+          <div class="label">UPLINK DOWN</div>
+          <div class="value" id="oltCardUplinkDown">0</div>
+        </div>
+        <div class="stat-card c-purple clickable" id="cardOltDegradation" onclick="setOltFilter('DEGRADATION')">
+          <div class="label">DEGRADATION</div>
+          <div class="value" id="oltCardDegradation">0</div>
+        </div>
+      </div>
+
+      <!-- Filter Buttons Toolbar -->
+      <div class="filter-toolbar">
+        <button class="filter-btn active" id="btnFilterAll" onclick="setOltFilter('ALL')">ALL OLTs</button>
+        <button class="filter-btn" id="btnFilterDown" onclick="setOltFilter('DOWN')">DOWN</button>
+        <button class="filter-btn" id="btnFilterLowPower" onclick="setOltFilter('LOW POWER')">LOW POWER</button>
+        <button class="filter-btn" id="btnFilterUplinkDown" onclick="setOltFilter('UPLINK DOWN')">UPLINK DOWN</button>
+        <button class="filter-btn" id="btnFilterDegradation" onclick="setOltFilter('DEGRADATION')">DEGRADATION</button>
+        <button class="filter-btn" id="btnFilterUp" onclick="setOltFilter('UP')">UP ONLY</button>
+      </div>
+
+      <!-- OLT Status Details Table -->
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortTable('oltTableBody', 0, this)">PROVINCE</th>
+                <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY / MUNICIPALITY</th>
+                <th class="sortable" onclick="sortTable('oltTableBody', 2, this)">OLT NAME</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this)">STATUS</th>
+              </tr>
+            </thead>
+            <tbody id="oltTableBody">
+              <!-- Dynamic Data Will Load Here -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -619,23 +844,54 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-        <p style="font-size: 12px; color: var(--text-muted);">Version: 1.0.0 (PWA Enabled)</p>
+        <p style="font-size: 12px; color: var(--text-muted);">Version: 1.1.0 (OLT Module Integrated)</p>
       </div>
     </div>
 
   </div>
 
+  <!-- Modal/Popup Box para sa OLT Details -->
+  <div class="modal-backdrop" id="oltModal" onclick="closeOltModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title" id="mOltName">OLT DETAILS</div>
+        <button class="close-btn" onclick="closeOltModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-item">
+          <span class="label">Province:</span>
+          <span class="val" id="mProvince">-</span>
+        </div>
+        <div class="modal-item">
+          <span class="label">Municipality:</span>
+          <span class="val" id="mMunicipality">-</span>
+        </div>
+        <div class="modal-item">
+          <span class="label">Status:</span>
+          <span class="val" id="mStatus">-</span>
+        </div>
+        <div class="modal-item">
+          <span class="label">Ticket / Cause:</span>
+          <span class="val" id="mCause">-</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // General API Web App URL
-    const BASE_API_URL = "https://script.google.com/macros/s/AKfycbzS2Z1ww2QwvVePTkZqFe0O3B0Bh3wtWP-4uhNZ-WVLPoZ0YHfC_ers_WQO3MA3O3tJAA/exec";
+    const BASE_API_URL = "https://script.google.com/macros/s/AKfycbzuiOiCOYs-8jteAnWTeFn708OD6jJXPh8Nq-tTQDAtbEON9lEnl9OU2XDu5j88q7xZDw/exec";
     
     let currentTab = 'nap';
+    let rawOltData = [];
+    let currentOltFilter = 'ALL';
 
     // I-track ang kasalukuyang sorting state
     let currentSortState = {
       napTableBody: { col: 0, asc: true, isNum: false },
       lcpAgingTableBody: { col: 0, asc: true, isNum: false },
-      lcpImpactTableBody: { col: 0, asc: true, isNum: false }
+      lcpImpactTableBody: { col: 0, asc: true, isNum: false },
+      oltTableBody: { col: 0, asc: true, isNum: false }
     };
 
     // Dark Mode Toggle Logic
@@ -673,6 +929,8 @@
         fetchNapData();
       } else if (tabName === 'lcp') {
         fetchLcpData();
+      } else if (tabName === 'olt') {
+        fetchOltData();
       }
     }
 
@@ -681,6 +939,8 @@
         fetchNapData();
       } else if (currentTab === 'lcp') {
         fetchLcpData();
+      } else if (currentTab === 'olt') {
+        fetchOltData();
       } else {
         alert(`Refreshing ${currentTab.toUpperCase()} data...`);
       }
@@ -765,7 +1025,7 @@
       `;
       tbody.appendChild(totalTr);
 
-      // Re-apply saved sort order automatically after rendering live data
+      // Re-apply saved sort order
       const state = currentSortState['napTableBody'];
       const thElem = document.querySelectorAll('#tab-nap table th')[state.col];
       if (thElem) {
@@ -799,7 +1059,6 @@
     }
 
     function renderLcpReport(agingData, impactData) {
-      // Render LCP Aging
       const agingBody = document.getElementById('lcpAgingTableBody');
       agingBody.innerHTML = '';
 
@@ -834,13 +1093,11 @@
         }
       });
 
-      // Update LCP Stat Cards
       if (document.getElementById('lcpCard24')) document.getElementById('lcpCard24').textContent = total24;
       if (document.getElementById('lcpCard13')) document.getElementById('lcpCard13').textContent = total13;
       if (document.getElementById('lcpCard3')) document.getElementById('lcpCard3').textContent = total3;
       if (document.getElementById('lcpCardTotal')) document.getElementById('lcpCardTotal').textContent = grandTotal;
 
-      // LCP Aging Total Row
       const agingTotalTr = document.createElement('tr');
       agingTotalTr.className = 'total-row';
       agingTotalTr.innerHTML = `
@@ -852,7 +1109,6 @@
       `;
       agingBody.appendChild(agingTotalTr);
 
-      // Render LCP Impact Summary (TT Count, LCP Count, Clients)
       const impactBody = document.getElementById('lcpImpactTableBody');
       impactBody.innerHTML = '';
 
@@ -884,7 +1140,6 @@
         }
       });
 
-      // LCP Impact Total Row
       if (impactData.length > 0) {
         const impactTotalTr = document.createElement('tr');
         impactTotalTr.className = 'total-row';
@@ -898,18 +1153,165 @@
       } else {
         impactBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No impact summary data available.</td></tr>';
       }
+    }
 
-      // Re-apply saved sort order for LCP tables
-      const agingState = currentSortState['lcpAgingTableBody'];
-      const agingTh = document.querySelectorAll('#tab-lcp table')[0]?.querySelectorAll('th')[agingState.col];
-      if (agingTh) {
-        sortTable('lcpAgingTableBody', agingState.col, null, agingState.isNum);
+    // 3. OLT Data Fetcher & Logic
+    async function fetchOltData() {
+      const loader = document.getElementById('loader');
+      if (loader) loader.classList.remove('hidden');
+
+      try {
+        const response = await fetch(BASE_API_URL + "?type=olt");
+        const data = await response.json();
+
+        if (Array.isArray(data) && data.length > 0) {
+          rawOltData = data;
+          processAndRenderOlt();
+        } else {
+          document.getElementById('oltTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">No OLT data found.</td></tr>';
+        }
+      } catch (error) {
+        console.error('Error fetching OLT data:', error);
+        document.getElementById('oltTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Error loading OLT data.</td></tr>';
+      } finally {
+        if (loader) {
+          setTimeout(() => {
+            loader.classList.add('hidden');
+          }, 300);
+        }
+      }
+    }
+
+    function processAndRenderOlt() {
+      let countUp = 0;
+      let countDown = 0;
+      let countLowPower = 0;
+      let countUplinkDown = 0;
+      let countDegradation = 0;
+      let totalOlt = rawOltData.length;
+
+      // Bilangin ang bawat status batay sa backend response
+      rawOltData.forEach(item => {
+        const status = (item['STATUS'] || item['Status'] || '').toString().trim().toUpperCase();
+        
+        if (status === 'DOWN') countDown++;
+        else if (status.includes('LOW POWER')) countLowPower++;
+        else if (status.includes('UPLINK DOWN')) countUplinkDown++;
+        else if (status.includes('DEGRADATION')) countDegradation++;
+        else countUp++;
+      });
+
+      // Update OLT Stat Cards
+      document.getElementById('oltCardTotal').textContent = totalOlt;
+      document.getElementById('oltCardUp').textContent = countUp;
+      document.getElementById('oltCardDown').textContent = countDown;
+      document.getElementById('oltCardLowPower').textContent = countLowPower;
+      document.getElementById('oltCardUplinkDown').textContent = countUplinkDown;
+      document.getElementById('oltCardDegradation').textContent = countDegradation;
+
+      renderOltTable();
+    }
+
+    function setOltFilter(filterType) {
+      currentOltFilter = filterType;
+
+      // Update Filter Button Styling
+      const btnMap = {
+        'ALL': 'btnFilterAll',
+        'DOWN': 'btnFilterDown',
+        'LOW POWER': 'btnFilterLowPower',
+        'UPLINK DOWN': 'btnFilterUplinkDown',
+        'DEGRADATION': 'btnFilterDegradation',
+        'UP': 'btnFilterUp'
+      };
+
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      if (btnMap[filterType]) {
+        document.getElementById(btnMap[filterType]).classList.add('active');
       }
 
-      const impactState = currentSortState['lcpImpactTableBody'];
-      const impactTh = document.querySelectorAll('#tab-lcp table')[1]?.querySelectorAll('th')[impactState.col];
-      if (impactTh) {
-        sortTable('lcpImpactTableBody', impactState.col, null, impactState.isNum);
+      // Update Stat Cards active state
+      document.querySelectorAll('.olt-stats-grid .stat-card').forEach(card => card.classList.remove('active-filter'));
+
+      renderOltTable();
+    }
+
+    function renderOltTable() {
+      const tbody = document.getElementById('oltTableBody');
+      tbody.innerHTML = '';
+
+      const filtered = rawOltData.filter(item => {
+        const st = (item['STATUS'] || item['Status'] || '').toString().trim().toUpperCase();
+        if (currentOltFilter === 'ALL') return true;
+        if (currentOltFilter === 'DOWN') return st === 'DOWN';
+        if (currentOltFilter === 'LOW POWER') return st.includes('LOW POWER');
+        if (currentOltFilter === 'UPLINK DOWN') return st.includes('UPLINK DOWN');
+        if (currentOltFilter === 'DEGRADATION') return st.includes('DEGRADATION');
+        if (currentOltFilter === 'UP') return st === 'UP' || st === 'NORMAL' || st === 'OK';
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
+        return;
+      }
+
+      filtered.forEach(item => {
+        const province = item['PROVINCE'] || item['Province'] || '-';
+        const municipality = item['MUNICIPALITY'] || item['Municipality'] || item['CITY'] || '-';
+        const name = item['OLT_NAME'] || item['OLT Name'] || item['NAME'] || '-';
+        const status = (item['STATUS'] || item['Status'] || 'UP').toString().toUpperCase();
+        const cause = item['CAUSE'] || item['Cause'] || item['TICKET'] || '-';
+
+        let badgeType = 'green';
+        if (status === 'DOWN') badgeType = 'red';
+        else if (status.includes('LOW POWER')) badgeType = 'orange';
+        else if (status.includes('UPLINK DOWN')) badgeType = 'yellow';
+        else if (status.includes('DEGRADATION')) badgeType = 'purple';
+
+        const tr = document.createElement('tr');
+        tr.className = 'clickable-row';
+        tr.onclick = () => openOltModal(name, province, municipality, status, cause);
+        tr.innerHTML = `
+          <td>${province}</td>
+          <td>${municipality}</td>
+          <td><strong>${name}</strong></td>
+          <td style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Total Row para sa kasalukuyang tinitingnang filtered list
+      const totalTr = document.createElement('tr');
+      totalTr.className = 'total-row';
+      totalTr.innerHTML = `
+        <td colspan="3">FILTERED TOTAL (${currentOltFilter})</td>
+        <td style="text-align: center;">${filtered.length}</td>
+      `;
+      tbody.appendChild(totalTr);
+
+      // Re-apply saved sort order
+      const state = currentSortState['oltTableBody'];
+      const thElem = document.querySelectorAll('#tab-olt table th')[state.col];
+      if (thElem) {
+        sortTable('oltTableBody', state.col, null, state.isNum);
+      }
+    }
+
+    // OLT Details Modal Logic
+    function openOltModal(name, province, municipality, status, cause) {
+      document.getElementById('mOltName').textContent = name;
+      document.getElementById('mProvince').textContent = province;
+      document.getElementById('mMunicipality').textContent = municipality;
+      document.getElementById('mStatus').textContent = status;
+      document.getElementById('mCause').textContent = cause;
+
+      document.getElementById('oltModal').classList.add('open');
+    }
+
+    function closeOltModal(event) {
+      if (!event || event.target.id === 'oltModal' || event.target.className === 'close-btn') {
+        document.getElementById('oltModal').classList.remove('open');
       }
     }
 
@@ -918,7 +1320,7 @@
       return `<span class="badge badge-${type}">${val}</span>`;
     }
 
-    // Generic Sorting Function na HINDI isinasama ang Total Row
+    // Generic Sorting Function
     function sortTable(tbodyId, colIndex, headerElem, isNumeric = false) {
       const tbody = document.getElementById(tbodyId);
       const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -928,14 +1330,12 @@
       const totalRow = rows.find(r => r.classList.contains('total-row'));
       const dataRows = rows.filter(r => !r.classList.contains('total-row'));
 
-      // Determine direction
       let isAsc = headerElem ? headerElem.classList.contains('sort-asc') : currentSortState[tbodyId].asc;
       if (headerElem) {
-        isAsc = !isAsc; // Toggle state when clicked
+        isAsc = !isAsc;
       }
       const direction = isAsc ? 1 : -1;
 
-      // Save state
       currentSortState[tbodyId] = { col: colIndex, asc: isAsc, isNum: isNumeric };
 
       if (headerElem) {
@@ -970,6 +1370,7 @@
     setInterval(() => {
       if (currentTab === 'nap') fetchNapData();
       else if (currentTab === 'lcp') fetchLcpData();
+      else if (currentTab === 'olt') fetchOltData();
     }, 300000);
 
     // Register Service Worker for PWA
