@@ -57,6 +57,25 @@ function doGet(e) {
     var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 10).getValues(); 
     var oltList = [];
 
+    // ---------------- AGING DURATION LOOKUP ----------------
+    // Galing sa "OLT DOWN Tickets" sheet: Col F = TICKET, Col X = AGING DURATION
+    var agingMap = {};
+    var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
+    if (ticketSheet) {
+      var lastRowTix = ticketSheet.getLastRow();
+      if (lastRowTix >= 2) {
+        // A hanggang X = 24 columns
+        var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 24).getValues();
+        for (var t = 0; t < tixData.length; t++) {
+          var ticketNoRaw = tixData[t][5];   // Column F (index 5) = TICKET
+          var agingRaw = tixData[t][23];     // Column X (index 23) = AGING DURATION
+          if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
+            agingMap[String(ticketNoRaw).trim().toUpperCase()] = agingRaw ? String(agingRaw).trim() : "-";
+          }
+        }
+      }
+    }
+
     for (var k = 0; k < oltData.length; k++) {
       var rowO = oltData[k];
       var oltName = rowO[2]; // Column D sa Sheet (OLT Name)
@@ -80,12 +99,22 @@ function doGet(e) {
           ticketNo = rowO[9] || "N/A";
         }
 
+        // Hanapin ang Aging Duration gamit ang Ticket No (para lang sa hindi UP)
+        var aging = "-";
+        if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
+          var agingKey = String(ticketNo).trim().toUpperCase();
+          if (agingMap.hasOwnProperty(agingKey)) {
+            aging = agingMap[agingKey];
+          }
+        }
+
         oltList.push({
           "P": rowO[0],  // PROVINCE (Col B)
           "M": rowO[1],  // MUNICIPALITY (Col C)
           "N": oltName, // OLT_NAME (Col D)
           "S": status,  // STATUS
-          "T": ticketNo // TICKET_NO / CAUSE
+          "T": ticketNo, // TICKET_NO / CAUSE
+          "AG": aging   // AGING DURATION (mula sa OLT DOWN Tickets sheet)
         });
       }
     }

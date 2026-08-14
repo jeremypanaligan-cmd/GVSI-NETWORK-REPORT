@@ -845,7 +845,10 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-        <p style="font-size: 12px; color: var(--text-muted);">Version: 1.1.0 (OLT Module Integrated)</p>
+        <p style="font-size: 12px; color: var(--text-muted);">Version 1.2.0 — What's New / Key Enhancements:
+
+Performance Optimizations: Faster loading with background prefetching & server-side caching.
+OLT Aging Duration: Integrated ticket duration tracking for down/degraded OLTs.</p>
       </div>
     </div>
 
@@ -941,6 +944,24 @@
   }
 
   // 1. NAP Data Fetcher
+// ✅ IPALIT ITO (Bagong fetchNapData + Prefetching)
+  function prefetchOtherTabsInBackground() {
+    setTimeout(() => {
+      if (!dataCache.lcp) {
+        fetch(BASE_API_URL + "?type=lcp")
+          .then(res => res.json())
+          .then(data => { if (data) dataCache.lcp = data; })
+          .catch(() => {});
+      }
+      if (!dataCache.olt) {
+        fetch(BASE_API_URL + "?type=olt")
+          .then(res => res.json())
+          .then(data => { if (data) dataCache.olt = data; })
+          .catch(() => {});
+      }
+    }, 2000); // Kukuha ng LCP at OLT data pagkalipas ng 2 seconds
+  }
+
   async function fetchNapData(forceRefresh = false) {
     if (!forceRefresh && dataCache.nap) {
       renderNapReport(dataCache.nap);
@@ -948,7 +969,7 @@
     }
 
     const loader = document.getElementById('loader');
-    if (loader) loader.classList.remove('hidden');
+    if (loader && !forceRefresh) loader.classList.remove('hidden');
 
     try {
       const response = await fetch(BASE_API_URL + "?type=nap");
@@ -957,6 +978,8 @@
       if (Array.isArray(data) && data.length > 0) {
         dataCache.nap = data;
         renderNapReport(data);
+        // Isabay ang background prefetching para sa LCP at OLT!
+        prefetchOtherTabsInBackground();
       } else {
         document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;">No data found.</td></tr>';
       }
