@@ -1,0 +1,122 @@
+function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "nap";
+  
+  if (type === "lcp") {
+    // ---------------- LCP DATA ----------------
+    var lcpSheet = ss.getSheetByName("NLZ LCP Report");
+    if (!lcpSheet) return createJsonResponse({ lcpAging: [], lcpImpact: [] });
+
+    // 1. LCP Aging (G24:L30)
+    var agingRaw = lcpSheet.getRange("G24:L30").getValues();
+    var lcpAging = [];
+    for (var i = 0; i < agingRaw.length; i++) {
+      var rowA = agingRaw[i];
+      var area = rowA[0] ? String(rowA[0]).trim() : "";
+      if (area !== "" && area.toUpperCase() !== "TOTAL") {
+        lcpAging.push({
+          "A": area,      // AREA
+          "P": rowA[1],   // PROVINCE
+          "H": rowA[2],   // <24HOURS
+          "D1": rowA[3],  // 1-3 DAYS
+          "D3": rowA[4],  // >3DAYS
+          "T": rowA[5]    // TOTAL
+        });
+      }
+    }
+
+    // 2. LCP Impact (G2:K18)
+    var impactRaw = lcpSheet.getRange("G2:K18").getValues();
+    var lcpImpact = [];
+    for (var j = 1; j < impactRaw.length; j++) {
+      var rowI = impactRaw[j];
+      var impArea = rowI[0] ? String(rowI[0]).trim() : "";
+      if (impArea !== "" && impArea.toUpperCase() !== "TOTAL") {
+        lcpImpact.push({
+          "A": impArea,   // AREA
+          "P": rowI[1],   // PROVINCE
+          "TT": rowI[2],  // TT COUNT
+          "LCP": rowI[3], // LCP COUNT
+          "C": rowI[4]    // CLIENTS
+        });
+      }
+    }
+
+    return createJsonResponse({ "lcpAging": lcpAging, "lcpImpact": lcpImpact });
+
+  } else if (type === "olt") {
+    // ---------------- OLT DATA ----------------
+    var oltSheet = ss.getSheetByName("NLZ OLT Report");
+    if (!oltSheet) return createJsonResponse([]);
+    var lastRowOlt = oltSheet.getLastRow();
+    if (lastRowOlt < 3) return createJsonResponse([]);
+
+    var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
+    var oltList = [];
+
+    for (var k = 0; k < oltData.length; k++) {
+      var rowO = oltData[k];
+      var oltName = rowO[2];
+
+      if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
+        var status = "UP";
+        var ticketNo = "N/A";
+
+        if (rowO[4] === true) {
+          status = "DOWN";
+          ticketNo = rowO[8] || "N/A";
+        } else if (rowO[5] === true) {
+          status = "OLT UPLINK LOW POWER";
+          ticketNo = rowO[9] || "N/A";
+        } else if (rowO[6] === true) {
+          status = "OLT UPLINK DOWN";
+          ticketNo = rowO[10] || "N/A";
+        } else if (rowO[7] === true) {
+          status = "OLT SERVICE DEGRADATION";
+          ticketNo = rowO[11] || "N/A";
+        }
+
+        oltList.push({
+          "P": rowO[0],  // PROVINCE
+          "M": rowO[1],  // MUNICIPALITY
+          "N": oltName, // OLT_NAME
+          "S": status,  // STATUS
+          "T": ticketNo // TICKET_NO / CAUSE
+        });
+      }
+    }
+
+    return createJsonResponse(oltList);
+
+  } else {
+    // ---------------- NAP DATA (DEFAULT) ----------------
+    var napSheet = ss.getSheetByName("NLZ NAP Report");
+    if (!napSheet) return createJsonResponse([]);
+
+    var napRaw = napSheet.getRange("H2:M19").getValues(); 
+    var napList = [];
+
+    for (var r = 1; r < napRaw.length; r++) {
+      var rowN = napRaw[r];
+      var areaNap = rowN[0] ? String(rowN[0]).trim() : "";
+      if (areaNap !== "" && areaNap.toUpperCase() !== "TOTAL") {
+        napList.push({
+          "A": rowN[0],  // AREA
+          "P": rowN[1],  // PROVINCE
+          "H": rowN[2],  // <24HOURS
+          "D1": rowN[3], // 1-3 DAYS
+          "D3": rowN[4], // >3DAYS
+          "T": rowN[5]   // TOTAL
+        });
+      }
+    }
+
+    return createJsonResponse(napList);
+  }
+}
+
+// Helper function para sa instant JSON Response
+function createJsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}

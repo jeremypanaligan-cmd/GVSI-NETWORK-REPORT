@@ -782,12 +782,12 @@
 
       <!-- Filter Buttons Toolbar -->
       <div class="filter-toolbar">
-        <button class="filter-btn active" id="btnFilterAll" onclick="setOltFilter('ALL')">ALL OLTs</button>
-        <button class="filter-btn" id="btnFilterDown" onclick="setOltFilter('DOWN')">DOWN</button>
+        <button class="filter-btn" id="btnFilterAll" onclick="setOltFilter('ALL')">ALL OLTs</button>
+        <button class="filter-btn active" id="btnFilterDown" onclick="setOltFilter('DOWN')">DOWN</button>
         <button class="filter-btn" id="btnFilterLowPower" onclick="setOltFilter('LOW POWER')">LOW POWER</button>
         <button class="filter-btn" id="btnFilterUplinkDown" onclick="setOltFilter('UPLINK DOWN')">UPLINK DOWN</button>
         <button class="filter-btn" id="btnFilterDegradation" onclick="setOltFilter('DEGRADATION')">DEGRADATION</button>
-        <button class="filter-btn" id="btnFilterUp" onclick="setOltFilter('UP')">UP ONLY</button>
+        <button class="filter-btn" id="btnFilterUp" onclick="setOltFilter('UP')">UP</button>
       </div>
 
       <!-- OLT Status Details Table -->
@@ -883,7 +883,7 @@
   
   let currentTab = 'nap';
   let rawOltData = [];
-  let currentOltFilter = 'ALL';
+  let currentOltFilter = 'DOWN';
 
   // In-Memory Data Cache para sa instant Tab Switching
   const dataCache = { nap: null, lcp: null, olt: null };
@@ -1190,13 +1190,23 @@
 
   function setOltFilter(filterType) {
     currentOltFilter = filterType;
+    
+    // Tanggalin ang 'active' class sa lahat ng filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // Ilagay ang 'active' class sa napiling button
     const btnMap = {
-      'ALL': 'btnFilterAll', 'DOWN': 'btnFilterDown', 'LOW POWER': 'btnFilterLowPower',
-      'UPLINK DOWN': 'btnFilterUplinkDown', 'DEGRADATION': 'btnFilterDegradation', 'UP': 'btnFilterUp'
+      'ALL': 'btnFilterAll', 
+      'DOWN': 'btnFilterDown', 
+      'LOW POWER': 'btnFilterLowPower',
+      'UPLINK DOWN': 'btnFilterUplinkDown', 
+      'DEGRADATION': 'btnFilterDegradation', 
+      'UP': 'btnFilterUp'
     };
 
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    if (btnMap[filterType]) document.getElementById(btnMap[filterType]).classList.add('active');
+    if (btnMap[filterType] && document.getElementById(btnMap[filterType])) {
+      document.getElementById(btnMap[filterType]).classList.add('active');
+    }
 
     renderOltTable();
   }
