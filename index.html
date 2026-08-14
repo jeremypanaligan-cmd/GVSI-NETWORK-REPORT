@@ -799,7 +799,8 @@
                 <th class="sortable" onclick="sortTable('oltTableBody', 0, this)">PROVINCE</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY / MUNICIPALITY</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 2, this)">OLT NAME</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this)">STATUS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this)">AGING</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">STATUS</th>
               </tr>
             </thead>
             <tbody id="oltTableBody">
@@ -871,8 +872,12 @@
           <span class="val" id="mStatus">-</span>
         </div>
         <div class="modal-item">
-          <span class="label">Ticket / Age:</span>
+          <span class="label">Ticket No:</span>
           <span class="val" id="mCause">-</span>
+        </div>
+        <div class="modal-item">
+          <span class="label">Aging Duration:</span>
+          <span class="val" id="mAging">-</span>
         </div>
       </div>
     </div>
@@ -1228,7 +1233,7 @@
     });
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
       return;
     }
 
@@ -1238,6 +1243,7 @@
       const name = item.N || item.OLT_NAME || '-';
       const status = (item.S || item.STATUS || 'UP').toString().toUpperCase();
       const cause = item.T || item.CAUSE || '-';
+      const aging = item.AG || item.AGING || '-';
 
       let badgeType = 'green';
       if (status === 'DOWN') badgeType = 'red';
@@ -1247,11 +1253,12 @@
 
       const tr = document.createElement('tr');
       tr.className = 'clickable-row';
-      tr.onclick = () => openOltModal(name, province, municipality, status, cause);
+      tr.onclick = () => openOltModal(name, province, municipality, status, cause, aging);
       tr.innerHTML = `
         <td>${province}</td>
         <td>${municipality}</td>
         <td><strong>${name}</strong></td>
+        <td style="text-align: center;">${aging}</td>
         <td style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
       `;
       tbody.appendChild(tr);
@@ -1260,18 +1267,19 @@
     const totalTr = document.createElement('tr');
     totalTr.className = 'total-row';
     totalTr.innerHTML = `
-      <td colspan="3">FILTERED TOTAL (${currentOltFilter})</td>
+      <td colspan="4">FILTERED TOTAL (${currentOltFilter})</td>
       <td style="text-align: center;">${filtered.length}</td>
     `;
     tbody.appendChild(totalTr);
   }
 
-  function openOltModal(name, province, municipality, status, cause) {
+  function openOltModal(name, province, municipality, status, cause, aging) {
     document.getElementById('mOltName').textContent = name;
     document.getElementById('mProvince').textContent = province;
     document.getElementById('mMunicipality').textContent = municipality;
     document.getElementById('mStatus').textContent = status;
     document.getElementById('mCause').textContent = cause;
+    document.getElementById('mAging').textContent = aging || '-';
     document.getElementById('oltModal').classList.add('open');
   }
 
