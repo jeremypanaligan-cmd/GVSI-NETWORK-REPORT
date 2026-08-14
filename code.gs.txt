@@ -45,23 +45,27 @@ function doGet(e) {
     return createJsonResponse({ "lcpAging": lcpAging, "lcpImpact": lcpImpact });
 
   } else if (type === "olt") {
-    // ---------------- OLT DATA ----------------
+    // ---------------- OLT DATA (OPTIMIZED) ----------------
     var oltSheet = ss.getSheetByName("NLZ OLT Report");
     if (!oltSheet) return createJsonResponse([]);
+    
     var lastRowOlt = oltSheet.getLastRow();
     if (lastRowOlt < 3) return createJsonResponse([]);
 
-    var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
+    // Pinaliit ang range: Kinuha lang ang 10 columns (Col B hanggang Col K)
+    // na naglalaman ng Area, Municipality, OLT Name, at Status Flags
+    var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 10).getValues(); 
     var oltList = [];
 
     for (var k = 0; k < oltData.length; k++) {
       var rowO = oltData[k];
-      var oltName = rowO[2];
+      var oltName = rowO[2]; // Column D sa Sheet (OLT Name)
 
       if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
         var status = "UP";
         var ticketNo = "N/A";
 
+        // Boolean Status Checks
         if (rowO[4] === true) {
           status = "DOWN";
           ticketNo = rowO[8] || "N/A";
@@ -70,16 +74,16 @@ function doGet(e) {
           ticketNo = rowO[9] || "N/A";
         } else if (rowO[6] === true) {
           status = "OLT UPLINK DOWN";
-          ticketNo = rowO[10] || "N/A";
+          ticketNo = rowO[9] || "N/A";
         } else if (rowO[7] === true) {
           status = "OLT SERVICE DEGRADATION";
-          ticketNo = rowO[11] || "N/A";
+          ticketNo = rowO[9] || "N/A";
         }
 
         oltList.push({
-          "P": rowO[0],  // PROVINCE
-          "M": rowO[1],  // MUNICIPALITY
-          "N": oltName, // OLT_NAME
+          "P": rowO[0],  // PROVINCE (Col B)
+          "M": rowO[1],  // MUNICIPALITY (Col C)
+          "N": oltName, // OLT_NAME (Col D)
           "S": status,  // STATUS
           "T": ticketNo // TICKET_NO / CAUSE
         });
