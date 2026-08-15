@@ -1,5 +1,5 @@
 {
-  "name": "GVSI Network Status Portal",
+  "name": "GVSI NetPulse",
   "short_name": "GVSI NetPulse",
   "description": "Gallopvision Services Inc. Network Status Portal",
   "start_url": "./index.html",
