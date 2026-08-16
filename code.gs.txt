@@ -65,20 +65,27 @@ function doGet(e) {
       if (lastRowOlt < 3) {
         resultData = [];
       } else {
-        var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 10).getValues(); 
+        var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
         var oltList = [];
 
         var agingMap = {};
+        var agingMapByName = {};
         var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
         if (ticketSheet) {
           var lastRowTix = ticketSheet.getLastRow();
           if (lastRowTix >= 2) {
-            var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 24).getValues();
+            var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
             for (var t = 0; t < tixData.length; t++) {
               var ticketNoRaw = tixData[t][5];   // Column F = TICKET
               var agingRaw = tixData[t][23];     // Column X = AGING DURATION
+              var oltNameRaw = tixData[t][27];   // Column AB = OLT NAME
+              var agingVal = agingRaw ? String(agingRaw).trim() : "-";
+
               if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
-                agingMap[String(ticketNoRaw).trim().toUpperCase()] = agingRaw ? String(agingRaw).trim() : "-";
+                agingMap[String(ticketNoRaw).trim().toUpperCase()] = agingVal;
+              }
+              if (oltNameRaw && String(oltNameRaw).trim() !== "") {
+                agingMapByName[String(oltNameRaw).trim().toUpperCase()] = agingVal;
               }
             }
           }
@@ -97,20 +104,30 @@ function doGet(e) {
               ticketNo = rowO[8] || "N/A";
             } else if (rowO[5] === true) {
               status = "OLT UPLINK LOW POWER";
-              ticketNo = rowO[9] || "N/A";
+              ticketNo = rowO[9] || "N/A"; // Column K
             } else if (rowO[6] === true) {
               status = "OLT UPLINK DOWN";
-              ticketNo = rowO[9] || "N/A";
+              ticketNo = rowO[10] || "N/A"; // Column L
             } else if (rowO[7] === true) {
               status = "OLT SERVICE DEGRADATION";
-              ticketNo = rowO[9] || "N/A";
+              ticketNo = rowO[11] || "N/A"; // Column M
             }
 
             var aging = "-";
-            if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
-              var agingKey = String(ticketNo).trim().toUpperCase();
-              if (agingMap.hasOwnProperty(agingKey)) {
-                aging = agingMap[agingKey];
+            if (status !== "UP") {
+              // 1. Subukan munang tugmain gamit ang Ticket No
+              if (ticketNo && ticketNo !== "N/A") {
+                var agingKey = String(ticketNo).trim().toUpperCase();
+                if (agingMap.hasOwnProperty(agingKey)) {
+                  aging = agingMap[agingKey];
+                }
+              }
+              // 2. Kung walang match, i-fallback sa OLT Name (Column AB)
+              if (aging === "-") {
+                var nameKey = String(oltName).trim().toUpperCase();
+                if (agingMapByName.hasOwnProperty(nameKey)) {
+                  aging = agingMapByName[nameKey];
+                }
               }
             }
 

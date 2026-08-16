@@ -1,10 +1,11 @@
-const STATIC_CACHE = 'gvsi-shell-v2';
+const STATIC_CACHE = 'gvsi-shell-v3';
 const STATIC_ASSETS = [
   './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+'./node-module.js' // <--- Idinagdag ang bagong JS file
 ];
 
 self.addEventListener('install', (e) => {

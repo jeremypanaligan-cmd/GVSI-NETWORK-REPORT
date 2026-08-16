@@ -598,6 +598,36 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+
+    /* Layout at spacing para sa Affected Nodes Chips */
+    .node-chip-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      max-width: 380px;
+      padding: 4px 0;
+    }
+
+    /* Appearance ng individual Node Chip */
+    .node-chip {
+      background: rgba(13, 138, 128, 0.12);
+      color: var(--primary-teal);
+      border: 1px solid rgba(13, 138, 128, 0.3);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    /* Dark Mode adaptation */
+    body.dark-mode .node-chip {
+      background: rgba(20, 184, 166, 0.18);
+      color: #2dd4bf;
+      border-color: rgba(45, 212, 191, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -923,27 +953,29 @@ OLT Aging Duration: Integrated ticket duration tracking for down/degraded OLTs.<
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }
 
-  function switchTab(tabName) {
-    currentTab = tabName;
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    event.currentTarget.classList.add('active');
+function switchTab(tabName) {
+  currentTab = tabName;
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  event.currentTarget.classList.add('active');
 
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
-    const selectedTab = document.getElementById(`tab-${tabName}`);
-    if (selectedTab) selectedTab.classList.add('active');
+  const selectedTab = document.getElementById(`tab-${tabName}`);
+  if (selectedTab) selectedTab.classList.add('active');
 
-    if (tabName === 'nap') fetchNapData();
-    else if (tabName === 'lcp') fetchLcpData();
-    else if (tabName === 'olt') fetchOltData();
-  }
+  if (tabName === 'nap') fetchNapData();
+  else if (tabName === 'lcp') fetchLcpData();
+  else if (tabName === 'olt') fetchOltData();
+  else if (tabName === 'node') fetchNodeData(); // <--- Isama ang Node
+}
 
-  function refreshCurrentTab() {
-    dataCache[currentTab] = null; // Clear cache para mag-fetch ng bago
-    if (currentTab === 'nap') fetchNapData(true);
-    else if (currentTab === 'lcp') fetchLcpData(true);
-    else if (currentTab === 'olt') fetchOltData(true);
-  }
+function refreshCurrentTab() {
+  dataCache[currentTab] = null;
+  if (currentTab === 'nap') fetchNapData(true);
+  else if (currentTab === 'lcp') fetchLcpData(true);
+  else if (currentTab === 'olt') fetchOltData(true);
+  else if (currentTab === 'node') fetchNodeData(true); // <--- Isama ang Node
+}
 
   // 1. NAP Data Fetcher
 // ✅ IPALIT ITO (Bagong fetchNapData + Prefetching)
@@ -1374,6 +1406,8 @@ OLT Aging Duration: Integrated ticket duration tracking for down/degraded OLTs.<
     });
   }
 </script>
+
+<script src="node-module.js"></script>
 
 </body>
 </html>
