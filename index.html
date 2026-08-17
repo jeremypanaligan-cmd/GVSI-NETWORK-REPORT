@@ -890,7 +890,7 @@
 
   </div>
 
-  <!-- Modal/Popup Box para sa OLT Details -->
+<!-- Modal/Popup Box para sa OLT Details -->
   <div class="modal-backdrop" id="oltModal" onclick="closeOltModal(event)">
     <div class="modal-card" onclick="event.stopPropagation()">
       <div class="modal-header">
@@ -912,7 +912,11 @@
         </div>
         <div class="modal-item">
           <span class="label">Ticket No:</span>
-          <span class="val" id="mCause">-</span>
+          <span class="val" id="mTicket">-</span>
+        </div>
+        <div class="modal-item">
+          <span class="label">Downtime Cause:</span>
+          <span class="val" id="mDowntimeCause" style="color: var(--badge-red-text); font-weight: 800;">-</span>
         </div>
         <div class="modal-item">
           <span class="label">Aging Duration:</span>
@@ -1355,7 +1359,7 @@ function refreshCurrentTab() {
     renderOltTable();
   }
 
-  function renderOltTable() {
+function renderOltTable() {
     const tbody = document.getElementById('oltTableBody');
     if (!tbody) return;
     tbody.innerHTML = '';
@@ -1381,7 +1385,8 @@ function refreshCurrentTab() {
       const municipality = item.M || item.MUNICIPALITY || '-';
       const name = item.N || item.OLT_NAME || '-';
       const status = (item.S || item.STATUS || 'UP').toString().toUpperCase();
-      const cause = item.T || item.CAUSE || '-';
+      const ticketNo = item.T || '-';
+      const downtimeCause = item.DC || '-';
       const aging = item.AG || item.AGING || '-';
 
       let badgeType = 'green';
@@ -1392,7 +1397,7 @@ function refreshCurrentTab() {
 
       const tr = document.createElement('tr');
       tr.className = 'clickable-row';
-      tr.onclick = () => openOltModal(name, province, municipality, status, cause, aging);
+      tr.onclick = () => openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging);
       tr.innerHTML = `
         <td>${province}</td>
         <td>${municipality}</td>
@@ -1412,12 +1417,13 @@ function refreshCurrentTab() {
     tbody.appendChild(totalTr);
   }
 
-  function openOltModal(name, province, municipality, status, cause, aging) {
+  function openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging) {
     document.getElementById('mOltName').textContent = name;
     document.getElementById('mProvince').textContent = province;
     document.getElementById('mMunicipality').textContent = municipality;
     document.getElementById('mStatus').textContent = status;
-    document.getElementById('mCause').textContent = cause;
+    document.getElementById('mTicket').textContent = ticketNo;
+    document.getElementById('mDowntimeCause').textContent = downtimeCause || '-';
     document.getElementById('mAging').textContent = aging || '-';
     document.getElementById('oltModal').classList.add('open');
   }
