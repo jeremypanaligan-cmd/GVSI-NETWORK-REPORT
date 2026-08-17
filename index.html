@@ -643,12 +643,12 @@
 
   <!-- Navigation Tabs Header -->
   <nav class="nav-tabs-container">
-    <button class="tab-btn active" onclick="switchTab('nap')">NAP</button>
-    <button class="tab-btn" onclick="switchTab('lcp')">LCP</button>
-    <button class="tab-btn" onclick="switchTab('olt')">OLT</button>
-    <button class="tab-btn" onclick="switchTab('node')">NODE</button>
-    <button class="tab-btn" onclick="switchTab('backbone')">BACKBONE LINKS</button>
-    <button class="tab-btn" onclick="switchTab('about')">ABOUT</button>
+    <button class="tab-btn active" onclick="switchTab('nap', event)">NAP</button>
+    <button class="tab-btn" onclick="switchTab('lcp', event)">LCP</button>
+    <button class="tab-btn" onclick="switchTab('olt', event)">OLT</button>
+    <button class="tab-btn" onclick="switchTab('node', event)">NODE</button>
+    <button class="tab-btn" onclick="switchTab('backbone', event)">BACKBONE LINKS</button>
+    <button class="tab-btn" onclick="switchTab('about', event)">ABOUT</button>
   </nav>
 
   <!-- Content Container -->
@@ -919,20 +919,79 @@ OLT Aging Duration: Integrated ticket duration tracking for down/degraded OLTs.<
   </div>
 
 <script>
+// 1. Version Guard Logic
+  const REQUIRED_APP_VERSION = "2.0.0"; 
+
+  async function checkAppVersion() {
+    const currentVersion = localStorage.getItem('app_version');
+
+    if (!currentVersion || currentVersion !== REQUIRED_APP_VERSION) {
+      // Unregister lahat ng Service Worker
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let reg of registrations) {
+          await reg.unregister();
+        }
+      }
+
+      // Burahin ang lahat ng CacheStorage
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+      }
+
+      // Linisin ang storage
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Siguraduhing loaded na ang DOM bago palitan ang HTML
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', showReinstallPrompt);
+      } else {
+        showReinstallPrompt();
+      }
+      return false; // Tumigil kung kailangan mag-update
+    }
+    return true; // Pwedeng magpatuloy ang app
+  }
+
+  function showReinstallPrompt() {
+    document.body.innerHTML = `
+      <div style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#0f172a; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center; z-index:999999;">
+        <h1 style="color:#ef4444; font-size:22px; margin-bottom:12px; font-weight:800;">🔴 Critical System Update Required</h1>
+        <p style="color:#94a3b8; font-size:14px; max-width:380px; margin-bottom:24px; line-height:1.5;">
+          A major update for NetPulse is available. To ensure data accuracy and system stability, please apply the latest update.
+        </p>
+        <button onclick="finishUpdate()" style="background:#0d8a80; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow: 0 4px 12px rgba(13,138,128,0.4);">
+          Apply Update & Reload
+        </button>
+      </div>
+    `;
+  }
+
+  function finishUpdate() {
+    localStorage.setItem('app_version', REQUIRED_APP_VERSION);
+    window.location.reload(true);
+  }
+
+  // Patakbuhin ang Version Check
+  checkAppVersion();
+
+  // --- MGA APPLICATION VARIABLES ---
   const BASE_API_URL = "https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec";
   
   let currentTab = 'nap';
   let rawOltData = [];
   let currentOltFilter = 'DOWN';
 
-  // In-Memory Data Cache para sa instant Tab Switching
   const dataCache = { nap: null, lcp: null, olt: null };
 
   let currentSortState = {
     napTableBody: { col: 0, asc: true, isNum: false },
     lcpAgingTableBody: { col: 0, asc: true, isNum: false },
     lcpImpactTableBody: { col: 0, asc: true, isNum: false },
-    oltTableBody: { col: 0, asc: true, isNum: false }
+    oltTableBody: { col: 0, asc: true, isNum: false },
+    nodeTableBody: { col: 0, asc: true, isNum: false } // <--- Idagdag ito
   };
 
   function initTheme() {
@@ -953,10 +1012,20 @@ OLT Aging Duration: Integrated ticket duration tracking for down/degraded OLTs.<
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }
 
-function switchTab(tabName) {
+function switchTab(tabName, event) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  
+  // Safe handling para sa active class ng button
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
+  } else {
+    // Fallback kapag tinawag nang walang direct click event
+    const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(
+      btn => btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(`'${tabName}'`)
+    );
+    if (activeBtn) activeBtn.classList.add('active');
+  }
 
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
@@ -966,15 +1035,18 @@ function switchTab(tabName) {
   if (tabName === 'nap') fetchNapData();
   else if (tabName === 'lcp') fetchLcpData();
   else if (tabName === 'olt') fetchOltData();
-  else if (tabName === 'node') fetchNodeData(); // <--- Isama ang Node
+  else if (tabName === 'node') fetchNodeData();
 }
 
 function refreshCurrentTab() {
-  dataCache[currentTab] = null;
+  if (dataCache[currentTab] !== undefined) {
+    dataCache[currentTab] = null;
+  }
+  
   if (currentTab === 'nap') fetchNapData(true);
   else if (currentTab === 'lcp') fetchLcpData(true);
   else if (currentTab === 'olt') fetchOltData(true);
-  else if (currentTab === 'node') fetchNodeData(true); // <--- Isama ang Node
+  else if (currentTab === 'node') fetchNodeData(true);
 }
 
   // 1. NAP Data Fetcher
@@ -993,9 +1065,15 @@ function refreshCurrentTab() {
           .then(data => { if (data) dataCache.olt = data; })
           .catch(() => {});
       }
-    }, 2000); // Kukuha ng LCP at OLT data pagkalipas ng 2 seconds
-  }
-
+      if (!dataCache.node) {
+            fetch(BASE_API_URL + "?type=node")
+              .then(res => res.json())
+              .then(data => { if (data) dataCache.node = data; })
+              .catch(() => {});
+          }
+        }, 2000);
+      }
+      
   async function fetchNapData(forceRefresh = false) {
     if (!forceRefresh && dataCache.nap) {
       renderNapReport(dataCache.nap);
@@ -1400,7 +1478,7 @@ function refreshCurrentTab() {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.0.0').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
