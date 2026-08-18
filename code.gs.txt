@@ -12,7 +12,42 @@ function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var resultData = null;
 
-  if (type === "lcp") {
+  if (type === "node") {
+    // ---------------- NODE DOWN DATA ----------------
+    var nodeSheet = ss.getSheetByName("Node DOWN Tickets");
+    if (!nodeSheet) {
+      resultData = [];
+    } else {
+      var lastRowNode = nodeSheet.getLastRow();
+      if (lastRowNode < 2) {
+        resultData = [];
+      } else {
+        // Kunin ang hanggang Column R (Column 18)
+        var nodeData = nodeSheet.getRange(2, 1, lastRowNode - 1, 18).getValues();
+        var nodeList = [];
+
+        for (var n = 0; n < nodeData.length; n++) {
+          var rowN = nodeData[n];
+          var provinceRaw = String(rowN[3] || "").trim(); // Col D = PROVINCE
+          var nodesRaw = String(rowN[16] || "").trim();    // Col Q = EQUIPMENTS AFFECTED
+
+          // I-include ang row kapag may probinsya o may affected NPE nodes
+          if (provinceRaw !== "" || nodesRaw !== "") {
+            nodeList.push({
+              "P": provinceRaw.replace(/_/g, " "), // Palitan ang '_' ng space
+              "N": nodesRaw || "N/A",               // Col Q: NODES (NPE)
+              "C": rowN[17] !== "" ? rowN[17] : 0,  // Col R: COUNT OF EQP
+              "I": rowN[10] || "N/A",               // Col K: IMPACT
+              "D": rowN[13] ? formatDateVal(rowN[13]) : "N/A", // Col N: DOWN TIME
+              "AG": rowN[15] || "N/A"               // Col P: AGING DURATION
+            });
+          }
+        }
+        resultData = nodeList;
+      }
+    }
+
+  } else if (type === "lcp") {
     // ---------------- LCP DATA ----------------
     var lcpSheet = ss.getSheetByName("NLZ LCP Report");
     if (!lcpSheet) {
@@ -56,94 +91,95 @@ function doGet(e) {
     }
 
   } else if (type === "olt") {
-    // ---------------- OLT DATA ----------------
-    var oltSheet = ss.getSheetByName("NLZ OLT Report");
-    if (!oltSheet) {
-      resultData = [];
-    } else {
-      var lastRowOlt = oltSheet.getLastRow();
-      if (lastRowOlt < 3) {
-        resultData = [];
-      } else {
-        var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
-        var oltList = [];
+// ---------------- OLT DATA ----------------
+var oltSheet = ss.getSheetByName("NLZ OLT Report");
+if (!oltSheet) {
+  resultData = [];
+} else {
+  var lastRowOlt = oltSheet.getLastRow();
+  if (lastRowOlt < 3) {
+    resultData = [];
+  } else {
+    var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
+    var oltList = [];
 
-        var agingMap = {};
-        var agingMapByName = {};
-        var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
-        if (ticketSheet) {
-          var lastRowTix = ticketSheet.getLastRow();
-          if (lastRowTix >= 2) {
-            var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
-            for (var t = 0; t < tixData.length; t++) {
-              var ticketNoRaw = tixData[t][5];   // Column F = TICKET
-              var agingRaw = tixData[t][23];     // Column X = AGING DURATION
-              var oltNameRaw = tixData[t][27];   // Column AB = OLT NAME
-              var agingVal = agingRaw ? String(agingRaw).trim() : "-";
+    var agingMap = {};
+    var causeMap = {};       
+    
+    var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
+    if (ticketSheet) {
+      var lastRowTix = ticketSheet.getLastRow();
+      if (lastRowTix >= 2) {
+        // Kukunin natin hanggang Column AB (28 Columns)
+        var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
+        for (var t = 0; t < tixData.length; t++) {
+          var ticketNoRaw = tixData[t][5];   // Col F (Index 5) = TICKET
+          var causeRaw = tixData[t][6];      // Col G (Index 6) = DOWNTIME CAUSE
+          var agingRaw = tixData[t][23];     // Col X (Index 23) = AGING DURATION
+          
+          var agingVal = agingRaw ? String(agingRaw).trim() : "-";
+          var causeVal = causeRaw ? String(causeRaw).trim() : "-";
 
-              if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
-                agingMap[String(ticketNoRaw).trim().toUpperCase()] = agingVal;
-              }
-              if (oltNameRaw && String(oltNameRaw).trim() !== "") {
-                agingMapByName[String(oltNameRaw).trim().toUpperCase()] = agingVal;
-              }
-            }
+          // I-map gamit ang Ticket Number (Case-Insensitive)
+          if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
+            var tKey = String(ticketNoRaw).trim().toUpperCase();
+            agingMap[tKey] = agingVal;
+            causeMap[tKey] = causeVal;
           }
         }
-
-        for (var k = 0; k < oltData.length; k++) {
-          var rowO = oltData[k];
-          var oltName = rowO[2];
-
-          if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
-            var status = "UP";
-            var ticketNo = "N/A";
-
-            if (rowO[4] === true) {
-              status = "DOWN";
-              ticketNo = rowO[8] || "N/A";
-            } else if (rowO[5] === true) {
-              status = "OLT UPLINK LOW POWER";
-              ticketNo = rowO[9] || "N/A"; // Column K
-            } else if (rowO[6] === true) {
-              status = "OLT UPLINK DOWN";
-              ticketNo = rowO[10] || "N/A"; // Column L
-            } else if (rowO[7] === true) {
-              status = "OLT SERVICE DEGRADATION";
-              ticketNo = rowO[11] || "N/A"; // Column M
-            }
-
-            var aging = "-";
-            if (status !== "UP") {
-              // 1. Subukan munang tugmain gamit ang Ticket No
-              if (ticketNo && ticketNo !== "N/A") {
-                var agingKey = String(ticketNo).trim().toUpperCase();
-                if (agingMap.hasOwnProperty(agingKey)) {
-                  aging = agingMap[agingKey];
-                }
-              }
-              // 2. Kung walang match, i-fallback sa OLT Name (Column AB)
-              if (aging === "-") {
-                var nameKey = String(oltName).trim().toUpperCase();
-                if (agingMapByName.hasOwnProperty(nameKey)) {
-                  aging = agingMapByName[nameKey];
-                }
-              }
-            }
-
-            oltList.push({
-              "P": rowO[0],
-              "M": rowO[1],
-              "N": oltName,
-              "S": status,
-              "T": ticketNo,
-              "AG": aging
-            });
-          }
-        }
-        resultData = oltList;
       }
     }
+
+    for (var k = 0; k < oltData.length; k++) {
+      var rowO = oltData[k];
+      var oltName = rowO[2];
+
+      if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
+        var status = "UP";
+        var ticketNo = "N/A";
+
+        if (rowO[4] === true) {
+          status = "DOWN";
+          ticketNo = rowO[8] || "N/A";
+        } else if (rowO[5] === true) {
+          status = "OLT UPLINK LOW POWER";
+          ticketNo = rowO[9] || "N/A"; 
+        } else if (rowO[6] === true) {
+          status = "OLT UPLINK DOWN";
+          ticketNo = rowO[10] || "N/A"; 
+        } else if (rowO[7] === true) {
+          status = "OLT SERVICE DEGRADATION";
+          ticketNo = rowO[11] || "N/A"; 
+        }
+
+        var aging = "-";
+        var downtimeCause = "-";
+
+        if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
+          var tKey = String(ticketNo).trim().toUpperCase();
+          
+          if (agingMap.hasOwnProperty(tKey)) {
+            aging = agingMap[tKey];
+          }
+          if (causeMap.hasOwnProperty(tKey)) {
+            downtimeCause = causeMap[tKey];
+          }
+        }
+
+        oltList.push({
+          "P": rowO[0],
+          "M": rowO[1],
+          "N": oltName,
+          "S": status,
+          "T": ticketNo,
+          "AG": aging,
+          "DC": downtimeCause
+        });
+      }
+    }
+    resultData = oltList;
+  }
+}
 
   } else {
     // ---------------- NAP DATA (DEFAULT) ----------------
@@ -182,4 +218,12 @@ function doGet(e) {
 
   return ContentService.createTextOutput(jsonResponse)
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Helper para sa pag-format ng Date objects
+function formatDateVal(d) {
+  if (d instanceof Date) {
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), "MM/dd/yyyy HH:mm:ss");
+  }
+  return String(d);
 }

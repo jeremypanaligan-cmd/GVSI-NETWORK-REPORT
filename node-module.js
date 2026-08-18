@@ -2,8 +2,13 @@
 dataCache.node = null;
 
 async function fetchNodeData(forceRefresh = false) {
+  // Kung may cache at may laman, i-render ang report
   if (!forceRefresh && dataCache.node) {
-    renderNodeReport(dataCache.node);
+    if (Array.isArray(dataCache.node) && dataCache.node.length > 0) {
+      renderNodeReport(dataCache.node);
+    } else {
+      renderNodeEmptyState();
+    }
     return;
   }
 
@@ -18,6 +23,7 @@ async function fetchNodeData(forceRefresh = false) {
       dataCache.node = data;
       renderNodeReport(data);
     } else {
+      dataCache.node = []; // I-save bilang empty array
       renderNodeEmptyState();
     }
   } catch (error) {
@@ -31,6 +37,12 @@ async function fetchNodeData(forceRefresh = false) {
 function renderNodeReport(data) {
   const nodeTab = document.getElementById('tab-node');
   if (!nodeTab) return;
+
+  // SAFETY CHECK: Kapag walang laman ang data, ipakita agad ang empty state
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    renderNodeEmptyState();
+    return;
+  }
 
   let tableHtml = `
     <div class="page-title-row">
