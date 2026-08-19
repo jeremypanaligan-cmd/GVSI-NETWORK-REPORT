@@ -1058,29 +1058,38 @@ function refreshCurrentTab() {
 }
 
   // 1. NAP Data Fetcher
-// ✅ IPALIT ITO (Bagong fetchNapData + Prefetching)
+
   function prefetchOtherTabsInBackground() {
-    setTimeout(() => {
-      if (!dataCache.lcp) {
-        fetch(BASE_API_URL + "?type=lcp")
-          .then(res => res.json())
-          .then(data => { if (data) dataCache.lcp = data; })
-          .catch(() => {});
-      }
-      if (!dataCache.olt) {
-        fetch(BASE_API_URL + "?type=olt")
-          .then(res => res.json())
-          .then(data => { if (data) dataCache.olt = data; })
-          .catch(() => {});
-      }
-      if (!dataCache.node) {
-            fetch(BASE_API_URL + "?type=node")
-              .then(res => res.json())
-              .then(data => { if (data) dataCache.node = data; })
-              .catch(() => {});
-          }
-        }, 2000);
-      }
+  // LCP fetch pagkalipas ng 1.5 seconds
+  setTimeout(() => {
+    if (!dataCache.lcp) {
+      fetch(BASE_API_URL + "?type=lcp")
+        .then(res => res.json())
+        .then(data => { if (data) dataCache.lcp = data; })
+        .catch(() => {});
+    }
+  }, 1500);
+
+  // OLT fetch pagkalipas ng 3.5 seconds
+  setTimeout(() => {
+    if (!dataCache.olt) {
+      fetch(BASE_API_URL + "?type=olt")
+        .then(res => res.json())
+        .then(data => { if (data) dataCache.olt = data; })
+        .catch(() => {});
+    }
+  }, 3500);
+
+  // NODE fetch pagkalipas ng 5.5 seconds
+  setTimeout(() => {
+    if (!dataCache.node) {
+      fetch(BASE_API_URL + "?type=node")
+        .then(res => res.json())
+        .then(data => { if (data) dataCache.node = data; })
+        .catch(() => {});
+    }
+  }, 5500);
+}
       
   async function fetchNapData(forceRefresh = false) {
     if (!forceRefresh && dataCache.nap) {
