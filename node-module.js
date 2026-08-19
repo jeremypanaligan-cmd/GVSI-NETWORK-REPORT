@@ -1,5 +1,4 @@
 // Data cache para sa Node module
-dataCache.node = null;
 
 async function fetchNodeData(forceRefresh = false) {
   // Kung may cache at may laman, i-render ang report
@@ -50,7 +49,8 @@ function renderNodeReport(data) {
     </div>
     <div class="table-card">
       <div class="table-wrapper">
-        <table>
+        <!-- Idinagdag ang class="data-table" para kumagat ang CSS media query -->
+        <table class="data-table">
           <thead>
             <tr>
               <th class="sortable" onclick="sortTable('nodeTableBody', 0, this)">PROVINCE</th>
@@ -83,26 +83,27 @@ function renderNodeReport(data) {
       .map(node => `<span class="node-chip">${node}</span>`)
       .join('');
 
+    // DITO INILAGAY ANG MGA data-label ATTRIBUTES:
     tableHtml += `
       <tr>
-        <td><strong>${province}</strong></td>
-        <td>
+        <td data-label="Province"><strong>${province}</strong></td>
+        <td data-label="Affected Nodes">
           <div class="node-chip-container">
             ${nodeBadges || '-'}
           </div>
         </td>
-        <td style="text-align: center;"><span class="badge badge-purple">${count}</span></td>
-        <td style="text-align: center;"><span class="badge badge-red">${impact}</span></td>
-        <td style="text-align: center;">${downtime}</td>
-        <td style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${aging}</td>
+        <td data-label="Count" style="text-align: center;"><span class="badge badge-purple">${count}</span></td>
+        <td data-label="Impact" style="text-align: center;"><span class="badge badge-red">${impact}</span></td>
+        <td data-label="Downtime" style="text-align: center;">${downtime}</td>
+        <td data-label="Aging" style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${aging}</td>
       </tr>
     `;
   });
 
   tableHtml += `
             <tr class="total-row">
-              <td colspan="2">TOTAL AFFECTED EQUIPMENT</td>
-              <td style="text-align: center;">${totalCount}</td>
+              <td colspan="2" data-label="Summary">TOTAL AFFECTED EQUIPMENT</td>
+              <td data-label="Total Count" style="text-align: center;">${totalCount}</td>
               <td colspan="3"></td>
             </tr>
           </tbody>
@@ -123,7 +124,12 @@ function renderNodeEmptyState() {
       <div class="page-title">NODE Status Report</div>
     </div>
     <div class="placeholder-card" style="padding: 40px 20px;">
-      <div style="font-size: 48px; margin-bottom: 12px;">🟢</div>
+      <div style="margin-bottom: 12px; color: var(--primary-teal);">
+        <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          <path d="M9 12l2 2 4-4"></path>
+        </svg>
+      </div>
       <h3 style="color: var(--primary-teal); font-size: 18px; margin-bottom: 6px;">All Node Systems Operational</h3>
       <p style="font-size: 13px; color: var(--text-muted); max-width: 400px; margin: 0 auto;">
         There are currently no active node down incidents reported across all monitored regions.

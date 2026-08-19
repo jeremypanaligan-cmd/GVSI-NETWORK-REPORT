@@ -1,12 +1,16 @@
 function doGet(e) {
   var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "nap";
   
-  // ---------------- SERVER-SIDE CACHING (1. Cache Check) ----------------
+  // ---------------- 1. Cache Check ----------------
   var cache = CacheService.getScriptCache();
-  var cachedData = cache.get("cache_" + type);
-  if (cachedData) {
-    return ContentService.createTextOutput(cachedData)
-      .setMimeType(ContentService.MimeType.JSON);
+  try {
+    var cachedData = cache.get("cache_v2_" + type);
+    if (cachedData) {
+      return ContentService.createTextOutput(cachedData)
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } catch (err) {
+    Logger.log("Cache get error: " + err.message);
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -22,24 +26,22 @@ function doGet(e) {
       if (lastRowNode < 2) {
         resultData = [];
       } else {
-        // Kunin ang hanggang Column R (Column 18)
         var nodeData = nodeSheet.getRange(2, 1, lastRowNode - 1, 18).getValues();
         var nodeList = [];
 
         for (var n = 0; n < nodeData.length; n++) {
           var rowN = nodeData[n];
-          var provinceRaw = String(rowN[3] || "").trim(); // Col D = PROVINCE
-          var nodesRaw = String(rowN[16] || "").trim();    // Col Q = EQUIPMENTS AFFECTED
+          var provinceRaw = String(rowN[3] || "").trim();
+          var nodesRaw = String(rowN[16] || "").trim();
 
-          // I-include ang row kapag may probinsya o may affected NPE nodes
           if (provinceRaw !== "" || nodesRaw !== "") {
             nodeList.push({
-              "P": provinceRaw.replace(/_/g, " "), // Palitan ang '_' ng space
-              "N": nodesRaw || "N/A",               // Col Q: NODES (NPE)
-              "C": rowN[17] !== "" ? rowN[17] : 0,  // Col R: COUNT OF EQP
-              "I": rowN[10] || "N/A",               // Col K: IMPACT
-              "D": rowN[13] ? formatDateVal(rowN[13]) : "N/A", // Col N: DOWN TIME
-              "AG": rowN[15] || "N/A"               // Col P: AGING DURATION
+              "P": provinceRaw.replace(/_/g, " "),
+              "N": nodesRaw || "N/A",
+              "C": rowN[17] !== "" ? rowN[17] : 0,
+              "I": rowN[10] || "N/A",
+              "D": rowN[13] ? formatDateVal(rowN[13]) : "N/A",
+              "AG": rowN[15] || "N/A"
             });
           }
         }
@@ -53,25 +55,23 @@ function doGet(e) {
     if (!lcpSheet) {
       resultData = { lcpAging: [], lcpImpact: [] };
     } else {
-      // 1. LCP Aging (G24:L30)
-      var agingRaw = lcpSheet.getRange("G24:L30").getValues();
+      var agingRaw = lcpSheet.getRange("G24:L39").getValues();
       var lcpAging = [];
       for (var i = 0; i < agingRaw.length; i++) {
         var rowA = agingRaw[i];
         var area = rowA[0] ? String(rowA[0]).trim() : "";
         if (area !== "" && area.toUpperCase() !== "TOTAL") {
           lcpAging.push({
-            "A": area,      // AREA
-            "P": rowA[1],   // PROVINCE
-            "H": rowA[2],   // <24HOURS
-            "D1": rowA[3],  // 1-3 DAYS
-            "D3": rowA[4],  // >3DAYS
-            "T": rowA[5]    // TOTAL
+            "A": area,
+            "P": rowA[1],
+            "H": rowA[2],
+            "D1": rowA[3],
+            "D3": rowA[4],
+            "T": rowA[5]
           });
         }
       }
 
-      // 2. LCP Impact (G2:K18)
       var impactRaw = lcpSheet.getRange("G2:K18").getValues();
       var lcpImpact = [];
       for (var j = 1; j < impactRaw.length; j++) {
@@ -79,11 +79,11 @@ function doGet(e) {
         var impArea = rowI[0] ? String(rowI[0]).trim() : "";
         if (impArea !== "" && impArea.toUpperCase() !== "TOTAL") {
           lcpImpact.push({
-            "A": impArea,   // AREA
-            "P": rowI[1],   // PROVINCE
-            "TT": rowI[2],  // TT COUNT
-            "LCP": rowI[3], // LCP COUNT
-            "C": rowI[4]    // CLIENTS
+            "A": impArea,
+            "P": rowI[1],
+            "TT": rowI[2],
+            "LCP": rowI[3],
+            "C": rowI[4]
           });
         }
       }
@@ -91,95 +91,85 @@ function doGet(e) {
     }
 
   } else if (type === "olt") {
-// ---------------- OLT DATA ----------------
-var oltSheet = ss.getSheetByName("NLZ OLT Report");
-if (!oltSheet) {
-  resultData = [];
-} else {
-  var lastRowOlt = oltSheet.getLastRow();
-  if (lastRowOlt < 3) {
-    resultData = [];
-  } else {
-    var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
-    var oltList = [];
+    // ---------------- OLT DATA ----------------
+    var oltSheet = ss.getSheetByName("NLZ OLT Report");
+    if (!oltSheet) {
+      resultData = [];
+    } else {
+      var lastRowOlt = oltSheet.getLastRow();
+      if (lastRowOlt < 3) {
+        resultData = [];
+      } else {
+        var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
+        var oltList = [];
 
-    var agingMap = {};
-    var causeMap = {};       
-    
-    var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
-    if (ticketSheet) {
-      var lastRowTix = ticketSheet.getLastRow();
-      if (lastRowTix >= 2) {
-        // Kukunin natin hanggang Column AB (28 Columns)
-        var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
-        for (var t = 0; t < tixData.length; t++) {
-          var ticketNoRaw = tixData[t][5];   // Col F (Index 5) = TICKET
-          var causeRaw = tixData[t][6];      // Col G (Index 6) = DOWNTIME CAUSE
-          var agingRaw = tixData[t][23];     // Col X (Index 23) = AGING DURATION
-          
-          var agingVal = agingRaw ? String(agingRaw).trim() : "-";
-          var causeVal = causeRaw ? String(causeRaw).trim() : "-";
-
-          // I-map gamit ang Ticket Number (Case-Insensitive)
-          if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
-            var tKey = String(ticketNoRaw).trim().toUpperCase();
-            agingMap[tKey] = agingVal;
-            causeMap[tKey] = causeVal;
+        var agingMap = {};
+        var causeMap = {};       
+        
+        var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
+        if (ticketSheet) {
+          var lastRowTix = ticketSheet.getLastRow();
+          if (lastRowTix >= 2) {
+            var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
+            for (var t = 0; t < tixData.length; t++) {
+              var ticketNoRaw = tixData[t][5];
+              var causeRaw = tixData[t][6];
+              var agingRaw = tixData[t][23];
+              
+              if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
+                var tKey = String(ticketNoRaw).trim().toUpperCase();
+                agingMap[tKey] = agingRaw ? String(agingRaw).trim() : "-";
+                causeMap[tKey] = causeRaw ? String(causeRaw).trim() : "-";
+              }
+            }
           }
         }
+
+        for (var k = 0; k < oltData.length; k++) {
+          var rowO = oltData[k];
+          var oltName = rowO[2];
+
+          if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
+            var status = "UP";
+            var ticketNo = "N/A";
+
+            if (rowO[4] === true) {
+              status = "DOWN";
+              ticketNo = rowO[8] || "N/A";
+            } else if (rowO[5] === true) {
+              status = "OLT UPLINK LOW POWER";
+              ticketNo = rowO[9] || "N/A"; 
+            } else if (rowO[6] === true) {
+              status = "OLT UPLINK DOWN";
+              ticketNo = rowO[10] || "N/A"; 
+            } else if (rowO[7] === true) {
+              status = "OLT SERVICE DEGRADATION";
+              ticketNo = rowO[11] || "N/A"; 
+            }
+
+            var aging = "-";
+            var downtimeCause = "-";
+
+            if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
+              var tKey = String(ticketNo).trim().toUpperCase();
+              if (agingMap[tKey]) aging = agingMap[tKey];
+              if (causeMap[tKey]) downtimeCause = causeMap[tKey];
+            }
+
+            oltList.push({
+              "P": rowO[0],
+              "M": rowO[1],
+              "N": oltName,
+              "S": status,
+              "T": ticketNo,
+              "AG": aging,
+              "DC": downtimeCause
+            });
+          }
+        }
+        resultData = oltList;
       }
     }
-
-    for (var k = 0; k < oltData.length; k++) {
-      var rowO = oltData[k];
-      var oltName = rowO[2];
-
-      if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
-        var status = "UP";
-        var ticketNo = "N/A";
-
-        if (rowO[4] === true) {
-          status = "DOWN";
-          ticketNo = rowO[8] || "N/A";
-        } else if (rowO[5] === true) {
-          status = "OLT UPLINK LOW POWER";
-          ticketNo = rowO[9] || "N/A"; 
-        } else if (rowO[6] === true) {
-          status = "OLT UPLINK DOWN";
-          ticketNo = rowO[10] || "N/A"; 
-        } else if (rowO[7] === true) {
-          status = "OLT SERVICE DEGRADATION";
-          ticketNo = rowO[11] || "N/A"; 
-        }
-
-        var aging = "-";
-        var downtimeCause = "-";
-
-        if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
-          var tKey = String(ticketNo).trim().toUpperCase();
-          
-          if (agingMap.hasOwnProperty(tKey)) {
-            aging = agingMap[tKey];
-          }
-          if (causeMap.hasOwnProperty(tKey)) {
-            downtimeCause = causeMap[tKey];
-          }
-        }
-
-        oltList.push({
-          "P": rowO[0],
-          "M": rowO[1],
-          "N": oltName,
-          "S": status,
-          "T": ticketNo,
-          "AG": aging,
-          "DC": downtimeCause
-        });
-      }
-    }
-    resultData = oltList;
-  }
-}
 
   } else {
     // ---------------- NAP DATA (DEFAULT) ----------------
@@ -208,10 +198,14 @@ if (!oltSheet) {
     }
   }
 
-  // ---------------- SAVE TO CACHE (60 Seconds TTL) ----------------
+// ---------------- SAVE TO CACHE (Dynamic TTL per Type) ----------------
   var jsonResponse = JSON.stringify(resultData);
+  
+  // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
+  var cacheTTL = (type === "node" || type === "olt") ? 60 : 180;
+
   try {
-    cache.put("cache_" + type, jsonResponse, 60); // 60s Server Cache
+    cache.put("cache_v2_" + type, jsonResponse, cacheTTL);
   } catch (err) {
     Logger.log("Caching failed: " + err.message);
   }
@@ -220,7 +214,7 @@ if (!oltSheet) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// Helper para sa pag-format ng Date objects
+
 function formatDateVal(d) {
   if (d instanceof Date) {
     return Utilities.formatDate(d, Session.getScriptTimeZone(), "MM/dd/yyyy HH:mm:ss");

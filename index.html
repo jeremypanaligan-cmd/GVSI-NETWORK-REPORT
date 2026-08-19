@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetPulse | Gallopvision</title>
 
   <!-- PWA Settings & Meta Tags -->
@@ -73,15 +73,16 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    body {
-      background-color: var(--light-bg);
-      color: var(--dark-charcoal);
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      overflow: hidden;
-      transition: background-color 0.3s ease, color 0.3s ease;
-    }
+body {
+  background-color: var(--light-bg);
+  color: var(--dark-charcoal);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh; /* Dynamic viewport fallback para sa mobile browser bar */
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
 
     /* Top App Bar */
     .app-header {
@@ -628,18 +629,75 @@
       color: #2dd4bf;
       border-color: rgba(45, 212, 191, 0.3);
     }
-  </style>
+
+/* Card View Layout for Ultra-Small Devices (<380px) */
+@media (max-width: 380px) {
+  /* Itago ang standard table header */
+  .data-table thead {
+    display: none;
+  }
+
+  /* Gawing block / card layout ang bawat row */
+  .data-table, 
+  .data-table tbody, 
+  .data-table tr {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table tr {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  }
+
+  .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border-color);
+    font-size: 13px;
+    text-align: right;
+  }
+
+  .data-table td:last-child {
+    border-bottom: none;
+  }
+
+  /* Gamitin ang data-label attribute bilang label sa kaliwa */
+  .data-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-align: left;
+    padding-right: 10px;
+  }
+}
+
+</style>
 </head>
 <body>
 
-  <!-- App Header Bar -->
-  <header class="app-header">
-    <div class="brand-title">GALLOPVISION <span>| CONVERGE</span></div>
-    <div class="header-actions">
-      <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme">🌙</button>
-      <button class="refresh-btn" onclick="refreshCurrentTab()">REFRESH</button>
-    </div>
-  </header>
+<!-- App Header Bar -->
+<header class="app-header">
+  <div class="brand-title">GALLOPVISION <span>| CONVERGE</span></div>
+  <div class="header-actions">
+    <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme">
+      <!-- Default Moon SVG Icon -->
+      <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+    <button class="refresh-btn" onclick="refreshCurrentTab()">REFRESH</button>
+  </div>
+</header>
 
   <!-- Navigation Tabs Header -->
   <nav class="nav-tabs-container">
@@ -688,7 +746,7 @@
       <!-- Main Data Table Card -->
       <div class="table-card">
         <div class="table-wrapper">
-          <table>
+          <table class="data-table">
             <thead>
               <tr>
                 <th class="sortable" onclick="sortTable('napTableBody', 0, this)">AREA</th>
@@ -736,7 +794,7 @@
       <!-- LCP Aging Table -->
       <div class="table-card">
         <div class="table-wrapper">
-          <table>
+          <table class="data-table">
             <thead>
               <tr>
                 <th class="sortable" onclick="sortTable('lcpAgingTableBody', 0, this)">AREA</th>
@@ -758,7 +816,7 @@
       <div class="page-title" style="margin-top: 18px;">LCP Impact Summary</div>
       <div class="table-card">
         <div class="table-wrapper">
-          <table>
+          <table class="data-table">
             <thead>
               <tr>
                 <th class="sortable" onclick="sortTable('lcpImpactTableBody', 0, this)">AREA</th>
@@ -823,7 +881,7 @@
       <!-- OLT Status Details Table -->
       <div class="table-card">
         <div class="table-wrapper">
-          <table>
+          <table class="data-table">
             <thead>
               <tr>
                 <th class="sortable" onclick="sortTable('oltTableBody', 0, this)">PROVINCE</th>
@@ -928,7 +986,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.0.2"; 
+  const REQUIRED_APP_VERSION = "2.0.5"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -963,20 +1021,27 @@
     return true; // Pwedeng magpatuloy ang app
   }
 
-  function showReinstallPrompt() {
+function showReinstallPrompt() {
     document.body.innerHTML = `
-      <div style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#0f172a; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center; z-index:999999;">
-        <h1 style="color:#ef4444; font-size:22px; margin-bottom:12px; font-weight:800;">🔴 Critical System Update Required</h1>
-        <p style="color:#94a3b8; font-size:14px; max-width:380px; margin-bottom:24px; line-height:1.5;">
-          A major update for NetPulse is available. To ensure data accuracy and system stability, please apply the latest update.
+      <div style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#0f172a; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center; z-index:999999;">
+        <div style="margin-bottom: 16px; color: #2dd4bf;">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.71 1.26-1.5 1.63-2.32L5.82 13.8c-.82.37-1.61.92-2.32 1.63z"></path>
+            <path d="M12 15l-3-3 7.5-7.5c1.33-1.33 3.5-1.33 4.83 0 1.33 1.33 1.33 3.5 0 4.83L12 15z"></path>
+            <path d="M9 12l-2 2"></path>
+            <path d="M15 9l-2 2"></path>
+          </svg>
+        </div>
+        <h1 style="color:#2dd4bf; font-size:20px; margin-bottom:8px; font-weight:800;">App Update Available</h1>
+        <p style="color:#94a3b8; font-size:13px; max-width:340px; margin-bottom:20px; line-height:1.5;">
+          A new version of NetPulse is ready. Tap below to sync the latest improvements and continue seamlessly.
         </p>
         <button onclick="finishUpdate()" style="background:#0d8a80; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow: 0 4px 12px rgba(13,138,128,0.4);">
-          Apply Update & Reload
+          Refresh & Sync App
         </button>
       </div>
     `;
   }
-
   function finishUpdate() {
     localStorage.setItem('app_version', REQUIRED_APP_VERSION);
     window.location.reload(true);
@@ -992,7 +1057,7 @@
   let rawOltData = [];
   let currentOltFilter = 'DOWN';
 
-  const dataCache = { nap: null, lcp: null, olt: null };
+  const dataCache = { nap: null, lcp: null, olt: null, node: null };
 
   let currentSortState = {
     napTableBody: { col: 0, asc: true, isNum: false },
@@ -1002,23 +1067,29 @@
     nodeTableBody: { col: 0, asc: true, isNum: false } // <--- Idagdag ito
   };
 
-  function initTheme() {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      document.body.classList.add('dark-mode');
-      document.getElementById('themeBtn').textContent = '☀️';
-    } else {
-      document.body.classList.remove('dark-mode');
-      document.getElementById('themeBtn').textContent = '🌙';
-    }
-  }
+// SVG Icon Strings
+const MOON_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`;
+const SUN_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
 
-  function toggleDarkMode() {
-    document.body.classList.toggle('dark-mode');
-    const isDark = document.body.classList.contains('dark-mode');
-    document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+function initTheme() {
+  const savedTheme = localStorage.getItem('theme');
+  const themeBtn = document.getElementById('themeBtn');
+  if (savedTheme === 'dark') {
+    document.body.classList.add('dark-mode');
+    if (themeBtn) themeBtn.innerHTML = SUN_ICON;
+  } else {
+    document.body.classList.remove('dark-mode');
+    if (themeBtn) themeBtn.innerHTML = MOON_ICON;
   }
+}
+
+function toggleDarkMode() {
+  document.body.classList.toggle('dark-mode');
+  const isDark = document.body.classList.contains('dark-mode');
+  const themeBtn = document.getElementById('themeBtn');
+  if (themeBtn) themeBtn.innerHTML = isDark ? SUN_ICON : MOON_ICON;
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+}
 
 function switchTab(tabName, event) {
   currentTab = tabName;
@@ -1145,12 +1216,12 @@ function refreshCurrentTab() {
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><strong>${area}</strong></td>
-          <td>${province}</td>
-          <td style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
-          <td style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
-          <td style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
-          <td style="text-align: center;"><strong>${rowTotal}</strong></td>
+          <td data-label="Area"><strong>${area}</strong></td>
+          <td data-label="Province">${province}</td>
+          <td data-label="(<24HOURS)" style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
+          <td data-label="(1-3 DAYS)" style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
+          <td data-label="(>3DAYS)" style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
+          <td data-label="Total" style="text-align: center;"><strong>${rowTotal}</strong></td>
         `;
         tbody.appendChild(tr);
       }
@@ -1223,12 +1294,12 @@ function refreshCurrentTab() {
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><strong>${area}</strong></td>
-          <td>${province}</td>
-          <td style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
-          <td style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
-          <td style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
-          <td style="text-align: center;"><strong>${rowTotal}</strong></td>
+          <td data-label="Area"><strong>${area}</strong></td>
+          <td data-label="Province">${province}</td>
+          <td data-label="(<24HOURS)" style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
+          <td data-label="(1-3 DAYS)" style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
+          <td data-label="(>3DAYS)" style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
+          <td data-label="Total" style="text-align: center;"><strong>${rowTotal}</strong></td>
         `;
         agingBody.appendChild(tr);
       }
@@ -1272,11 +1343,11 @@ function refreshCurrentTab() {
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><strong>${area}</strong></td>
-          <td>${province}</td>
-          <td style="text-align: center;">${ttCount}</td>
-          <td style="text-align: center;">${lcpCount}</td>
-          <td style="text-align: center; color: var(--primary-teal); font-weight: 700;">${clients}</td>
+          <td data-label="Area"><strong>${area}</strong></td>
+          <td data-label="Province">${province}</td>
+          <td data-label="TT Count" style="text-align: center;">${ttCount}</td>
+          <td data-label="LCP Count" style="text-align: center;">${lcpCount}</td>
+          <td data-label="Clients" style="text-align: center; color: var(--primary-teal); font-weight: 700;">${clients}</td>
         `;
         impactBody.appendChild(tr);
       }
@@ -1408,11 +1479,11 @@ function renderOltTable() {
       tr.className = 'clickable-row';
       tr.onclick = () => openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging);
       tr.innerHTML = `
-        <td>${province}</td>
-        <td>${municipality}</td>
-        <td><strong>${name}</strong></td>
-        <td style="text-align: center;">${aging}</td>
-        <td style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
+        <td data-label="Province">${province}</td>
+        <td data-label="Municipality">${municipality}</td>
+        <td data-label="OLT Name"><strong>${name}</strong></td>
+        <td data-label="Aging" style="text-align: center;">${aging}</td>
+        <td data-label="Status" style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1497,7 +1568,7 @@ function renderOltTable() {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.0.2').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.0.5').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
