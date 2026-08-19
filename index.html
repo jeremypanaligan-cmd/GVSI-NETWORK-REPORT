@@ -928,7 +928,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.0.1"; 
+  const REQUIRED_APP_VERSION = "2.0.2"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1488,7 +1488,7 @@ function renderOltTable() {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.0.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.0.2').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
