@@ -935,15 +935,15 @@ body {
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-              <p><strong>Version 2.0.5 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.0.6 — What's New & System Updates:</strong></p>
 
-              <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                <li><strong>NODE Status Module:</strong> Real-time tracking for active node incidents with visual badge tags and enhanced state handling.</li>
-                <li><strong>Service Worker Lifecycle Update:</strong> Implemented immediate background updates and cache-busting (v2.0.5) to ensure seamless offline functionality.</li>
-                <li><strong>Performance & Speed:</strong> Instant tab switching via background prefetching across LCP, OLT, NAP, and NODE data.</li>
-                <li><strong>Dynamic Data Sorting:</strong> Full interactive table sorting support across all report views.</li>
-                <li><strong>System Stability & Bug Fixes:</strong> Fixed data caching references, corrected version registration guards, and resolved PWA cache update delays.</li>
-              </ul>
+            <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+              <li><strong>OLT Remarks & Modal Enhancement:</strong> Integrated ticket remarks from LNOC data into the OLT Details modal with italic formatting.</li>
+              <li><strong>NODE Status Module:</strong> Real-time tracking for active node incidents with visual badge tags and enhanced state handling.</li>
+              <li><strong>Service Worker Lifecycle Update:</strong> Implemented immediate background updates and cache-busting (v2.0.6) to ensure seamless offline functionality.</li>
+              <li><strong>Performance & Speed:</strong> Instant tab switching via background prefetching across LCP, OLT, NAP, and NODE data.</li>
+              <li><strong>Dynamic Data Sorting:</strong> Full interactive table sorting support across all report views.</li>
+            </ul>
       </div>
     </div>
 
@@ -993,7 +993,7 @@ body {
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.0.5"; 
+  const REQUIRED_APP_VERSION = "2.0.6"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1581,7 +1581,7 @@ function openOltModal(name, province, municipality, status, ticketNo, downtimeCa
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.0.5').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.0.6').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
