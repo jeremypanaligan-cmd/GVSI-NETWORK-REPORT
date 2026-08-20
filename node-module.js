@@ -49,7 +49,6 @@ function renderNodeReport(data) {
     </div>
     <div class="table-card">
       <div class="table-wrapper">
-        <!-- Idinagdag ang class="data-table" para kumagat ang CSS media query -->
         <table class="data-table">
           <thead>
             <tr>
@@ -74,18 +73,27 @@ function renderNodeReport(data) {
     const downtime = item.D || '-';
     const aging = item.AG || '-';
 
+    // Dagdagan ang total count sa bawat row
     totalCount += count;
 
-    // Hihiwalayin ang comma-separated string para maging visual badge tags
+    // Kunin ang Ticket at Remarks mula sa Google Sheets API payload
+    const ticketNo = item.T || item.TICKET || '-';
+    const remarks = item.RM || item.REMARKS || '-';
+
     const nodeBadges = rawNodes.split(',')
       .map(node => node.trim())
       .filter(node => node !== '')
       .map(node => `<span class="node-chip">${node}</span>`)
       .join('');
 
-    // DITO INILAGAY ANG MGA data-label ATTRIBUTES:
+    // Ligtas na pag-escape para sa String parameters sa onclick event
+    const safeProvince = province.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const safeTicket = ticketNo.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const safeBadges = nodeBadges.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const safeRemarks = remarks.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '');
+
     tableHtml += `
-      <tr>
+      <tr class="clickable-row" onclick="openNodeModal('${safeProvince}', '${safeTicket}', '${safeBadges}', '${safeRemarks}')">
         <td data-label="Province"><strong>${province}</strong></td>
         <td data-label="Affected Nodes">
           <div class="node-chip-container">
