@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <!-- Google Fonts para sa Brand Title -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+  
   <title>NetPulse | Gallopvision</title>
 
   <!-- PWA Settings & Meta Tags -->
@@ -97,15 +102,51 @@ body {
       transition: background-color 0.3s ease, border-color 0.3s ease;
     }
 
-    .brand-title {
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-    }
+/* Container Alignment */
+.brand-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  user-select: none;
+  line-height: 1;
+}
 
-    .brand-title span {
-      color: var(--primary-teal);
-    }
+/* GALLOPVISION Style - Pure Black sa Light Mode */
+.brand-gallop {
+  font-family: 'Cinzel', serif;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: #000000 !important; /* Nilagyan ng !important para masiguradong 'di na ma-override */
+  line-height: 1;
+  transition: color 0.3s ease;
+}
+
+/* GALLOPVISION Style - Pure White sa Dark Mode */
+body.dark-mode .brand-gallop {
+  color: #ffffff !important; /* Pure White sa Dark Mode */
+}
+
+/* Vertical Divider Line */
+.brand-divider {
+  color: var(--primary-teal); /* Teal para tumerno sa theme */
+  font-weight: 400;
+  font-size: 14px;
+  margin: 0 1px;
+  align-self: center;
+  line-height: 1;
+}
+
+/* CONVERGE Style */
+.brand-converge {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 1.8px;
+  color: var(--primary-teal);
+  line-height: 1;
+}
+
 
     .header-actions {
       display: flex;
@@ -707,7 +748,11 @@ body.dark-mode .remarks-paragraph-box {
 
 <!-- App Header Bar -->
 <header class="app-header">
-  <div class="brand-title">GALLOPVISION <span>| CONVERGE</span></div>
+<div class="brand-title">
+  <span class="brand-gallop">GALLOPVISION</span>
+  <span class="brand-divider">|</span>
+  <span class="brand-converge">CONVERGE</span>
+</div>
   <div class="header-actions">
     <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme">
       <!-- Default Moon SVG Icon -->
@@ -955,15 +1000,16 @@ body.dark-mode .remarks-paragraph-box {
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.0.8 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.0.9 — What's New & System Updates:</strong></p>
 
           <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
             <li><strong>NODE Details Modal & Remarks:</strong> Added interactive click-to-view modal for NODE reports featuring Province, Ticket Number, List of Affected Nodes, and styled paragraph-view Remarks.</li>
             <li><strong>OLT Remarks & Modal Enhancement:</strong> Integrated ticket remarks from LNOC data into the OLT Details modal with italic formatting.</li>
             <li><strong>NODE Status Module:</strong> Real-time tracking for active node incidents with visual badge tags and improved total count calculations.</li>
-            <li><strong>Service Worker Lifecycle Update:</strong> Implemented immediate background updates and cache-busting (v2.0.8) to ensure seamless offline functionality.</li>
+            <li><strong>Service Worker Lifecycle Update:</strong> Implemented immediate background updates and cache-busting (v2.0.9) to ensure seamless offline functionality.</li>
             <li><strong>Performance & Speed:</strong> Instant tab switching via background prefetching across LCP, OLT, NAP, and NODE data.</li>
             <li><strong>Dynamic Data Sorting:</strong> Full interactive table sorting support across all report views.</li>
+            <li><strong>Brand Typography & Visual Identity:</strong> Applied official brand fonts using Cinzel for Gallopvision (classic serif look) and Montserrat for Converge, complete with dynamic theme color adaptation for light and dark modes.</li>
           </ul>
       </div>
     </div>
@@ -1043,7 +1089,7 @@ body.dark-mode .remarks-paragraph-box {
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.0.8"; 
+  const REQUIRED_APP_VERSION = "2.0.9"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1666,7 +1712,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.0.8').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.0.9').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
