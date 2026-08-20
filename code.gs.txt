@@ -91,85 +91,92 @@ function doGet(e) {
     }
 
   } else if (type === "olt") {
-    // ---------------- OLT DATA ----------------
-    var oltSheet = ss.getSheetByName("NLZ OLT Report");
-    if (!oltSheet) {
-      resultData = [];
-    } else {
-      var lastRowOlt = oltSheet.getLastRow();
-      if (lastRowOlt < 3) {
-        resultData = [];
-      } else {
-        var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
-        var oltList = [];
+// ---------------- OLT DATA ----------------
+var oltSheet = ss.getSheetByName("NLZ OLT Report");
+if (!oltSheet) {
+  resultData = [];
+} else {
+  var lastRowOlt = oltSheet.getLastRow();
+  if (lastRowOlt < 3) {
+    resultData = [];
+  } else {
+    var oltData = oltSheet.getRange(3, 2, lastRowOlt - 2, 12).getValues(); 
+    var oltList = [];
 
-        var agingMap = {};
-        var causeMap = {};       
-        
-        var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
-        if (ticketSheet) {
-          var lastRowTix = ticketSheet.getLastRow();
-          if (lastRowTix >= 2) {
-            var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
-            for (var t = 0; t < tixData.length; t++) {
-              var ticketNoRaw = tixData[t][5];
-              var causeRaw = tixData[t][6];
-              var agingRaw = tixData[t][23];
-              
-              if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
-                var tKey = String(ticketNoRaw).trim().toUpperCase();
-                agingMap[tKey] = agingRaw ? String(agingRaw).trim() : "-";
-                causeMap[tKey] = causeRaw ? String(causeRaw).trim() : "-";
-              }
-            }
+    var agingMap = {};
+    var remarksMap = {}; // Inayos: camelCase variable name
+    var causeMap = {};       
+    
+    var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
+    if (ticketSheet) {
+      var lastRowTix = ticketSheet.getLastRow();
+      if (lastRowTix >= 2) {
+        // Tiyaking sakop ang Column U (Index 21/20) at V (Index 22/21 for Aging)
+        var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
+        for (var t = 0; t < tixData.length; t++) {
+          var ticketNoRaw = tixData[t][5];  // Column F
+          var causeRaw = tixData[t][6];     // Column G
+          var remarksRaw = tixData[t][20];  // Column U (Index 20)
+          var agingRaw = tixData[t][23];    // Column X (Index 23)
+          
+          if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
+            var tKey = String(ticketNoRaw).trim().toUpperCase();
+            agingMap[tKey] = agingRaw ? String(agingRaw).trim() : "-";
+            remarksMap[tKey] = remarksRaw ? String(remarksRaw).trim() : "-"; // Inayos: remarksRaw na ang gamit
+            causeMap[tKey] = causeRaw ? String(causeRaw).trim() : "-";
           }
         }
-
-        for (var k = 0; k < oltData.length; k++) {
-          var rowO = oltData[k];
-          var oltName = rowO[2];
-
-          if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
-            var status = "UP";
-            var ticketNo = "N/A";
-
-            if (rowO[4] === true) {
-              status = "DOWN";
-              ticketNo = rowO[8] || "N/A";
-            } else if (rowO[5] === true) {
-              status = "OLT UPLINK LOW POWER";
-              ticketNo = rowO[9] || "N/A"; 
-            } else if (rowO[6] === true) {
-              status = "OLT UPLINK DOWN";
-              ticketNo = rowO[10] || "N/A"; 
-            } else if (rowO[7] === true) {
-              status = "OLT SERVICE DEGRADATION";
-              ticketNo = rowO[11] || "N/A"; 
-            }
-
-            var aging = "-";
-            var downtimeCause = "-";
-
-            if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
-              var tKey = String(ticketNo).trim().toUpperCase();
-              if (agingMap[tKey]) aging = agingMap[tKey];
-              if (causeMap[tKey]) downtimeCause = causeMap[tKey];
-            }
-
-            oltList.push({
-              "P": rowO[0],
-              "M": rowO[1],
-              "N": oltName,
-              "S": status,
-              "T": ticketNo,
-              "AG": aging,
-              "DC": downtimeCause
-            });
-          }
-        }
-        resultData = oltList;
       }
     }
+
+    for (var k = 0; k < oltData.length; k++) {
+      var rowO = oltData[k];
+      var oltName = rowO[2];
+
+      if (oltName && String(oltName).trim() !== "" && String(oltName).toUpperCase() !== "TOTAL") {
+        var status = "UP";
+        var ticketNo = "N/A";
+
+        if (rowO[4] === true) {
+          status = "DOWN";
+          ticketNo = rowO[8] || "N/A";
+        } else if (rowO[5] === true) {
+          status = "OLT UPLINK LOW POWER";
+          ticketNo = rowO[9] || "N/A"; 
+        } else if (rowO[6] === true) {
+          status = "OLT UPLINK DOWN";
+          ticketNo = rowO[10] || "N/A"; 
+        } else if (rowO[7] === true) {
+          status = "OLT SERVICE DEGRADATION";
+          ticketNo = rowO[11] || "N/A"; 
+        }
+
+        var aging = "-";
+        var remarks = "-"; // Ininitialize ang remarks variable
+        var downtimeCause = "-";
+
+        if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
+          var tKey = String(ticketNo).trim().toUpperCase();
+          if (agingMap[tKey]) aging = agingMap[tKey];
+          if (remarksMap[tKey]) remarks = remarksMap[tKey];
+          if (causeMap[tKey]) downtimeCause = causeMap[tKey];
+        }
+
+        oltList.push({
+          "P": rowO[0],
+          "M": rowO[1],
+          "N": oltName,
+          "S": status,
+          "T": ticketNo,
+          "AG": aging,
+          "RM": remarks,
+          "DC": downtimeCause
+        });
+      }
+    }
+    resultData = oltList;
+  }
+}
 
   } else {
     // ---------------- NAP DATA (DEFAULT) ----------------

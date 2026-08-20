@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'gvsi-shell-v2.0.6';
+const STATIC_CACHE = 'gvsi-shell-v2.0.7';
 const STATIC_ASSETS = [
   './index.html',
   './manifest.json',
