@@ -671,6 +671,13 @@ body.dark-mode .brand-gallop {
       border-color: rgba(45, 212, 191, 0.3);
     }
 
+    /* Itago ang vertical divider sa OLT insights card kapag nag-wrap na sa maliit na screen */
+    @media (max-width: 640px) {
+      .olt-insight-divider {
+        display: none;
+      }
+    }
+
 /* Card View Layout for Ultra-Small Devices (<380px) */
 @media (max-width: 380px) {
   /* Itago ang standard table header */
@@ -837,7 +844,7 @@ body.dark-mode .remarks-paragraph-box {
       </div>
 
       <!-- Top Summary Cards para sa LCP Aging -->
-      <div class="stats-grid">
+      <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
         <div class="stat-card c-green">
           <div class="label">&lt;24 HRS</div>
           <div class="value" id="lcpCard24">0</div>
@@ -849,10 +856,6 @@ body.dark-mode .remarks-paragraph-box {
         <div class="stat-card c-red">
           <div class="label">&gt;3 DAYS</div>
           <div class="value" id="lcpCard3">0</div>
-        </div>
-        <div class="stat-card c-total">
-          <div class="label">TOTAL</div>
-          <div class="value" id="lcpCardTotal">0</div>
         </div>
       </div>
 
@@ -877,8 +880,22 @@ body.dark-mode .remarks-paragraph-box {
         </div>
       </div>
 
-      <!-- LCP Impact Summary Table (TT Count, LCP Count, Clients) -->
+      <!-- LCP Impact Summary Section -->
       <div class="page-title" style="margin-top: 18px;">LCP Impact Summary</div>
+      <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="stat-card c-total">
+          <div class="label">TOTAL CLIENTS AFFECTED</div>
+          <div class="value" id="lcpCardClients">0</div>
+        </div>
+        <div class="stat-card c-purple">
+          <div class="label">TOTAL TICKETS</div>
+          <div class="value" id="lcpCardTT">0</div>
+        </div>
+        <div class="stat-card c-orange">
+          <div class="label">TOTAL LCPs</div>
+          <div class="value" id="lcpCardLCP">0</div>
+        </div>
+      </div>
       <div class="table-card">
         <div class="table-wrapper">
           <table class="data-table">
@@ -933,6 +950,24 @@ body.dark-mode .remarks-paragraph-box {
         </div>
       </div>
 
+      <!-- OLT Status Distribution & Impact (Insights section, hiwalay sa filter grid) -->
+      <div class="table-card" style="margin-bottom: 16px; padding: 24px 20px; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: center;">
+        <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: center;">
+          <div id="oltDonutChart" style="width: 150px; height: 150px; border-radius: 50%; position: relative; flex-shrink: 0; background: var(--card-bg);">
+            <div style="position: absolute; inset: 24%; border-radius: 50%; background: var(--card-bg); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <div style="font-size: 10px; color: var(--text-muted); font-weight: 600;">TOTAL</div>
+              <div style="font-size: 20px; font-weight: 800; color: var(--primary-teal);" id="oltDonutTotalLabel">0</div>
+            </div>
+          </div>
+          <div id="oltDonutLegend" style="display: flex; flex-direction: column; gap: 9px; font-size: 13px; color: var(--dark-charcoal);"></div>
+        </div>
+        <div style="width: 1px; align-self: stretch; background: var(--border-color); min-height: 100px;" class="olt-insight-divider"></div>
+        <div style="text-align: center; padding: 4px 20px;">
+          <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Affected Clients (Down)</div>
+          <div style="font-size: 34px; font-weight: 800; color: var(--badge-red-text); margin-top: 6px;" id="oltCardClientsDown">0</div>
+        </div>
+      </div>
+
       <!-- Filter Buttons Toolbar -->
       <div class="filter-toolbar">
         <button class="filter-btn" id="btnFilterAll" onclick="setOltFilter('ALL')">ALL OLTs</button>
@@ -952,8 +987,9 @@ body.dark-mode .remarks-paragraph-box {
                 <th class="sortable" onclick="sortTable('oltTableBody', 0, this)">PROVINCE</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY / MUNICIPALITY</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 2, this)">OLT NAME</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this)">AGING</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">STATUS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this, true)">AFFECTED CLIENTS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">AGING</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 5, this)">STATUS</th>
               </tr>
             </thead>
             <tbody id="oltTableBody">
@@ -1000,17 +1036,12 @@ body.dark-mode .remarks-paragraph-box {
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.0.9 — What's New & System Updates:</strong></p>
-
-          <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-            <li><strong>NODE Details Modal & Remarks:</strong> Added interactive click-to-view modal for NODE reports featuring Province, Ticket Number, List of Affected Nodes, and styled paragraph-view Remarks.</li>
-            <li><strong>OLT Remarks & Modal Enhancement:</strong> Integrated ticket remarks from LNOC data into the OLT Details modal with italic formatting.</li>
-            <li><strong>NODE Status Module:</strong> Real-time tracking for active node incidents with visual badge tags and improved total count calculations.</li>
-            <li><strong>Service Worker Lifecycle Update:</strong> Implemented immediate background updates and cache-busting (v2.0.9) to ensure seamless offline functionality.</li>
-            <li><strong>Performance & Speed:</strong> Instant tab switching via background prefetching across LCP, OLT, NAP, and NODE data.</li>
-            <li><strong>Dynamic Data Sorting:</strong> Full interactive table sorting support across all report views.</li>
-            <li><strong>Brand Typography & Visual Identity:</strong> Applied official brand fonts using Cinzel for Gallopvision (classic serif look) and Montserrat for Converge, complete with dynamic theme color adaptation for light and dark modes.</li>
-          </ul>
+            <p><strong>Version 2.1.1 — What's New & System Updates:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>OLT Impact & Client Tracking:</strong> Added real-time affected client count per ticket via backend LNOC sync, featuring a dedicated "Affected Clients" column and "Affected Clients (DOWN)" summary card.</li>
+                  <li><strong>Visual Status Distribution:</strong> Integrated a high-performance, pure CSS donut chart for OLT status breakdowns (UP, DOWN, Low Power, Uplink Down, Degradation) with exact counts and percentage indicators.</li>
+                  <li><strong>LCP Impact Summary Row:</strong> Streamlined top metrics and added a comprehensive bottom summary row displaying Total Clients Affected, Total Tickets, and Total LCPs without additional fetch latency.</li>
+                </ul>
       </div>
     </div>
 
@@ -1089,7 +1120,7 @@ body.dark-mode .remarks-paragraph-box {
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.0.9"; 
+  const REQUIRED_APP_VERSION = "2.1.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1411,7 +1442,6 @@ function refreshCurrentTab() {
     if (document.getElementById('lcpCard24')) document.getElementById('lcpCard24').textContent = total24;
     if (document.getElementById('lcpCard13')) document.getElementById('lcpCard13').textContent = total13;
     if (document.getElementById('lcpCard3')) document.getElementById('lcpCard3').textContent = total3;
-    if (document.getElementById('lcpCardTotal')) document.getElementById('lcpCardTotal').textContent = grandTotal;
 
     const agingTotalTr = document.createElement('tr');
     agingTotalTr.className = 'total-row';
@@ -1456,6 +1486,10 @@ function refreshCurrentTab() {
       }
     });
 
+    if (document.getElementById('lcpCardClients')) document.getElementById('lcpCardClients').textContent = totalClients;
+    if (document.getElementById('lcpCardTT')) document.getElementById('lcpCardTT').textContent = totalTT;
+    if (document.getElementById('lcpCardLCP')) document.getElementById('lcpCardLCP').textContent = totalLCP;
+
     if (impactData.length > 0) {
       const impactTotalTr = document.createElement('tr');
       impactTotalTr.className = 'total-row';
@@ -1498,11 +1532,15 @@ function refreshCurrentTab() {
 
   function processAndRenderOlt() {
     let countUp = 0, countDown = 0, countLowPower = 0, countUplinkDown = 0, countDegradation = 0;
+    let totalClientsDown = 0;
     let totalOlt = rawOltData.length;
 
     rawOltData.forEach(item => {
       const status = (item.S || item.STATUS || '').toString().trim().toUpperCase();
-      if (status === 'DOWN') countDown++;
+      if (status === 'DOWN') {
+        countDown++;
+        totalClientsDown += parseInt(item.CA || 0) || 0;
+      }
       else if (status.includes('LOW POWER')) countLowPower++;
       else if (status.includes('UPLINK DOWN')) countUplinkDown++;
       else if (status.includes('DEGRADATION')) countDegradation++;
@@ -1515,8 +1553,50 @@ function refreshCurrentTab() {
     document.getElementById('oltCardLowPower').textContent = countLowPower;
     document.getElementById('oltCardUplinkDown').textContent = countUplinkDown;
     document.getElementById('oltCardDegradation').textContent = countDegradation;
+    document.getElementById('oltCardClientsDown').textContent = totalClientsDown;
 
+    renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
     renderOltTable();
+  }
+
+  function renderOltDonut(up, down, lowPower, uplinkDown, degradation, total) {
+    const chart = document.getElementById('oltDonutChart');
+    const legend = document.getElementById('oltDonutLegend');
+    const totalLabel = document.getElementById('oltDonutTotalLabel');
+    if (!chart || !legend) return;
+
+    if (totalLabel) totalLabel.textContent = total;
+
+    const segments = [
+      { label: 'UP', value: up, color: 'var(--badge-green-text)' },
+      { label: 'DOWN', value: down, color: 'var(--badge-red-text)' },
+      { label: 'LOW POWER', value: lowPower, color: 'var(--badge-orange-text)' },
+      { label: 'UPLINK DOWN', value: uplinkDown, color: 'var(--badge-yellow-text)' },
+      { label: 'DEGRADATION', value: degradation, color: 'var(--badge-purple-text)' }
+    ];
+
+    let gradientParts = [];
+    let cumulativePct = 0;
+    legend.innerHTML = '';
+
+    segments.forEach(seg => {
+      const pct = total > 0 ? (seg.value / total) * 100 : 0;
+      if (pct > 0) {
+        gradientParts.push(`${seg.color} ${cumulativePct}% ${cumulativePct + pct}%`);
+        cumulativePct += pct;
+      }
+      const legendItem = document.createElement('div');
+      legendItem.style.cssText = 'display:flex; align-items:center; gap:8px;';
+      legendItem.innerHTML = `
+        <span style="width:10px; height:10px; border-radius:50%; background:${seg.color}; display:inline-block; flex-shrink:0;"></span>
+        <span>${seg.label}: <strong>${seg.value}</strong> (${pct.toFixed(1)}%)</span>
+      `;
+      legend.appendChild(legendItem);
+    });
+
+    chart.style.background = gradientParts.length > 0
+      ? `conic-gradient(${gradientParts.join(', ')})`
+      : 'var(--card-bg)';
   }
 
   function setOltFilter(filterType) {
@@ -1559,7 +1639,7 @@ function renderOltTable() {
     });
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
       return;
     }
 
@@ -1571,6 +1651,11 @@ filtered.forEach(item => {
       const ticketNo = item.T || '-';
       const downtimeCause = item.DC || '-';
       const aging = item.AG || item.AGING || '-';
+      // IDINAGDAG: Kunin ang Affected Clients mula sa API data
+      const clientsAffectedNum = parseInt(item.CA || 0) || 0;
+      const clientsAffectedDisplay = clientsAffectedNum > 0
+        ? `<strong style="color: var(--badge-red-text);">${clientsAffectedNum}</strong>`
+        : `<span style="color: var(--text-muted);">–</span>`;
       // IDINAGDAG: Kunin ang Remarks mula sa API data
       const remarks = item.RM || item.REMARKS || '-';
 
@@ -1588,6 +1673,7 @@ filtered.forEach(item => {
         <td data-label="Province">${province}</td>
         <td data-label="Municipality">${municipality}</td>
         <td data-label="OLT Name"><strong>${name}</strong></td>
+        <td data-label="Affected Clients" style="text-align: center;">${clientsAffectedDisplay}</td>
         <td data-label="Aging" style="text-align: center;">${aging}</td>
         <td data-label="Status" style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
       `;
@@ -1597,7 +1683,7 @@ filtered.forEach(item => {
     const totalTr = document.createElement('tr');
     totalTr.className = 'total-row';
     totalTr.innerHTML = `
-      <td colspan="4">FILTERED TOTAL (${currentOltFilter})</td>
+      <td colspan="5">FILTERED TOTAL (${currentOltFilter})</td>
       <td style="text-align: center;">${filtered.length}</td>
     `;
     tbody.appendChild(totalTr);
@@ -1712,7 +1798,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.0.9').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.1.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });

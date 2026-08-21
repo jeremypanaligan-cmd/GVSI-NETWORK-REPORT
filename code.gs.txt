@@ -16,7 +16,7 @@ function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var resultData = null;
 
-  if (type === "node") {
+if (type === "node") {
     // ---------------- NODE DOWN DATA ----------------
     var nodeSheet = ss.getSheetByName("Node DOWN Tickets");
     if (!nodeSheet) {
@@ -26,29 +26,31 @@ function doGet(e) {
       if (lastRowNode < 2) {
         resultData = [];
       } else {
-        var nodeData = nodeSheet.getRange(2, 1, lastRowNode - 1, 18).getValues();
+        // Kumuha ng 27 columns (hanggang Column AA)
+        var nodeData = nodeSheet.getRange(2, 1, lastRowNode - 1, 27).getValues();
         var nodeList = [];
 
         for (var n = 0; n < nodeData.length; n++) {
           var rowN = nodeData[n];
-          var provinceRaw = String(rowN[3] || "").trim();
-          var nodesRaw = String(rowN[16] || "").trim();
+          var provinceRaw = String(rowN[3] || "").trim(); // Column D (Index 3)
+          var nodesRaw = String(rowN[26] || "").trim();   // Column AA (Index 26) - EQUIPMENTS AFFECTED
 
           if (provinceRaw !== "" || nodesRaw !== "") {
             nodeList.push({
               "P": provinceRaw.replace(/_/g, " "),
-              "N": nodesRaw || "N/A",
-              "C": rowN[17] !== "" ? rowN[17] : 0,
-              "I": rowN[10] || "N/A",
-              "D": rowN[13] ? formatDateVal(rowN[13]) : "N/A",
-              "AG": rowN[15] || "N/A"
+              "N": nodesRaw || "N/A",                          // EQUIPMENTS AFFECTED (Col AA)
+              "C": rowN[24] !== "" ? rowN[24] : 0,            // COUNT OF EQP (Col Y / Index 24)
+              "I": rowN[10] || "N/A",                         // Column K (Index 10)
+              "D": rowN[13] ? formatDateVal(rowN[13]) : "N/A", // DOWN TIME (Col N / Index 13)
+              "AG": rowN[23] || "N/A",                        // AGING DURATION (Col X / Index 23)
+              "RM": rowN[20] ? String(rowN[20]).trim() : "-"   // REMARKS (Col U / Index 20)
             });
           }
         }
         resultData = nodeList;
       }
     }
-
+  
   } else if (type === "lcp") {
     // ---------------- LCP DATA ----------------
     var lcpSheet = ss.getSheetByName("NLZ LCP Report");
