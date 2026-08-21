@@ -16,7 +16,55 @@ function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var resultData = null;
 
-if (type === "node") {
+if (type === "backbone") {
+    // ---------------- BACKBONE LINKS DATA ----------------
+    var bbSheet = ss.getSheetByName("Backbone Tickets");
+    if (!bbSheet) {
+      resultData = [];
+    } else {
+      var lastRowBB = bbSheet.getLastRow();
+      if (lastRowBB < 2) {
+        resultData = [];
+      } else {
+        var bbData = bbSheet.getRange(2, 1, lastRowBB - 1, 26).getValues(); // Columns A-Z
+        var bbList = [];
+
+        for (var b = 0; b < bbData.length; b++) {
+          var rowB = bbData[b];
+          var provinceRaw = String(rowB[3] || "").trim(); // Column D (Index 3)
+          var ticketRaw = String(rowB[5] || "").trim();   // Column F (Index 5)
+          var serviceRaw = String(rowB[6] || "").trim();  // Column G (Index 6)
+          var impactRaw = String(rowB[10] || "").trim();  // Column K (Index 10) - IMPACT
+          var issueRaw = String(rowB[11] || "").trim();   // Column L (Index 11) - ISSUE
+          var downtimeRaw = rowB[13] ? formatDateVal(rowB[13]) : "-"; // Column N (Index 13) - DOWN TIME
+          var agingRaw = String(rowB[23] || "").trim();   // Column X (Index 23) - AGING DURATION
+          var linksRaw = String(rowB[24] || "").trim();   // Column Y (Index 24)
+          var countLinks = rowB[25] !== "" ? rowB[25] : 0; // Column Z (Index 25)
+          var remarksRaw = rowB[20] ? String(rowB[20]).trim() : "-"; // Column U (Index 20)
+
+          // I-filter ang mga walang tunay na data (hindi counted ang residual values)
+          var hasRealData = (provinceRaw !== "" && provinceRaw !== "-") || (ticketRaw !== "" && ticketRaw !== "-" && ticketRaw !== "N/A");
+          
+          if (hasRealData) {
+            bbList.push({
+              "P": provinceRaw.replace(/_/g, " "),
+              "T": ticketRaw || "-",
+              "S": serviceRaw,
+              "I": impactRaw || "-",
+              "IS": issueRaw || "-",
+              "DT": downtimeRaw || "-",
+              "AG": agingRaw || "-",
+              "L": linksRaw || "-",
+              "LC": countLinks,
+              "RM": remarksRaw
+            });
+          }
+        }
+        resultData = bbList;
+      }
+    }
+
+  } else if (type === "node") {
     // ---------------- NODE DOWN DATA ----------------
     var nodeSheet = ss.getSheetByName("Node DOWN Tickets");
     if (!nodeSheet) {
@@ -107,7 +155,8 @@ if (!oltSheet) {
 
     var agingMap = {};
     var remarksMap = {}; // Inayos: camelCase variable name
-    var causeMap = {};       
+    var causeMap = {};
+    var clientsMap = {}; // IDINAGDAG: Affected Clients per ticket
     
     var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
     if (ticketSheet) {
@@ -120,12 +169,14 @@ if (!oltSheet) {
           var causeRaw = tixData[t][6];     // Column G
           var remarksRaw = tixData[t][20];  // Column U (Index 20)
           var agingRaw = tixData[t][23];    // Column X (Index 23)
+          var clientsRaw = tixData[t][25];  // Column Z (Index 25) - AFFECTED CLIENTS
           
           if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
             var tKey = String(ticketNoRaw).trim().toUpperCase();
             agingMap[tKey] = agingRaw ? String(agingRaw).trim() : "-";
             remarksMap[tKey] = remarksRaw ? String(remarksRaw).trim() : "-"; // Inayos: remarksRaw na ang gamit
             causeMap[tKey] = causeRaw ? String(causeRaw).trim() : "-";
+            clientsMap[tKey] = clientsRaw !== "" && clientsRaw !== null ? String(clientsRaw).trim() : "0";
           }
         }
       }
@@ -156,12 +207,14 @@ if (!oltSheet) {
         var aging = "-";
         var remarks = "-"; // Ininitialize ang remarks variable
         var downtimeCause = "-";
+        var clientsAffected = "0"; // IDINAGDAG: default value
 
         if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
           var tKey = String(ticketNo).trim().toUpperCase();
           if (agingMap[tKey]) aging = agingMap[tKey];
           if (remarksMap[tKey]) remarks = remarksMap[tKey];
           if (causeMap[tKey]) downtimeCause = causeMap[tKey];
+          if (clientsMap[tKey]) clientsAffected = clientsMap[tKey];
         }
 
         oltList.push({
@@ -172,7 +225,8 @@ if (!oltSheet) {
           "T": ticketNo,
           "AG": aging,
           "RM": remarks,
-          "DC": downtimeCause
+          "DC": downtimeCause,
+          "CA": clientsAffected
         });
       }
     }
@@ -211,7 +265,7 @@ if (!oltSheet) {
   var jsonResponse = JSON.stringify(resultData);
   
   // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
-  var cacheTTL = (type === "node" || type === "olt") ? 60 : 180;
+  var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
 
   try {
     cache.put("cache_v2_" + type, jsonResponse, cacheTTL);

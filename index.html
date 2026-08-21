@@ -664,12 +664,43 @@ body.dark-mode .brand-gallop {
       white-space: nowrap;
     }
 
-    /* Dark Mode adaptation */
-    body.dark-mode .node-chip {
-      background: rgba(20, 184, 166, 0.18);
-      color: #2dd4bf;
-      border-color: rgba(45, 212, 191, 0.3);
-    }
+/* Dark Mode adaptation */
+body.dark-mode .node-chip {
+  background: rgba(20, 184, 166, 0.18);
+  color: #2dd4bf;
+  border-color: rgba(45, 212, 191, 0.3);
+}
+
+/* Link Chip Container - same layout as node chips */
+.link-chip-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 420px;
+  padding: 4px 0;
+}
+
+/* Link Chip - allows text wrapping for long link descriptions */
+.link-chip {
+  background: rgba(13, 138, 128, 0.12);
+  color: var(--primary-teal);
+  border: 1px solid rgba(13, 138, 128, 0.3);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+  word-break: break-word;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+body.dark-mode .link-chip {
+  background: rgba(20, 184, 166, 0.18);
+  color: #2dd4bf;
+  border-color: rgba(45, 212, 191, 0.3);
+}
 
     /* Itago ang vertical divider sa OLT insights card kapag nag-wrap na sa maliit na screen */
     @media (max-width: 640px) {
@@ -1013,11 +1044,7 @@ body.dark-mode .remarks-paragraph-box {
 
     <!-- 5. BACKBONE LINKS TAB -->
     <div id="tab-backbone" class="tab-content">
-      <div class="page-title">Backbone Links Status</div>
-      <div class="placeholder-card">
-        <h3>Backbone Links Module</h3>
-        <p>I-connect ang Backbone Links Apps Script API URL para ma-render ang data dito.</p>
-      </div>
+      <!-- Backbone module will render here via backbone-module.js -->
     </div>
 
     <!-- 6. ABOUT TAB -->
@@ -1038,7 +1065,25 @@ body.dark-mode .remarks-paragraph-box {
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.1.1 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.3.0 — What's New & System Updates:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Backbone Summary Stat Cards:</strong> Added 5 summary stat cards at the top of the Backbone Links tab showing Total Links Affected, DWDM Low Power, DWDM Link Down, MPLS Low Power, and MPLS Link Down counts for at-a-glance monitoring.</li>
+                  <li><strong>Backbone Empty State Landing Page:</strong> Designed a clean, professional landing page when there are no pending backbone incidents — displays a green checkmark with "All Backbone Links Operational" and DWDM/MPLS status indicators.</li>
+                  <li><strong>Backbone Link Chips Wrapping:</strong> Long link descriptions (e.g., interface names like "CVI001-NPE01 GigabitEthernet0/2/1") now wrap properly within the table instead of overflowing into adjacent columns.</li>
+                  <li><strong>Backbone Downtime & Aging in Modal:</strong> Added Downtime (Col N) and Aging Duration (Col X) fields to the Backbone Link Details modal for complete ticket visibility.</li>
+                  <li><strong>Backbone Table Cleanup:</strong> Removed Downtime column from the table view (kept in modal only) and aligned the total links count to the Aging column for cleaner layout.</li>
+                  <li><strong>Residual Data Filter Fix:</strong> Strengthened the backend filter to exclude phantom rows caused by leftover data in Links (Y) and Count (Z) columns when source ticket data has been deleted.</li>
+                  <li><strong>PWA Cache Update:</strong> Service Worker cache version bumped to v2.3.0 — existing users will receive an automatic "App Update Available" prompt on next launch.</li>
+                </ul>
+                <p style="margin-top: 12px; font-size: 11px; color: var(--text-muted); font-weight: 600;">Previous Updates:</p>
+                <p><strong>Version 2.2.0:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Backbone Links Module (New):</strong> Fully integrated Backbone Links monitoring tab that pulls real-time ticket data from the "Backbone Tickets" sheet — displays Province, Service Type (DWDM/MPLS), affected links as interactive chips, link count, and status with full modal details on click.</li>
+                  <li><strong>Backbone Modal Details:</strong> Added slide-up modal popup for each backbone ticket showing Province, Ticket No, Service Type, Status, Aging Duration, and Remarks in paragraph style for easy readability.</li>
+                  <li><strong>Backbone Service Transformation:</strong> Auto-transforms service labels — "NPE" is displayed as "MPLS" while "DWDM" remains as-is, providing cleaner and standardized service type identification.</li>
+                  <li><strong>Background Auto-Refresh & Prefetching:</strong> Backbone data refreshes every 10 minutes in the background, preloaded 7.5 seconds after initial app load, and instantly syncs when the app returns from minimized state.</li>
+                </ul>
+                <p><strong>Version 2.1.1:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>OLT Impact & Client Tracking:</strong> Added real-time affected client count per ticket via backend LNOC sync, featuring a dedicated "Affected Clients" column and "Affected Clients (DOWN)" summary card.</li>
                   <li><strong>Visual Status Distribution:</strong> Integrated a high-performance, pure CSS donut chart for OLT status breakdowns (UP, DOWN, Low Power, Uplink Down, Degradation) with exact counts and percentage indicators.</li>
@@ -1120,9 +1165,50 @@ body.dark-mode .remarks-paragraph-box {
   </div>
 </div>
 
+<!-- Dedicated Modal para sa BACKBONE LINK Details -->
+<div class="modal-backdrop" id="backboneModal" onclick="closeBackboneModal(event)">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">BACKBONE LINK DETAILS</div>
+      <button class="close-btn" onclick="closeBackboneModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-item">
+        <span class="label">Province:</span>
+        <span class="val" id="bbProvince">-</span>
+      </div>
+      <div class="modal-item">
+        <span class="label">Ticket No:</span>
+        <span class="val" id="bbTicket">-</span>
+      </div>
+      <div class="modal-item">
+        <span class="label">Service Type:</span>
+        <span class="val" id="bbService">-</span>
+      </div>
+      <div class="modal-item">
+        <span class="label">Impact:</span>
+        <span class="val" id="bbImpact">-</span>
+      </div>
+      <div class="modal-item">
+        <span class="label">Downtime:</span>
+        <span class="val" id="bbDowntime">-</span>
+      </div>
+      <div class="modal-item">
+        <span class="label">Aging Duration:</span>
+        <span class="val" id="bbAging" style="color: var(--badge-orange-text); font-weight: 700;">-</span>
+      </div>
+      <!-- PARAGRAPH STYLE REMARKS BOX -->
+      <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+        <span class="label" style="font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Remarks:</span>
+        <div id="bbRemarks" class="remarks-paragraph-box">-</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.1.1"; 
+  const REQUIRED_APP_VERSION = "2.3.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1193,14 +1279,15 @@ function showReinstallPrompt() {
   let rawOltData = [];
   let currentOltFilter = 'DOWN';
 
-  const dataCache = { nap: null, lcp: null, olt: null, node: null };
+  const dataCache = { nap: null, lcp: null, olt: null, node: null, backbone: null };
 
   let currentSortState = {
     napTableBody: { col: 0, asc: true, isNum: false },
     lcpAgingTableBody: { col: 0, asc: true, isNum: false },
     lcpImpactTableBody: { col: 0, asc: true, isNum: false },
     oltTableBody: { col: 0, asc: true, isNum: false },
-    nodeTableBody: { col: 0, asc: true, isNum: false } // <--- Idagdag ito
+    nodeTableBody: { col: 0, asc: true, isNum: false },
+    backboneTableBody: { col: 0, asc: true, isNum: false }
   };
 
 // SVG Icon Strings
@@ -1251,6 +1338,7 @@ function switchTab(tabName, event) {
   else if (tabName === 'lcp') fetchLcpData();
   else if (tabName === 'olt') fetchOltData();
   else if (tabName === 'node') fetchNodeData();
+  else if (tabName === 'backbone') fetchBackboneData();
 }
 
 function refreshCurrentTab() {
@@ -1262,6 +1350,7 @@ function refreshCurrentTab() {
   else if (currentTab === 'lcp') fetchLcpData(true);
   else if (currentTab === 'olt') fetchOltData(true);
   else if (currentTab === 'node') fetchNodeData(true);
+  else if (currentTab === 'backbone') fetchBackboneData(true);
 }
 
   // 1. NAP Data Fetcher
@@ -1296,6 +1385,16 @@ function refreshCurrentTab() {
         .catch(() => {});
     }
   }, 5500);
+
+  // BACKBONE fetch pagkalipas ng 7.5 seconds
+  setTimeout(() => {
+    if (!dataCache.backbone) {
+      fetch(BASE_API_URL + "?type=backbone")
+        .then(res => res.json())
+        .then(data => { if (data) dataCache.backbone = data; })
+        .catch(() => {});
+    }
+  }, 7500);
 }
       
   async function fetchNapData(forceRefresh = false) {
@@ -1782,25 +1881,27 @@ function closeNodeModal(event) {
     else if (type === 'lcp') fetchLcpData(true);
     else if (type === 'olt') fetchOltData(true);
     else if (type === 'node') fetchNodeData(true);
+    else if (type === 'backbone') fetchBackboneData(true);
   }
 
   setInterval(() => backgroundRefresh('nap'),  60 * 60 * 1000); // 1 hour
   setInterval(() => backgroundRefresh('lcp'),  30 * 60 * 1000); // 30 mins
   setInterval(() => backgroundRefresh('olt'),  15 * 60 * 1000); // 15 mins
   setInterval(() => backgroundRefresh('node'), 10 * 60 * 1000); // 10 mins
+  setInterval(() => backgroundRefresh('backbone'), 10 * 60 * 1000); // 10 mins
 
   // PINAKA-IMPORTANTE: kapag bumalik sa foreground (galing minimize/lock),
   // agad mag-refresh ng lahat — dahil posibleng na-suspend ang mga timer sa itaas
   // habang naka-background, kaya hindi natin aasahan yung mismong interval.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      ['nap', 'lcp', 'olt', 'node'].forEach(backgroundRefresh);
+      ['nap', 'lcp', 'olt', 'node', 'backbone'].forEach(backgroundRefresh);
     }
   });
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.1.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.3.0').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1808,6 +1909,7 @@ function closeNodeModal(event) {
 </script>
 
 <script src="node-module.js"></script>
+<script src="backbone-module.js"></script>
 
 </body>
 </html>

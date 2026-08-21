@@ -1,11 +1,12 @@
-const STATIC_CACHE = 'gvsi-shell-v2.1.1';
+const STATIC_CACHE = 'gvsi-shell-v2.3.0';
 const STATIC_ASSETS = [
   './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
-'./node-module.js' // <--- Idinagdag ang bagong JS file
+'./node-module.js', // <--- Idinagdag ang bagong JS file
+'./backbone-module.js' // <--- Backbone Links Module
 ];
 
 self.addEventListener('install', (e) => {
