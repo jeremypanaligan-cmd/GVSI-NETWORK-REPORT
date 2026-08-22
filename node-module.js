@@ -16,6 +16,9 @@ async function fetchNodeData(forceRefresh = false) {
     return;
   }
 
+  // Show skeleton on first load
+  if (!dataCache.node) showSkeleton('node');
+
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=node");
 
@@ -82,7 +85,7 @@ function renderNodeReport(data) {
     const nodeBadges = rawNodes.split(',')
       .map(node => node.trim())
       .filter(node => node !== '')
-      .map(node => `<span class="node-chip">${node}</span>`)
+      .map(node => `<span class="node-chip">${typeof sanitizeHTML === 'function' ? sanitizeHTML(node) : node}</span>`)
       .join('');
 
     // Ligtas na pag-escape para sa String parameters sa onclick event

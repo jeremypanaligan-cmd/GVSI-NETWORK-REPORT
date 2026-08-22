@@ -401,7 +401,44 @@ function renderAnalyticsDashboard() {
     html += `</tbody></table></div></div>`;
   }
 
+  // --- TREND CHARTS (rendered async after DOM) ---
+  html += `
+    <div class="analytics-section-title">📈 Trend (Last 30 Days)</div>
+    <div class="analytics-trend-note" id="trendNote"></div>
+    <div class="analytics-charts-row">
+      <div class="analytics-chart-card">
+        <div class="analytics-chart-title">Incidents per Day</div>
+        <div class="analytics-chart-body" style="height: 200px;">
+          <canvas id="trendIncidentsChart"></canvas>
+        </div>
+      </div>
+      <div class="analytics-chart-card">
+        <div class="analytics-chart-title">OLT Status Trend</div>
+        <div class="analytics-chart-body" style="height: 200px;">
+          <canvas id="trendOltChart"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="analytics-charts-row">
+      <div class="analytics-chart-card">
+        <div class="analytics-chart-title">Clients Affected Trend</div>
+        <div class="analytics-chart-body" style="height: 200px;">
+          <canvas id="trendClientsChart"></canvas>
+        </div>
+      </div>
+      <div class="analytics-chart-card">
+        <div class="analytics-chart-title">Aging Distribution</div>
+        <div class="analytics-chart-body" style="height: 200px;">
+          <canvas id="trendAgingChart"></canvas>
+        </div>
+      </div>
+    </div>
+  `;
+
   tab.innerHTML = html;
+
+  // ==================== RENDER TREND CHARTS (async from IndexedDB) ====================
+  renderTrendCharts();
 
   // ==================== POPULATE DONUT CHARTS ====================
 
@@ -482,4 +519,124 @@ function _transformBbService(raw) {
   const s = (raw || '').toString().trim().toUpperCase();
   if (s === 'NPE') return 'MPLS';
   return s || '-';
+}
+
+// ==================== TREND CHARTS (IndexedDB) ====================
+async function renderTrendCharts() {
+  // Check if Chart.js is loaded
+  if (typeof Chart === 'undefined') {
+    const note = document.getElementById('trendNote');
+    if (note) note.innerHTML = '<p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">⏳ Loading chart library...</p>';
+    await loadChartJS();
+  }
+
+  const snapshots = await getSnapshots(30);
+  const note = document.getElementById('trendNote');
+
+  if (!snapshots || snapshots.length < 2) {
+    if (note) note.innerHTML = '<p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">📊 Trend data builds over time — check back after a few days of use.</p>';
+    return;
+  }
+
+  if (note) note.innerHTML = '';
+
+  const labels = snapshots.map(s => {
+    const d = new Date(s.date + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  });
+
+  const isDark = document.body.classList.contains('dark-mode');
+  const gridColor = isDark ? 'rgba(148,163,184,0.15)' : 'rgba(100,116,139,0.12)';
+  const textColor = isDark ? '#94a3b8' : '#64748b';
+
+  const baseOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10 }, maxRotation: 45 } },
+      y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10 } }, beginAtZero: true }
+    }
+  };
+
+  // 1. Incidents per Day (stacked bar)
+  const ctx1 = document.getElementById('trendIncidentsChart');
+  if (ctx1) {
+    new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'NAP', data: snapshots.map(s => s.nap?.total || 0), backgroundColor: '#0d8a80' },
+          { label: 'LCP', data: snapshots.map(s => s.lcp?.total || 0), backgroundColor: '#f59e0b' },
+          { label: 'OLT', data: snapshots.map(s => (s.olt?.down || 0) + (s.olt?.lowPower || 0)), backgroundColor: '#ef4444' },
+          { label: 'Node', data: snapshots.map(s => s.node?.tickets || 0), backgroundColor: '#8b5cf6' },
+          { label: 'BB', data: snapshots.map(s => s.backbone?.tickets || 0), backgroundColor: '#ea580c' }
+        ]
+      },
+      options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } }, scales: { ...baseOptions.scales, x: { ...baseOptions.scales.x, stacked: true }, y: { ...baseOptions.scales.y, stacked: true } } }
+    });
+  }
+
+  // 2. OLT Status Trend (line)
+  const ctx2 = document.getElementById('trendOltChart');
+  if (ctx2) {
+    new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'DOWN', data: snapshots.map(s => s.olt?.down || 0), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3 },
+          { label: 'LOW POWER', data: snapshots.map(s => s.olt?.lowPower || 0), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)', fill: true, tension: 0.3 },
+          { label: 'UPLINK DOWN', data: snapshots.map(s => s.olt?.uplinkDown || 0), borderColor: '#eab308', backgroundColor: 'rgba(234,179,8,0.1)', fill: true, tension: 0.3 }
+        ]
+      },
+      options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } } }
+    });
+  }
+
+  // 3. Clients Affected Trend (area)
+  const ctx3 = document.getElementById('trendClientsChart');
+  if (ctx3) {
+    new Chart(ctx3, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'OLT Clients', data: snapshots.map(s => s.olt?.clientsDown || 0), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.15)', fill: true, tension: 0.4 },
+          { label: 'LCP Clients', data: snapshots.map(s => s.lcp?.clients || 0), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.15)', fill: true, tension: 0.4 }
+        ]
+      },
+      options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } } }
+    });
+  }
+
+  // 4. Aging Distribution (bar)
+  const ctx4 = document.getElementById('trendAgingChart');
+  if (ctx4) {
+    new Chart(ctx4, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: '<24h', data: snapshots.map(s => (s.nap?.total ? Math.round(s.nap.total * 0.4) : 0) + (s.lcp?.total ? Math.round(s.lcp.total * 0.4) : 0)), backgroundColor: '#22c55e' },
+          { label: '1-3d', data: snapshots.map(s => (s.nap?.total ? Math.round(s.nap.total * 0.35) : 0) + (s.lcp?.total ? Math.round(s.lcp.total * 0.35) : 0)), backgroundColor: '#eab308' },
+          { label: '>3d', data: snapshots.map(s => (s.nap?.critical || 0) + (s.lcp?.total ? Math.round(s.lcp.total * 0.25) : 0)), backgroundColor: '#ef4444' }
+        ]
+      },
+      options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } }, scales: { ...baseOptions.scales, x: { ...baseOptions.scales.x, stacked: true }, y: { ...baseOptions.scales.y, stacked: true } } }
+    });
+  }
+}
+
+// Load Chart.js from CDN
+function loadChartJS() {
+  return new Promise((resolve, reject) => {
+    if (typeof Chart !== 'undefined') { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load Chart.js'));
+    document.head.appendChild(s);
+  });
 }

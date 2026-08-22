@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'gvsi-shell-v2.5.0';
+const STATIC_CACHE = 'gvsi-shell-v3.1.0';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
@@ -11,7 +11,9 @@ const STATIC_ASSETS = [
 './olt-module.js',
 './node-module.js',
 './backbone-module.js',
-'./analytics-module.js'
+'./analytics-module.js',
+'./db.js',
+'./notifications.js'
 ];
 
 self.addEventListener('install', (e) => {
@@ -34,6 +36,36 @@ self.addEventListener('activate', (e) => {
         })
       );
     }).then(() => self.clients.claim())
+  );
+});
+
+// Push Notification Handler
+self.addEventListener('push', (e) => {
+  let data = { title: 'GVSI NetPulse', body: 'New incident detected' };
+  if (e.data) {
+    try { data = e.data.json(); } catch (err) { data.body = e.data.text(); }
+  }
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      tag: data.tag || 'netpulse-alert',
+      data: data.data || {}
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window' }).then(clientList => {
+      if (clientList.length > 0) {
+        clientList[0].focus();
+      } else {
+        clients.openWindow('./index.html');
+      }
+    })
   );
 });
 

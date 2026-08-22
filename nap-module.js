@@ -1,15 +1,17 @@
 // ====================== NAP MODULE ======================
 
 async function fetchNapData(forceRefresh = false) {
-  // Show cached data instantly (no loader)
+  // Show cached data instantly (no skeleton)
   if (!forceRefresh && dataCache.nap) {
     renderNapReport(dataCache.nap);
     // Still fetch fresh data in background
     fetchWithRetry(BASE_API_URL + "?type=nap")
       .then(data => { if (data) { dataCache.nap = data; renderNapReport(data); } })
-      .catch(() => {}); // silent fail on bg refresh
+      .catch(() => {});
     return;
   }
+
+  // No skeleton for NAP — has hardcoded HTML elements
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=nap");

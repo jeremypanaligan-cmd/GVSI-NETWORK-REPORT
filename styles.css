@@ -1,6 +1,6 @@
 /* ============================
    GVSI NetPulse - Main Stylesheet
-   Version 2.5.0
+   Version 3.1.0
    ============================ */
 
 :root {
@@ -92,20 +92,20 @@ body {
   line-height: 1;
 }
 
-/* GALLOPVISION Style - Pure Black sa Light Mode */
+/* GALLOPVISION Style - Dark sa Light Mode */
 .brand-gallop {
-  font-family: 'Cinzel', serif;
-  font-weight: 800;
-  font-size: 15px;
-  letter-spacing: 1px;
-  color: #000000 !important;
+  font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: #2d1f0e !important;
   line-height: 1;
   transition: color 0.3s ease;
 }
 
-/* GALLOPVISION Style - Pure White sa Dark Mode */
+/* GALLOPVISION Style - White sa Dark Mode */
 body.dark-mode .brand-gallop {
-  color: #ffffff !important;
+  color: #f1f5f9 !important;
 }
 
 /* Vertical Divider Line */
@@ -1261,4 +1261,260 @@ body.dark-mode .remarks-paragraph-box {
   .analytics-stats-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ========================
+   SKELETON LOADING
+   ======================== */
+
+.skeleton-container {
+  padding: 12px;
+}
+
+/* Shimmer animation */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--border-color) 25%, var(--row-hover) 50%, var(--border-color) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Skeleton stat cards */
+.skeleton-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.skeleton-stat {
+  height: 60px;
+  border-radius: 8px;
+}
+
+/* Skeleton table rows */
+.skeleton-table-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.skeleton-thead {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--primary-teal);
+  opacity: 0.7;
+}
+
+.skeleton-th {
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.3);
+  flex: 1;
+}
+
+.skeleton-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.skeleton-row:last-child {
+  border-bottom: none;
+}
+
+.skeleton-cell {
+  height: 16px;
+  border-radius: 4px;
+  flex: 1;
+}
+
+.skeleton-cell.wide { flex: 2; }
+.skeleton-cell.narrow { flex: 0.5; }
+.skeleton-cell.badge { width: 50px; flex: none; height: 22px; border-radius: 12px; }
+
+/* Skeleton donut placeholder */
+.skeleton-donut {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.skeleton-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.skeleton-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skeleton-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.skeleton-text {
+  height: 12px;
+  border-radius: 4px;
+  flex: 1;
+}
+
+/* ========================
+   BOTTOM NAVIGATION (Mobile)
+   ======================== */
+
+.bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Hide top tabs on mobile */
+  .nav-tabs-container {
+    display: none !important;
+  }
+
+  /* Show bottom nav */
+  .bottom-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    background: var(--header-bg);
+    border-top: 1px solid var(--border-color);
+    padding: 6px 0;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+
+  .bottom-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    min-width: 48px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .bottom-nav-btn.active {
+    color: var(--primary-teal);
+    background: rgba(13, 138, 128, 0.1);
+  }
+
+  .bottom-nav-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Adjust main container for bottom nav */
+  .main-container {
+    padding-bottom: 70px;
+  }
+}
+
+/* ========================
+   TAB ANIMATIONS
+   ======================== */
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+  animation: tabFadeIn 0.3s ease forwards;
+}
+
+@keyframes tabFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================
+   ALERT THRESHOLDS
+   ======================== */
+
+.alert-high {
+  background: rgba(239, 68, 68, 0.08) !important;
+  border-left: 3px solid var(--badge-red-text) !important;
+}
+
+.alert-medium {
+  background: rgba(234, 179, 8, 0.08) !important;
+  border-left: 3px solid var(--badge-yellow-text) !important;
+}
+
+.alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--badge-red-text);
+  margin-left: 6px;
+}
+
+.alert-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ========================
+   CLIPBOARD COPY
+   ======================== */
+
+.copyable-ticket {
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.2s ease;
+}
+
+.copyable-ticket:hover {
+  color: var(--primary-teal);
+  text-decoration: underline;
+}
+
+.copyable-ticket::after {
+  content: '📋';
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.copyable-ticket:hover::after {
+  opacity: 0.6;
 }

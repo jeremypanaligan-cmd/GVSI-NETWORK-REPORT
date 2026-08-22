@@ -10,6 +10,8 @@ async function fetchOltData(forceRefresh = false) {
     return;
   }
 
+  // No skeleton for OLT — has hardcoded HTML elements
+
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
 
@@ -45,6 +47,12 @@ function processAndRenderOlt() {
   document.getElementById('oltCardDown').textContent = countDown;
   document.getElementById('oltCardLowPower').textContent = countLowPower;
   document.getElementById('oltCardUplinkDown').textContent = countUplinkDown;
+
+  // Apply alert thresholds to stat cards
+  const cardDown = document.getElementById('cardOltDown');
+  if (cardDown) cardDown.className = 'stat-card clickable ' + getAlertClass('oltDown', countDown);
+  const cardLP = document.getElementById('cardOltLowPower');
+  if (cardLP) cardLP.className = 'stat-card clickable ' + getAlertClass('oltLowPower', countLowPower);
   document.getElementById('oltCardDegradation').textContent = countDegradation;
   document.getElementById('oltCardClientsDown').textContent = totalClientsDown;
 
@@ -155,7 +163,7 @@ function renderOltTable() {
     else if (status.includes('DEGRADATION')) badgeType = 'purple';
 
     const tr = document.createElement('tr');
-    tr.className = 'clickable-row';
+    tr.className = 'clickable-row ' + getAlertClass('clientsDown', clientsAffectedNum);
     tr.onclick = () => openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks);
     tr.innerHTML = `
       <td data-label="Province">${province}</td>

@@ -9,6 +9,8 @@ async function fetchLcpData(forceRefresh = false) {
     return;
   }
 
+  // No skeleton for LCP — has hardcoded HTML elements
+
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=lcp");
 

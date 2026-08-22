@@ -24,6 +24,9 @@ async function fetchBackboneData(forceRefresh = false) {
     return;
   }
 
+  // Show skeleton on first load
+  if (!dataCache.backbone) showSkeleton('backbone');
+
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=backbone");
 
@@ -132,7 +135,7 @@ function renderBackboneReport(data) {
     const linkChips = rawLinks.split(',')
       .map(link => link.trim())
       .filter(link => link !== '')
-      .map(link => `<span class="link-chip">${link}</span>`)
+      .map(link => `<span class="link-chip">${typeof sanitizeHTML === 'function' ? sanitizeHTML(link) : link}</span>`)
       .join('');
 
     // Ligtas na pag-escape para sa onclick parameters
@@ -148,8 +151,9 @@ function renderBackboneReport(data) {
     // Badge color para sa service type
     const serviceBadge = service === 'DWDM' ? 'purple' : (service === 'MPLS' ? 'orange' : 'gray');
 
+    const rowAlert = countLinks > 3 ? ' alert-high' : (countLinks > 1 ? ' alert-medium' : '');
     tableHtml += `
-      <tr class="clickable-row" onclick="openBackboneModal('${safeProvince}', '${safeTicket}', '${safeService}', '${safeImpact}', '${safeDowntime}', '${safeAging}', '${safeLinks}', '${safeRemarks}')">
+      <tr class="clickable-row${rowAlert}" onclick="openBackboneModal('${safeProvince}', '${safeTicket}', '${safeService}', '${safeImpact}', '${safeDowntime}', '${safeAging}', '${safeLinks}', '${safeRemarks}')">
         <td data-label="Province"><strong>${province}</strong></td>
         <td data-label="Links Aff.">
           <div class="link-chip-container">
