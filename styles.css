@@ -1,6 +1,6 @@
 /* ============================
    GVSI NetPulse - Main Stylesheet
-   Version 2.4.1
+   Version 2.5.0
    ============================ */
 
 :root {
@@ -933,4 +933,332 @@ body.dark-mode .remarks-paragraph-box {
 .export-btn svg {
   width: 14px;
   height: 14px;
+}
+
+/* ========================
+   ANALYTICS DASHBOARD
+   ======================== */
+
+.analytics-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+/* Overview Stat Cards — 2-column grid */
+.analytics-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+/* Section Titles */
+.analytics-section-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  margin-top: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Module Snapshot Grid — 5 columns */
+.analytics-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.analytics-snapshot-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px 8px;
+  text-align: center;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.snapshot-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 8px;
+}
+
+.snapshot-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.snapshot-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--dark-charcoal);
+  margin: 4px 0;
+}
+
+.snapshot-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Donut Charts Row — 2 columns */
+.analytics-charts-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.analytics-chart-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.analytics-chart-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.analytics-chart-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.analytics-donut {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.5s ease;
+}
+
+.analytics-donut-center {
+  position: absolute;
+  inset: 24%;
+  border-radius: 50%;
+  background: var(--card-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.donut-label {
+  font-size: 8px;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.donut-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primary-teal);
+}
+
+.analytics-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dark-charcoal);
+  flex: 1;
+  min-width: 0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Aging Timeline */
+.analytics-aging-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 18px;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.analytics-aging-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aging-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aging-bar-track {
+  height: 22px;
+  background: var(--light-bg);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.aging-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.6s ease;
+  min-width: 2px;
+}
+
+.aging-bar-green { background: var(--badge-green-text); }
+.aging-bar-yellow { background: var(--badge-yellow-text); }
+.aging-bar-red { background: var(--badge-red-text); }
+
+.aging-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.aging-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.aging-label.green { color: var(--badge-green-text); }
+.aging-label.yellow { color: var(--badge-yellow-text); }
+.aging-label.red { color: var(--badge-red-text); }
+
+.aging-val {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--dark-charcoal);
+}
+.aging-val small {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Top Provinces Bar Chart */
+.analytics-bar-chart-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 18px;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.bar-chart-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.bar-chart-row:last-child {
+  margin-bottom: 0;
+}
+
+.bar-chart-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--dark-charcoal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-chart-track {
+  height: 16px;
+  background: var(--light-bg);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.bar-chart-fill {
+  height: 100%;
+  background: var(--primary-teal);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+  min-width: 2px;
+}
+
+.bar-chart-value {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--primary-teal);
+  text-align: right;
+}
+
+/* ========================
+   RESPONSIVE — ANALYTICS
+   ======================== */
+
+@media (max-width: 640px) {
+  .analytics-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .analytics-snapshot-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .analytics-charts-row {
+    grid-template-columns: 1fr;
+  }
+  .analytics-chart-body {
+    flex-direction: column;
+    align-items: center;
+  }
+  .analytics-donut {
+    width: 130px;
+    height: 130px;
+  }
+  .bar-chart-row {
+    grid-template-columns: 80px 1fr 36px;
+  }
+}
+
+@media (max-width: 380px) {
+  .analytics-snapshot-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .analytics-stats-grid {
+    grid-template-columns: 1fr;
+  }
 }

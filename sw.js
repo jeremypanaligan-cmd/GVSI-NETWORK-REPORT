@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'gvsi-shell-v2.4.1';
+const STATIC_CACHE = 'gvsi-shell-v2.5.0';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
@@ -10,7 +10,8 @@ const STATIC_ASSETS = [
 './lcp-module.js',
 './olt-module.js',
 './node-module.js',
-'./backbone-module.js'
+'./backbone-module.js',
+'./analytics-module.js'
 ];
 
 self.addEventListener('install', (e) => {

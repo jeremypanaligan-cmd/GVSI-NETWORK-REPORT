@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=2.4.1">
+  <link rel="stylesheet" href="styles.css?v=2.5.0">
 </head>
 <body>
 
@@ -50,6 +50,7 @@
     <button class="tab-btn" onclick="switchTab('olt', event)">OLT</button>
     <button class="tab-btn" onclick="switchTab('node', event)">NODE</button>
     <button class="tab-btn" onclick="switchTab('backbone', event)">BACKBONE LINKS</button>
+    <button class="tab-btn" onclick="switchTab('analytics', event)">ANALYTICS</button>
     <button class="tab-btn" onclick="switchTab('about', event)">ABOUT</button>
   </nav>
 
@@ -288,7 +289,12 @@
       <!-- Backbone module will render here via backbone-module.js -->
     </div>
 
-    <!-- 6. ABOUT TAB -->
+    <!-- 6. ANALYTICS TAB -->
+    <div id="tab-analytics" class="tab-content">
+      <!-- Analytics dashboard will render here via analytics-module.js -->
+    </div>
+
+    <!-- 7. ABOUT TAB -->
     <div id="tab-about" class="tab-content">
       <div class="page-title">About System</div>
       <div class="about-card">
@@ -306,26 +312,38 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.4.1 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.5.0 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Analytics Dashboard (New):</strong> Full analytics overview aggregating data from all modules — NAP, LCP, OLT, Node, and Backbone — in one unified dashboard with charts and visual insights.</li>
+                  <li><strong>Module Snapshot Cards:</strong> Quick-glance summary cards with icons showing key metrics for each module at a single view.</li>
+                  <li><strong>Donut Charts:</strong> Visual OLT Status Distribution and Backbone Service Type breakdown with percentage indicators.</li>
+                  <li><strong>Aging Timeline:</strong> Horizontal progress bars showing NAP + LCP aging distribution (<24hrs, 1-3 days, >3 days) with percentages.</li>
+                  <li><strong>Top Provinces Chart:</strong> Horizontal bar chart ranking the top 10 provinces by total incident count across all modules.</li>
+                  <li><strong>Critical Tickets Table:</strong> Highlighted OLT tickets with the longest aging for quick attention.</li>
+                  <li><strong>Responsive Analytics Layout:</strong> Charts and cards adapt to 2-column grid on desktop, stacked on mobile.</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 2.4.1 — Performance & Stability:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Fixed App Startup Crash:</strong> Resolved ReferenceError that prevented data from loading on app open.</li>
                   <li><strong>Instant Cache Rendering:</strong> Cached data now displays immediately on tab switch — no loader wait.</li>
                   <li><strong>Parallel Prefetch:</strong> All tabs now prefetch within 1 second (was 7.5 seconds sequential).</li>
                   <li><strong>CSV Export on All Tabs:</strong> Added export buttons to LCP, OLT, NODE, and Backbone modules.</li>
-                  <li><strong>Search Bars on All Tables:</strong> Real-time search now works on every tab including dynamically rendered tables.</li>
+                  <li><strong>Smart Search Bar Injection:</strong> Search bars now auto-attach to dynamically rendered tables on every tab switch.</li>
                   <li><strong>Smart Foreground Refresh:</strong> Only refreshes data when app returns after 2+ minutes of background.</li>
                   <li><strong>Centralized Loader Control:</strong> Eliminated loader flicker from parallel module fetches.</li>
+                  <li><strong>Error Logging in Catch Blocks:</strong> All silent catch blocks now log errors to console for easier debugging.</li>
                 </ul>
-                <p style="margin-top: 10px;"><strong>Version 2.4.0:</strong></p>
+                <p style="margin-top: 10px;"><strong>Version 2.4.0 — Modularization & UX:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                  <li><strong>Modular Architecture:</strong> Extracted NAP, LCP, and OLT modules into separate .js files.</li>
+                  <li><strong>Modular Architecture:</strong> Extracted NAP, LCP, and OLT modules into separate .js files for cleaner codebase.</li>
                   <li><strong>Pull-to-Refresh:</strong> Swipe down on mobile to refresh current tab data instantly.</li>
                   <li><strong>Error Toast/Snackbar:</strong> Visible error and success messages for all user actions.</li>
                   <li><strong>Search/Filter:</strong> Real-time search bar on all data tables for quick filtering.</li>
                   <li><strong>CSV Export:</strong> Export any tab's data to CSV with one click.</li>
                   <li><strong>Debounced Refresh:</strong> Prevents API spam with 500ms debounce on refresh button.</li>
-                  <li><strong>Retry with Backoff:</strong> Automatic retry on failed API requests (3 attempts).</li>
+                  <li><strong>Retry with Backoff:</strong> Automatic retry on failed API requests (3 attempts with exponential backoff).</li>
                   <li><strong>External CSS:</strong> Extracted all styles to styles.css for better caching and maintainability.</li>
+                  <li><strong>styles.css Service Worker Cache:</strong> Added styles.css to PWA static assets for instant offline loading.</li>
                 </ul>
                 <p style="margin-top: 10px;"><strong>Version 2.3.2:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
@@ -489,10 +507,11 @@
 <script src="olt-module.js"></script>
 <script src="node-module.js"></script>
 <script src="backbone-module.js"></script>
+<script src="analytics-module.js"></script>
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.4.1"; 
+  const REQUIRED_APP_VERSION = "2.5.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -656,6 +675,7 @@ function switchTab(tabName, event) {
   else if (tabName === 'olt') fetchOltData();
   else if (tabName === 'node') fetchNodeData();
   else if (tabName === 'backbone') fetchBackboneData();
+  else if (tabName === 'analytics') fetchAnalyticsData();
 
   // Re-add search bars after dynamic render
   setTimeout(() => addSearchBarsForTab(tabName), 300);
@@ -671,6 +691,7 @@ function refreshCurrentTab() {
     else if (currentTab === 'olt') fetchOltData(true);
     else if (currentTab === 'node') fetchNodeData(true);
     else if (currentTab === 'backbone') fetchBackboneData(true);
+    else if (currentTab === 'analytics') fetchAnalyticsData(true);
   }, 500);
 }
 
@@ -790,7 +811,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.4.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.5.0').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
