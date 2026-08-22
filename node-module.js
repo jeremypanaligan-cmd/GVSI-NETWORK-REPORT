@@ -15,8 +15,7 @@ async function fetchNodeData(forceRefresh = false) {
   if (loader && !forceRefresh) loader.classList.remove('hidden');
 
   try {
-    const response = await fetch(BASE_API_URL + "?type=node");
-    const data = await response.json();
+    const data = await fetchWithRetry(BASE_API_URL + "?type=node");
 
     if (Array.isArray(data) && data.length > 0) {
       dataCache.node = data;

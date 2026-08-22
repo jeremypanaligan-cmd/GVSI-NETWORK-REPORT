@@ -22,8 +22,7 @@ async function fetchBackboneData(forceRefresh = false) {
   if (loader && !forceRefresh) loader.classList.remove('hidden');
 
   try {
-    const response = await fetch(BASE_API_URL + "?type=backbone");
-    const data = await response.json();
+    const data = await fetchWithRetry(BASE_API_URL + "?type=backbone");
 
     if (Array.isArray(data) && data.length > 0) {
       dataCache.backbone = data;

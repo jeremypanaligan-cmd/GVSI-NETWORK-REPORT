@@ -1,6 +1,7 @@
 const STATIC_CACHE = 'gvsi-shell-v2.3.2';
 const STATIC_ASSETS = [
   './index.html',
+  './styles.css',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
