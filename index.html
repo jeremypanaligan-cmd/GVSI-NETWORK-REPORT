@@ -1116,15 +1116,20 @@ body.dark-mode .remarks-paragraph-box {
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.3.0 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.3.1 — What's New & System Updates:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                  <li><strong>Backbone Summary Stat Cards:</strong> Added 5 summary stat cards at the top of the Backbone Links tab showing Total Links Affected, DWDM Low Power, DWDM Link Down, MPLS Low Power, and MPLS Link Down counts for at-a-glance monitoring.</li>
-                  <li><strong>Backbone Empty State Landing Page:</strong> Designed a clean, professional landing page when there are no pending backbone incidents — displays a green checkmark with "All Backbone Links Operational" and DWDM/MPLS status indicators.</li>
-                  <li><strong>Backbone Link Chips Wrapping:</strong> Long link descriptions (e.g., interface names like "CVI001-NPE01 GigabitEthernet0/2/1") now wrap properly within the table instead of overflowing into adjacent columns.</li>
-                  <li><strong>Backbone Downtime & Aging in Modal:</strong> Added Downtime (Col N) and Aging Duration (Col X) fields to the Backbone Link Details modal for complete ticket visibility.</li>
-                  <li><strong>Backbone Table Cleanup:</strong> Removed Downtime column from the table view (kept in modal only) and aligned the total links count to the Aging column for cleaner layout.</li>
-                  <li><strong>Residual Data Filter Fix:</strong> Strengthened the backend filter to exclude phantom rows caused by leftover data in Links (Y) and Count (Z) columns when source ticket data has been deleted.</li>
-                  <li><strong>PWA Cache Update:</strong> Service Worker cache version bumped to v2.3.0 — existing users will receive an automatic "App Update Available" prompt on next launch.</li>
+                  <li><strong>Mobile Responsive Stat Cards:</strong> Backbone stat cards now use a responsive 3+2 grid layout on mobile devices, preventing overflow and ensuring all 5 cards are fully visible without horizontal scroll.</li>
+                  <li><strong>Mobile Link Chips Horizontal Scroll:</strong> Long link descriptions no longer compress the table on mobile — chips now scroll horizontally for a cleaner, more compact layout.</li>
+                  <li><strong>Mobile Table Layout Fix:</strong> Backbone table is now exempt from the ultra-small card-view mode, maintaining proper column alignment and scrollability on all screen sizes.</li>
+                  <li><strong>Link Chip Compact Styling:</strong> Reduced link chip font size and padding for tighter, more readable display across all devices.</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 2.3.0:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Backbone Summary Stat Cards:</strong> Added 5 summary stat cards at the top of the Backbone Links tab showing Total Links Affected, DWDM Low Power, DWDM Link Down, MPLS Low Power, and MPLS Link Down counts.</li>
+                  <li><strong>Backbone Empty State Landing Page:</strong> Clean landing page when no pending backbone incidents — green checkmark with "All Backbone Links Operational" and DWDM/MPLS status indicators.</li>
+                  <li><strong>Backbone Downtime & Aging in Modal:</strong> Added Downtime (Col N) and Aging Duration (Col X) fields to the Backbone Link Details modal.</li>
+                  <li><strong>Backbone Table Cleanup:</strong> Removed Downtime column from table view, aligned total links count to Aging column.</li>
+                  <li><strong>Residual Data Filter Fix:</strong> Excluded phantom rows from stale Links (Y) and Count (Z) values when source ticket data is deleted.</li>
                 </ul>
                 <p style="margin-top: 12px; font-size: 11px; color: var(--text-muted); font-weight: 600;">Previous Updates:</p>
                 <p><strong>Version 2.2.0:</strong></p>
@@ -1259,7 +1264,7 @@ body.dark-mode .remarks-paragraph-box {
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.3.0"; 
+  const REQUIRED_APP_VERSION = "2.3.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1952,7 +1957,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.3.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.3.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
