@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.1.0">
+  <link rel="stylesheet" href="styles.css?v=3.1.1">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -317,7 +317,7 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 3.1.0 — What's New:</strong></p>
+            <p><strong>Version 3.1.1 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Skeleton Loading (New):</strong> Shimmer placeholders replace spinner — professional loading state with animated skeleton cards and tables.</li>
                   <li><strong>Clipboard Copy:</strong> Click any ticket number in modals (OLT, Node, Backbone) to copy to clipboard with toast confirmation.</li>
@@ -430,6 +430,10 @@
     <button class="bottom-nav-btn" onclick="switchTab('analytics', event)" data-tab="analytics">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       <span>CHARTS</span>
+    </button>
+    <button class="bottom-nav-btn" onclick="switchTab('about', event)" data-tab="about">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>ABOUT</span>
     </button>
   </nav>
 
@@ -563,7 +567,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.1.0"; 
+  const REQUIRED_APP_VERSION = "3.1.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -882,7 +886,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.1.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.1.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1093,36 +1097,73 @@ function closeNodeModal(event) {
   function initPullToRefresh() {
     const main = document.querySelector('.main-container');
     if (!main) return;
+    const THRESHOLD = 120; // kailangan i-pull ng 120px bago mag-refresh
+    const HOLD_MS = 300;   // kailangan i-hold ng 300ms bago mag-trigger
+    let _ptrReady = false;
+    let _ptrHoldTimer = null;
+
     main.addEventListener('touchstart', e => {
       if (main.scrollTop <= 0) {
         _ptrStartY = e.touches[0].clientY;
         _ptrPulling = true;
+        _ptrReady = false;
       }
     }, { passive: true });
+
     main.addEventListener('touchmove', e => {
       if (!_ptrPulling) return;
       const diff = e.touches[0].clientY - _ptrStartY;
-      if (diff > 60 && main.scrollTop <= 0) {
+
+      if (diff > 20 && main.scrollTop <= 0) {
+        // Show progress indicator
         if (!_ptrIndicator) {
           _ptrIndicator = document.createElement('div');
           _ptrIndicator.className = 'ptr-indicator pulling';
-          _ptrIndicator.innerHTML = '<div class="ptr-spinner"></div>';
+          _ptrIndicator.innerHTML = '<div class="ptr-spinner"></div><span class="ptr-text">Pull down to refresh</span>';
           main.prepend(_ptrIndicator);
+        }
+
+        // Update progress visual
+        const pct = Math.min(diff / THRESHOLD, 1);
+        _ptrIndicator.style.opacity = pct;
+        const text = _ptrIndicator.querySelector('.ptr-text');
+        if (text) {
+          text.textContent = pct >= 1 ? 'Release to refresh' : 'Pull down to refresh';
+        }
+
+        // Check if threshold reached
+        if (diff >= THRESHOLD && !_ptrReady) {
+          _ptrReady = true;
+          _ptrIndicator.classList.add('ready');
+          // Require hold before triggering
+          _ptrHoldTimer = setTimeout(() => {
+            _ptrReady = false;
+          }, HOLD_MS + 100);
         }
       }
     }, { passive: true });
+
     main.addEventListener('touchend', () => {
-      if (_ptrIndicator && _ptrIndicator.classList.contains('pulling')) {
-        _ptrIndicator.classList.remove('pulling');
+      clearTimeout(_ptrHoldTimer);
+
+      if (_ptrReady && _ptrIndicator && _ptrIndicator.classList.contains('ready')) {
+        _ptrIndicator.classList.remove('pulling', 'ready');
         _ptrIndicator.classList.add('refreshing');
+        const text = _ptrIndicator.querySelector('.ptr-text');
+        if (text) text.textContent = 'Refreshing...';
         showToast('Refreshing...', 'info', 1500);
         refreshCurrentTab();
         setTimeout(() => {
           if (_ptrIndicator) { _ptrIndicator.remove(); _ptrIndicator = null; }
           showToast('Data updated!', 'success', 1500);
         }, 2000);
+      } else if (_ptrIndicator) {
+        _ptrIndicator.remove();
+        _ptrIndicator = null;
       }
+
       _ptrPulling = false;
+      _ptrReady = false;
     }, { passive: true });
   }
   initPullToRefresh();

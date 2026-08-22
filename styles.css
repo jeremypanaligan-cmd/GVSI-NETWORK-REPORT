@@ -1,6 +1,6 @@
 /* ============================
    GVSI NetPulse - Main Stylesheet
-   Version 3.1.0
+   Version 3.1.1
    ============================ */
 
 :root {
@@ -805,11 +805,19 @@ body.dark-mode .remarks-paragraph-box {
 }
 .ptr-indicator {
   position: absolute;
-  top: -50px;
+  top: -60px;
   left: 50%;
   transform: translateX(-50%);
-  width: 36px;
-  height: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 5;
+  transition: opacity 0.2s ease, top 0.2s ease;
+}
+.ptr-indicator .ptr-spinner {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--card-bg);
   border: 2px solid var(--border-color);
@@ -817,23 +825,32 @@ body.dark-mode .remarks-paragraph-box {
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  transition: top 0.2s ease, transform 0.2s ease;
-  z-index: 5;
+}
+.ptr-indicator .ptr-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  background: var(--card-bg);
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
 .ptr-indicator.pulling {
-  top: 8px;
+  top: 12px;
+}
+.ptr-indicator.ready .ptr-spinner {
+  border-color: var(--primary-teal);
+  background: rgba(13, 138, 128, 0.1);
+}
+.ptr-indicator.ready .ptr-text {
+  color: var(--primary-teal);
+  border-color: var(--primary-teal);
 }
 .ptr-indicator.refreshing .ptr-spinner {
   animation: spin 0.8s linear infinite;
 }
-.ptr-spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--border-color);
-  border-top: 2px solid var(--primary-teal);
-  border-radius: 50%;
-}
-
 /* ========================
    TOAST / SNACKBAR
    ======================== */
@@ -1387,6 +1404,11 @@ body.dark-mode .remarks-paragraph-box {
 @media (max-width: 768px) {
   /* Hide top tabs on mobile */
   .nav-tabs-container {
+    display: none !important;
+  }
+
+  /* Hide refresh button on mobile */
+  .refresh-btn {
     display: none !important;
   }
 
