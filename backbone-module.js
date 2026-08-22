@@ -15,11 +15,14 @@ async function fetchBackboneData(forceRefresh = false) {
     } else {
       renderBackboneEmptyState();
     }
+    fetchWithRetry(BASE_API_URL + "?type=backbone")
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
+        else { dataCache.backbone = []; renderBackboneEmptyState(); }
+      })
+      .catch(() => {});
     return;
   }
-
-  const loader = document.getElementById('loader');
-  if (loader && !forceRefresh) loader.classList.remove('hidden');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=backbone");
@@ -34,8 +37,6 @@ async function fetchBackboneData(forceRefresh = false) {
   } catch (error) {
     console.error('Error fetching BACKBONE data:', error);
     renderBackboneEmptyState();
-  } finally {
-    if (loader) loader.classList.add('hidden');
   }
 }
 

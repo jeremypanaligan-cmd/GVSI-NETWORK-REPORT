@@ -3,11 +3,11 @@
 async function fetchLcpData(forceRefresh = false) {
   if (!forceRefresh && dataCache.lcp) {
     renderLcpReport(dataCache.lcp.lcpAging, dataCache.lcp.lcpImpact);
+    fetchWithRetry(BASE_API_URL + "?type=lcp")
+      .then(data => { if (data && data.lcpAging) { dataCache.lcp = data; renderLcpReport(data.lcpAging, data.lcpImpact || []); } })
+      .catch(() => {});
     return;
   }
-
-  const loader = document.getElementById('loader');
-  if (loader) loader.classList.remove('hidden');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=lcp");
@@ -18,8 +18,6 @@ async function fetchLcpData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching LCP data:', error);
-  } finally {
-    if (loader) loader.classList.add('hidden');
   }
 }
 
@@ -120,5 +118,20 @@ function renderLcpReport(agingData, impactData) {
       <td style="text-align: center; color: var(--primary-teal);">${totalClients}</td>
     `;
     impactBody.appendChild(impactTotalTr);
+  }
+
+  // Add export toolbar
+  const lcpTab = document.getElementById('tab-lcp');
+  if (lcpTab && !lcpTab.querySelector('.export-toolbar')) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'export-toolbar';
+    toolbar.innerHTML = `
+      <button class="export-btn" onclick="exportTableToCSV('lcpAgingTableBody', 'LCP_Aging_Report')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    `;
+    const agingCard = lcpTab.querySelector('.table-card');
+    if (agingCard) agingCard.parentNode.insertBefore(toolbar, agingCard);
   }
 }

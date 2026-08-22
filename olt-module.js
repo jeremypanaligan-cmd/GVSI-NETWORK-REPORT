@@ -4,11 +4,11 @@ async function fetchOltData(forceRefresh = false) {
   if (!forceRefresh && dataCache.olt) {
     rawOltData = dataCache.olt;
     processAndRenderOlt();
+    fetchWithRetry(BASE_API_URL + "?type=olt")
+      .then(data => { if (Array.isArray(data) && data.length > 0) { dataCache.olt = data; rawOltData = data; processAndRenderOlt(); } })
+      .catch(() => {});
     return;
   }
-
-  const loader = document.getElementById('loader');
-  if (loader) loader.classList.remove('hidden');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
@@ -20,8 +20,6 @@ async function fetchOltData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching OLT data:', error);
-  } finally {
-    if (loader) loader.classList.add('hidden');
   }
 }
 
@@ -177,6 +175,21 @@ function renderOltTable() {
     <td style="text-align: center;">${filtered.length}</td>
   `;
   tbody.appendChild(totalTr);
+
+  // Add export toolbar
+  const oltTab = document.getElementById('tab-olt');
+  if (oltTab && !oltTab.querySelector('.export-toolbar')) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'export-toolbar';
+    toolbar.innerHTML = `
+      <button class="export-btn" onclick="exportTableToCSV('oltTableBody', 'OLT_Report')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    `;
+    const tableCard = oltTab.querySelector('.filter-toolbar');
+    if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard.nextSibling);
+  }
 }
 
 function openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks) {

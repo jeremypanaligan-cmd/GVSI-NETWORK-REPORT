@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=2.4.0">
+  <link rel="stylesheet" href="styles.css?v=2.4.1">
 </head>
 <body>
 
@@ -306,9 +306,19 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.4.0 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.4.1 — What's New & System Updates:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                  <li><strong>Modular Architecture:</strong> Extracted NAP, LCP, and OLT modules into separate .js files — cleaner codebase and faster parsing.</li>
+                  <li><strong>Fixed App Startup Crash:</strong> Resolved ReferenceError that prevented data from loading on app open.</li>
+                  <li><strong>Instant Cache Rendering:</strong> Cached data now displays immediately on tab switch — no loader wait.</li>
+                  <li><strong>Parallel Prefetch:</strong> All tabs now prefetch within 1 second (was 7.5 seconds sequential).</li>
+                  <li><strong>CSV Export on All Tabs:</strong> Added export buttons to LCP, OLT, NODE, and Backbone modules.</li>
+                  <li><strong>Search Bars on All Tables:</strong> Real-time search now works on every tab including dynamically rendered tables.</li>
+                  <li><strong>Smart Foreground Refresh:</strong> Only refreshes data when app returns after 2+ minutes of background.</li>
+                  <li><strong>Centralized Loader Control:</strong> Eliminated loader flicker from parallel module fetches.</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 2.4.0:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Modular Architecture:</strong> Extracted NAP, LCP, and OLT modules into separate .js files.</li>
                   <li><strong>Pull-to-Refresh:</strong> Swipe down on mobile to refresh current tab data instantly.</li>
                   <li><strong>Error Toast/Snackbar:</strong> Visible error and success messages for all user actions.</li>
                   <li><strong>Search/Filter:</strong> Real-time search bar on all data tables for quick filtering.</li>
@@ -474,9 +484,15 @@
   </div>
 </div>
 
+<script src="nap-module.js"></script>
+<script src="lcp-module.js"></script>
+<script src="olt-module.js"></script>
+<script src="node-module.js"></script>
+<script src="backbone-module.js"></script>
+
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.4.0"; 
+  const REQUIRED_APP_VERSION = "2.4.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -546,8 +562,19 @@ function showReinstallPrompt() {
   let currentTab = 'nap';
   let rawOltData = [];
   let currentOltFilter = 'DOWN';
+  let _isInitialLoad = true;
 
   const dataCache = { nap: null, lcp: null, olt: null, node: null, backbone: null };
+
+  // --- LOADER CONTROL (centralized) ---
+  function showLoader() {
+    const loader = document.getElementById('loader');
+    if (loader) loader.classList.remove('hidden');
+  }
+  function hideLoader() {
+    const loader = document.getElementById('loader');
+    if (loader) loader.classList.add('hidden');
+  }
 
   // --- UTILITY: Debounce ---
   let _debounceTimers = {};
@@ -557,7 +584,7 @@ function showReinstallPrompt() {
   }
 
   // --- UTILITY: Fetch with Retry ---
-  async function fetchWithRetry(url, retries = 2, delay = 800) {
+  async function fetchWithRetry(url, retries = 2, delay = 500) {
     for (let i = 0; i <= retries; i++) {
       try {
         const res = await fetch(url, { cache: 'no-store' });
@@ -629,6 +656,9 @@ function switchTab(tabName, event) {
   else if (tabName === 'olt') fetchOltData();
   else if (tabName === 'node') fetchNodeData();
   else if (tabName === 'backbone') fetchBackboneData();
+
+  // Re-add search bars after dynamic render
+  setTimeout(() => addSearchBarsForTab(tabName), 300);
 }
 
 function refreshCurrentTab() {
@@ -647,41 +677,17 @@ function refreshCurrentTab() {
   // 1. NAP Data Fetcher
 
   function prefetchOtherTabsInBackground() {
-  // LCP fetch pagkalipas ng 1.5 seconds
-  setTimeout(() => {
-    if (!dataCache.lcp) {
-      fetchWithRetry(BASE_API_URL + "?type=lcp")
-        .then(data => { if (data) dataCache.lcp = data; })
-        .catch(err => console.error('Prefetch LCP failed:', err));
-    }
-  }, 1500);
-
-  // OLT fetch pagkalipas ng 3.5 seconds
-  setTimeout(() => {
-    if (!dataCache.olt) {
-      fetchWithRetry(BASE_API_URL + "?type=olt")
-        .then(data => { if (data) dataCache.olt = data; })
-        .catch(err => console.error('Prefetch OLT failed:', err));
-    }
-  }, 3500);
-
-  // NODE fetch pagkalipas ng 5.5 seconds
-  setTimeout(() => {
-    if (!dataCache.node) {
-      fetchWithRetry(BASE_API_URL + "?type=node")
-        .then(data => { if (data) dataCache.node = data; })
-        .catch(err => console.error('Prefetch NODE failed:', err));
-    }
-  }, 5500);
-
-  // BACKBONE fetch pagkalipas ng 7.5 seconds
-  setTimeout(() => {
-    if (!dataCache.backbone) {
-      fetchWithRetry(BASE_API_URL + "?type=backbone")
-        .then(data => { if (data) dataCache.backbone = data; })
-        .catch(err => console.error('Prefetch BACKBONE failed:', err));
-    }
-  }, 7500);
+  // Parallel fetch — stagger ng 200ms para hindi sabay-sabay ang connection
+  const types = ['lcp', 'olt', 'node', 'backbone'];
+  types.forEach((type, i) => {
+    setTimeout(() => {
+      if (!dataCache[type]) {
+        fetchWithRetry(BASE_API_URL + "?type=" + type)
+          .then(data => { if (data) dataCache[type] = data; })
+          .catch(err => console.error('Prefetch ' + type.toUpperCase() + ' failed:', err));
+      }
+    }, 200 * (i + 1)); // 200ms, 400ms, 600ms, 800ms — lahat within 1 second
+  });
 }
       
 
@@ -749,6 +755,7 @@ function closeNodeModal(event) {
   }
 
   initTheme();
+  showLoader();
   fetchNapData();
 
   // I-refresh ang BAWAT tab sa sarili nitong interval, kahit di kasalukuyang view
@@ -767,18 +774,23 @@ function closeNodeModal(event) {
   setInterval(() => backgroundRefresh('node'), 10 * 60 * 1000); // 10 mins
   setInterval(() => backgroundRefresh('backbone'), 10 * 60 * 1000); // 10 mins
 
-  // PINAKA-IMPORTANTE: kapag bumalik sa foreground (galing minimize/lock),
-  // agad mag-refresh ng lahat — dahil posibleng na-suspend ang mga timer sa itaas
-  // habang naka-background, kaya hindi natin aasahan yung mismong interval.
+  // Kapag bumalik sa foreground — only refresh if more than 2 minutes ang lumipas
+  let _lastBgTime = Date.now();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      ['nap', 'lcp', 'olt', 'node', 'backbone'].forEach(backgroundRefresh);
+      const elapsed = Date.now() - _lastBgTime;
+      if (elapsed > 120000) { // 2 minutes
+        ['nap', 'lcp', 'olt', 'node', 'backbone'].forEach(backgroundRefresh);
+        _lastBgTime = Date.now();
+      }
+    } else {
+      _lastBgTime = Date.now();
     }
   });
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.4.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.4.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -835,15 +847,18 @@ function closeNodeModal(event) {
     if (countEl) countEl.textContent = q ? `${visible} of ${rows.length}` : '';
   }
 
-  // Auto-add search bars after each tab loads
-  const _origRender = { nap: null, lcp: null, olt: null, node: null, backbone: null };
+  // Add search bars per-tab
+  function addSearchBarsForTab(tabName) {
+    if (tabName === 'nap') addSearchBar('tab-nap .table-card', 'napTableBody');
+    else if (tabName === 'lcp') addSearchBar('tab-lcp .table-card', 'lcpAgingTableBody');
+    else if (tabName === 'olt') addSearchBar('tab-olt .table-card', 'oltTableBody');
+    else if (tabName === 'node') addSearchBar('tab-node .table-card', 'nodeTableBody');
+    else if (tabName === 'backbone') addSearchBar('tab-backbone .table-card', 'backboneTableBody');
+  }
+
+  // Auto-add search bars on initial load
   function addSearchBarsDeferred() {
-    setTimeout(() => {
-      addSearchBar('tab-nap .table-card', 'napTableBody');
-      addSearchBar('tab-lcp .table-card', 'lcpAgingTableBody');
-      addSearchBar('tab-olt .table-card', 'oltTableBody');
-      addSearchBar('tab-node .table-card', 'nodeTableBody');
-    }, 500);
+    setTimeout(() => addSearchBarsForTab('nap'), 500);
   }
 
   // ==================== EXPORT (CSV) ====================
@@ -920,12 +935,6 @@ function closeNodeModal(event) {
   // ==================== INITIALIZE UX ENHANCEMENTS ====================
   addSearchBarsDeferred();
 </script>
-
-<script src="nap-module.js"></script>
-<script src="lcp-module.js"></script>
-<script src="olt-module.js"></script>
-<script src="node-module.js"></script>
-<script src="backbone-module.js"></script>
 
 </body>
 </html>

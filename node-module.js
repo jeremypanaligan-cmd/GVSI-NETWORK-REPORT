@@ -1,18 +1,20 @@
 // Data cache para sa Node module
 
 async function fetchNodeData(forceRefresh = false) {
-  // Kung may cache at may laman, i-render ang report
   if (!forceRefresh && dataCache.node) {
     if (Array.isArray(dataCache.node) && dataCache.node.length > 0) {
       renderNodeReport(dataCache.node);
     } else {
       renderNodeEmptyState();
     }
+    fetchWithRetry(BASE_API_URL + "?type=node")
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
+        else { dataCache.node = []; renderNodeEmptyState(); }
+      })
+      .catch(() => {});
     return;
   }
-
-  const loader = document.getElementById('loader');
-  if (loader && !forceRefresh) loader.classList.remove('hidden');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=node");
@@ -21,14 +23,12 @@ async function fetchNodeData(forceRefresh = false) {
       dataCache.node = data;
       renderNodeReport(data);
     } else {
-      dataCache.node = []; // I-save bilang empty array
+      dataCache.node = [];
       renderNodeEmptyState();
     }
   } catch (error) {
     console.error('Error fetching NODE data:', error);
     renderNodeEmptyState();
-  } finally {
-    if (loader) loader.classList.add('hidden');
   }
 }
 

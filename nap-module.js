@@ -1,13 +1,15 @@
 // ====================== NAP MODULE ======================
 
 async function fetchNapData(forceRefresh = false) {
+  // Show cached data instantly (no loader)
   if (!forceRefresh && dataCache.nap) {
     renderNapReport(dataCache.nap);
+    // Still fetch fresh data in background
+    fetchWithRetry(BASE_API_URL + "?type=nap")
+      .then(data => { if (data) { dataCache.nap = data; renderNapReport(data); } })
+      .catch(() => {}); // silent fail on bg refresh
     return;
   }
-
-  const loader = document.getElementById('loader');
-  if (loader && !forceRefresh) loader.classList.remove('hidden');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=nap");
@@ -23,7 +25,8 @@ async function fetchNapData(forceRefresh = false) {
     console.error('Error fetching NAP data:', error);
     document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
   } finally {
-    if (loader) loader.classList.add('hidden');
+    hideLoader();
+    _isInitialLoad = false;
   }
 }
 
