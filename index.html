@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=2.3.2">
+  <link rel="stylesheet" href="styles.css?v=2.4.0">
 </head>
 <body>
 
@@ -306,9 +306,20 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.3.2 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.4.0 — What's New & System Updates:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                  <li><strong>Backbone Modal — Affected Links:</strong> Added Affected Links section in the Backbone Link Details modal, displayed as chips. Ready for multiple comma-separated links per ticket (up to 5+ links).</li>
+                  <li><strong>Modular Architecture:</strong> Extracted NAP, LCP, and OLT modules into separate .js files — cleaner codebase and faster parsing.</li>
+                  <li><strong>Pull-to-Refresh:</strong> Swipe down on mobile to refresh current tab data instantly.</li>
+                  <li><strong>Error Toast/Snackbar:</strong> Visible error and success messages for all user actions.</li>
+                  <li><strong>Search/Filter:</strong> Real-time search bar on all data tables for quick filtering.</li>
+                  <li><strong>CSV Export:</strong> Export any tab's data to CSV with one click.</li>
+                  <li><strong>Debounced Refresh:</strong> Prevents API spam with 500ms debounce on refresh button.</li>
+                  <li><strong>Retry with Backoff:</strong> Automatic retry on failed API requests (3 attempts).</li>
+                  <li><strong>External CSS:</strong> Extracted all styles to styles.css for better caching and maintainability.</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 2.3.2:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Backbone Modal — Affected Links:</strong> Added Affected Links section in the Backbone Link Details modal.</li>
                 </ul>
                 <p style="margin-top: 10px;"><strong>Version 2.3.1:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
@@ -465,7 +476,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.3.2"; 
+  const REQUIRED_APP_VERSION = "2.4.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -673,415 +684,8 @@ function refreshCurrentTab() {
   }, 7500);
 }
       
-  async function fetchNapData(forceRefresh = false) {
-    if (!forceRefresh && dataCache.nap) {
-      renderNapReport(dataCache.nap);
-      return;
-    }
 
-    const loader = document.getElementById('loader');
-    if (loader && !forceRefresh) loader.classList.remove('hidden');
 
-    try {
-      const data = await fetchWithRetry(BASE_API_URL + "?type=nap");
-
-      if (Array.isArray(data) && data.length > 0) {
-        dataCache.nap = data;
-        renderNapReport(data);
-        // Isabay ang background prefetching para sa LCP at OLT!
-        prefetchOtherTabsInBackground();
-      } else {
-        document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;">No data found.</td></tr>';
-      }
-    } catch (error) {
-      console.error('Error fetching NAP data:', error);
-      document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
-    } finally {
-      if (loader) loader.classList.add('hidden');
-    }
-  }
-
-  function renderNapReport(data) {
-    const tbody = document.getElementById('napTableBody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
-
-    data.forEach(row => {
-      const area = row.A || row.AREA || row.Area || '';
-      const provinceRaw = row.P || row.PROVINCE || row.Province || '';
-      const province = provinceRaw.toString().replace(/_/g, ' '); 
-
-      const h24 = parseInt(row.H || row['<24HOURS'] || 0) || 0;
-      const d13 = parseInt(row.D1 || row['1-3 DAYS'] || 0) || 0;
-      const d3 = parseInt(row.D3 || row['>3DAYS'] || 0) || 0;
-      const rowTotal = parseInt(row.T || row.TOTAL || (h24 + d13 + d3)) || 0;
-
-      if (area.toString().trim().toUpperCase() !== 'TOTAL') {
-        total24 += h24;
-        total13 += d13;
-        total3 += d3;
-        grandTotal += rowTotal;
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td data-label="Area"><strong>${area}</strong></td>
-          <td data-label="Province">${province}</td>
-          <td data-label="(<24HOURS)" style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
-          <td data-label="(1-3 DAYS)" style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
-          <td data-label="(>3DAYS)" style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
-          <td data-label="Total" style="text-align: center;"><strong>${rowTotal}</strong></td>
-        `;
-        tbody.appendChild(tr);
-      }
-    });
-
-    if (document.getElementById('card24')) document.getElementById('card24').textContent = total24;
-    if (document.getElementById('card13')) document.getElementById('card13').textContent = total13;
-    if (document.getElementById('card3')) document.getElementById('card3').textContent = total3;
-    if (document.getElementById('cardTotal')) document.getElementById('cardTotal').textContent = grandTotal;
-
-    const totalTr = document.createElement('tr');
-    totalTr.className = 'total-row';
-    totalTr.innerHTML = `
-      <td colspan="2">TOTAL</td>
-      <td style="text-align: center;">${total24}</td>
-      <td style="text-align: center;">${total13}</td>
-      <td style="text-align: center;">${total3}</td>
-      <td style="text-align: center;">${grandTotal}</td>
-    `;
-    tbody.appendChild(totalTr);
-  }
-
-  // 2. LCP Data Fetcher & Renderer
-  async function fetchLcpData(forceRefresh = false) {
-    if (!forceRefresh && dataCache.lcp) {
-      renderLcpReport(dataCache.lcp.lcpAging, dataCache.lcp.lcpImpact);
-      return;
-    }
-
-    const loader = document.getElementById('loader');
-    if (loader) loader.classList.remove('hidden');
-
-    try {
-      const data = await fetchWithRetry(BASE_API_URL + "?type=lcp");
-
-      if (data && data.lcpAging) {
-        dataCache.lcp = data;
-        renderLcpReport(data.lcpAging, data.lcpImpact || []);
-      }
-    } catch (error) {
-      console.error('Error fetching LCP data:', error);
-    } finally {
-      if (loader) loader.classList.add('hidden');
-    }
-  }
-
-  function renderLcpReport(agingData, impactData) {
-    const agingBody = document.getElementById('lcpAgingTableBody');
-    if (!agingBody) return;
-    agingBody.innerHTML = '';
-
-    let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
-
-    agingData.forEach(row => {
-      const area = row.A || row.AREA || '';
-      const provinceRaw = row.P || row.PROVINCE || '';
-      const province = provinceRaw.toString().replace(/_/g, ' '); 
-
-      const h24 = parseInt(row.H || row['<24HOURS'] || 0) || 0;
-      const d13 = parseInt(row.D1 || row['1-3 DAYS'] || 0) || 0;
-      const d3 = parseInt(row.D3 || row['>3DAYS'] || 0) || 0;
-      const rowTotal = parseInt(row.T || row.TOTAL || (h24 + d13 + d3)) || 0;
-
-      if (area.toString().trim().toUpperCase() !== 'TOTAL') {
-        total24 += h24;
-        total13 += d13;
-        total3 += d3;
-        grandTotal += rowTotal;
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td data-label="Area"><strong>${area}</strong></td>
-          <td data-label="Province">${province}</td>
-          <td data-label="(<24HOURS)" style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
-          <td data-label="(1-3 DAYS)" style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
-          <td data-label="(>3DAYS)" style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
-          <td data-label="Total" style="text-align: center;"><strong>${rowTotal}</strong></td>
-        `;
-        agingBody.appendChild(tr);
-      }
-    });
-
-    if (document.getElementById('lcpCard24')) document.getElementById('lcpCard24').textContent = total24;
-    if (document.getElementById('lcpCard13')) document.getElementById('lcpCard13').textContent = total13;
-    if (document.getElementById('lcpCard3')) document.getElementById('lcpCard3').textContent = total3;
-
-    const agingTotalTr = document.createElement('tr');
-    agingTotalTr.className = 'total-row';
-    agingTotalTr.innerHTML = `
-      <td colspan="2">TOTAL</td>
-      <td style="text-align: center;">${total24}</td>
-      <td style="text-align: center;">${total13}</td>
-      <td style="text-align: center;">${total3}</td>
-      <td style="text-align: center;">${grandTotal}</td>
-    `;
-    agingBody.appendChild(agingTotalTr);
-
-    const impactBody = document.getElementById('lcpImpactTableBody');
-    if (!impactBody) return;
-    impactBody.innerHTML = '';
-
-    let totalTT = 0, totalLCP = 0, totalClients = 0;
-
-    impactData.forEach(row => {
-      const area = row.A || row.AREA || '';
-      const provinceRaw = row.P || row.PROVINCE || '';
-      const province = provinceRaw.toString().replace(/_/g, ' ');
-
-      const ttCount = parseInt(row.TT || row['TT COUNT'] || 0) || 0;
-      const lcpCount = parseInt(row.LCP || row['LCP COUNT'] || 0) || 0;
-      const clients = parseInt(row.C || row.CLIENTS || 0) || 0;
-
-      if (area.toString().trim().toUpperCase() !== 'TOTAL') {
-        totalTT += ttCount;
-        totalLCP += lcpCount;
-        totalClients += clients;
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td data-label="Area"><strong>${area}</strong></td>
-          <td data-label="Province">${province}</td>
-          <td data-label="TT Count" style="text-align: center;">${ttCount}</td>
-          <td data-label="LCP Count" style="text-align: center;">${lcpCount}</td>
-          <td data-label="Clients" style="text-align: center; color: var(--primary-teal); font-weight: 700;">${clients}</td>
-        `;
-        impactBody.appendChild(tr);
-      }
-    });
-
-    if (document.getElementById('lcpCardClients')) document.getElementById('lcpCardClients').textContent = totalClients;
-    if (document.getElementById('lcpCardTT')) document.getElementById('lcpCardTT').textContent = totalTT;
-    if (document.getElementById('lcpCardLCP')) document.getElementById('lcpCardLCP').textContent = totalLCP;
-
-    if (impactData.length > 0) {
-      const impactTotalTr = document.createElement('tr');
-      impactTotalTr.className = 'total-row';
-      impactTotalTr.innerHTML = `
-        <td colspan="2">TOTAL</td>
-        <td style="text-align: center;">${totalTT}</td>
-        <td style="text-align: center;">${totalLCP}</td>
-        <td style="text-align: center; color: var(--primary-teal);">${totalClients}</td>
-      `;
-      impactBody.appendChild(impactTotalTr);
-    }
-  }
-
-  // 3. OLT Data Fetcher & Logic
-  async function fetchOltData(forceRefresh = false) {
-    if (!forceRefresh && dataCache.olt) {
-      rawOltData = dataCache.olt;
-      processAndRenderOlt();
-      return;
-    }
-
-    const loader = document.getElementById('loader');
-    if (loader) loader.classList.remove('hidden');
-
-    try {
-      const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
-
-      if (Array.isArray(data) && data.length > 0) {
-        dataCache.olt = data;
-        rawOltData = data;
-        processAndRenderOlt();
-      }
-    } catch (error) {
-      console.error('Error fetching OLT data:', error);
-    } finally {
-      if (loader) loader.classList.add('hidden');
-    }
-  }
-
-  function processAndRenderOlt() {
-    let countUp = 0, countDown = 0, countLowPower = 0, countUplinkDown = 0, countDegradation = 0;
-    let totalClientsDown = 0;
-    let totalOlt = rawOltData.length;
-
-    rawOltData.forEach(item => {
-      const status = (item.S || item.STATUS || '').toString().trim().toUpperCase();
-      if (status === 'DOWN') {
-        countDown++;
-        totalClientsDown += parseInt(item.CA || 0) || 0;
-      }
-      else if (status.includes('LOW POWER')) countLowPower++;
-      else if (status.includes('UPLINK DOWN')) countUplinkDown++;
-      else if (status.includes('DEGRADATION')) countDegradation++;
-      else countUp++;
-    });
-
-    document.getElementById('oltCardTotal').textContent = totalOlt;
-    document.getElementById('oltCardUp').textContent = countUp;
-    document.getElementById('oltCardDown').textContent = countDown;
-    document.getElementById('oltCardLowPower').textContent = countLowPower;
-    document.getElementById('oltCardUplinkDown').textContent = countUplinkDown;
-    document.getElementById('oltCardDegradation').textContent = countDegradation;
-    document.getElementById('oltCardClientsDown').textContent = totalClientsDown;
-
-    renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
-    renderOltTable();
-  }
-
-  function renderOltDonut(up, down, lowPower, uplinkDown, degradation, total) {
-    const chart = document.getElementById('oltDonutChart');
-    const legend = document.getElementById('oltDonutLegend');
-    const totalLabel = document.getElementById('oltDonutTotalLabel');
-    if (!chart || !legend) return;
-
-    if (totalLabel) totalLabel.textContent = total;
-
-    const segments = [
-      { label: 'UP', value: up, color: 'var(--badge-green-text)' },
-      { label: 'DOWN', value: down, color: 'var(--badge-red-text)' },
-      { label: 'LOW POWER', value: lowPower, color: 'var(--badge-orange-text)' },
-      { label: 'UPLINK DOWN', value: uplinkDown, color: 'var(--badge-yellow-text)' },
-      { label: 'DEGRADATION', value: degradation, color: 'var(--badge-purple-text)' }
-    ];
-
-    let gradientParts = [];
-    let cumulativePct = 0;
-    legend.innerHTML = '';
-
-    segments.forEach(seg => {
-      const pct = total > 0 ? (seg.value / total) * 100 : 0;
-      if (pct > 0) {
-        gradientParts.push(`${seg.color} ${cumulativePct}% ${cumulativePct + pct}%`);
-        cumulativePct += pct;
-      }
-      const legendItem = document.createElement('div');
-      legendItem.style.cssText = 'display:flex; align-items:center; gap:8px;';
-      legendItem.innerHTML = `
-        <span style="width:10px; height:10px; border-radius:50%; background:${seg.color}; display:inline-block; flex-shrink:0;"></span>
-        <span>${seg.label}: <strong>${seg.value}</strong> (${pct.toFixed(1)}%)</span>
-      `;
-      legend.appendChild(legendItem);
-    });
-
-    chart.style.background = gradientParts.length > 0
-      ? `conic-gradient(${gradientParts.join(', ')})`
-      : 'var(--card-bg)';
-  }
-
-  function setOltFilter(filterType) {
-    currentOltFilter = filterType;
-    
-    // Tanggalin ang 'active' class sa lahat ng filter buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    
-    // Ilagay ang 'active' class sa napiling button
-    const btnMap = {
-      'ALL': 'btnFilterAll', 
-      'DOWN': 'btnFilterDown', 
-      'LOW POWER': 'btnFilterLowPower',
-      'UPLINK DOWN': 'btnFilterUplinkDown', 
-      'DEGRADATION': 'btnFilterDegradation', 
-      'UP': 'btnFilterUp'
-    };
-
-    if (btnMap[filterType] && document.getElementById(btnMap[filterType])) {
-      document.getElementById(btnMap[filterType]).classList.add('active');
-    }
-
-    renderOltTable();
-  }
-
-function renderOltTable() {
-    const tbody = document.getElementById('oltTableBody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const filtered = rawOltData.filter(item => {
-      const st = (item.S || item.STATUS || '').toString().trim().toUpperCase();
-      if (currentOltFilter === 'ALL') return true;
-      if (currentOltFilter === 'DOWN') return st === 'DOWN';
-      if (currentOltFilter === 'LOW POWER') return st.includes('LOW POWER');
-      if (currentOltFilter === 'UPLINK DOWN') return st.includes('UPLINK DOWN');
-      if (currentOltFilter === 'DEGRADATION') return st.includes('DEGRADATION');
-      if (currentOltFilter === 'UP') return st === 'UP' || st === 'NORMAL' || st === 'OK';
-      return true;
-    });
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
-      return;
-    }
-
-filtered.forEach(item => {
-      const province = item.P || item.PROVINCE || '-';
-      const municipality = item.M || item.MUNICIPALITY || '-';
-      const name = item.N || item.OLT_NAME || '-';
-      const status = (item.S || item.STATUS || 'UP').toString().toUpperCase();
-      const ticketNo = item.T || '-';
-      const downtimeCause = item.DC || '-';
-      const aging = item.AG || item.AGING || '-';
-      // IDINAGDAG: Kunin ang Affected Clients mula sa API data
-      const clientsAffectedNum = parseInt(item.CA || 0) || 0;
-      const clientsAffectedDisplay = clientsAffectedNum > 0
-        ? `<strong style="color: var(--badge-red-text);">${clientsAffectedNum}</strong>`
-        : `<span style="color: var(--text-muted);">–</span>`;
-      // IDINAGDAG: Kunin ang Remarks mula sa API data
-      const remarks = item.RM || item.REMARKS || '-';
-
-      let badgeType = 'green';
-      if (status === 'DOWN') badgeType = 'red';
-      else if (status.includes('LOW POWER')) badgeType = 'orange';
-      else if (status.includes('UPLINK DOWN')) badgeType = 'yellow';
-      else if (status.includes('DEGRADATION')) badgeType = 'purple';
-
-      const tr = document.createElement('tr');
-      tr.className = 'clickable-row';
-      // Isinama ang 'remarks' bilang huling parameter sa openOltModal call
-      tr.onclick = () => openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks);
-      tr.innerHTML = `
-        <td data-label="Province">${province}</td>
-        <td data-label="Municipality">${municipality}</td>
-        <td data-label="OLT Name"><strong>${name}</strong></td>
-        <td data-label="Affected Clients" style="text-align: center;">${clientsAffectedDisplay}</td>
-        <td data-label="Aging" style="text-align: center;">${aging}</td>
-        <td data-label="Status" style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    const totalTr = document.createElement('tr');
-    totalTr.className = 'total-row';
-    totalTr.innerHTML = `
-      <td colspan="5">FILTERED TOTAL (${currentOltFilter})</td>
-      <td style="text-align: center;">${filtered.length}</td>
-    `;
-    tbody.appendChild(totalTr);
-  }
-
-function openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks) {
-    document.getElementById('mOltName').textContent = name;
-    document.getElementById('mProvince').textContent = province;
-    document.getElementById('mMunicipality').textContent = municipality;
-    document.getElementById('mStatus').textContent = status;
-    document.getElementById('mTicket').textContent = ticketNo;
-    document.getElementById('mDowntimeCause').textContent = downtimeCause || '-';
-    document.getElementById('mAging').textContent = aging || '-';
-    // IDINAGDAG: I-populate ang Remarks text
-    document.getElementById('mRemarks').textContent = remarks || '-';
-    
-    document.getElementById('oltModal').classList.add('open');
-  }
-
-  function closeOltModal(event) {
-    if (!event || event.target.id === 'oltModal' || event.target.className === 'close-btn') {
-      document.getElementById('oltModal').classList.remove('open');
-    }
-  }
 
 function openNodeModal(province, ticketNo, nodeBadgesHtml, remarks) {
   document.getElementById('nProvince').textContent = province || '-';
@@ -1174,13 +778,152 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.3.2').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.4.0').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
   }
+
+  // ==================== TOAST / SNACKBAR SYSTEM ====================
+  function showToast(message, type = 'info', duration = 3000) {
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  // ==================== SEARCH / FILTER ====================
+  function addSearchBar(tableCardId, tbodyId) {
+    const card = document.getElementById(tableCardId);
+    if (!card) return;
+    const existing = card.previousElementSibling;
+    if (existing && existing.classList.contains('search-bar-container')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'search-bar-container';
+    wrapper.innerHTML = `
+      <input type="text" class="search-input" placeholder="Search..." oninput="filterTable('${tbodyId}', this.value)">
+      <span class="search-count" id="count-${tbodyId}"></span>
+    `;
+    card.parentNode.insertBefore(wrapper, card);
+  }
+
+  function filterTable(tbodyId, query) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr:not(.total-row)'));
+    const q = query.toLowerCase().trim();
+    let visible = 0;
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      const match = !q || text.includes(q);
+      row.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    const countEl = document.getElementById('count-' + tbodyId);
+    if (countEl) countEl.textContent = q ? `${visible} of ${rows.length}` : '';
+  }
+
+  // Auto-add search bars after each tab loads
+  const _origRender = { nap: null, lcp: null, olt: null, node: null, backbone: null };
+  function addSearchBarsDeferred() {
+    setTimeout(() => {
+      addSearchBar('tab-nap .table-card', 'napTableBody');
+      addSearchBar('tab-lcp .table-card', 'lcpAgingTableBody');
+      addSearchBar('tab-olt .table-card', 'oltTableBody');
+      addSearchBar('tab-node .table-card', 'nodeTableBody');
+    }, 500);
+  }
+
+  // ==================== EXPORT (CSV) ====================
+  function exportTableToCSV(tbodyId, filename) {
+    const table = document.getElementById(tbodyId)?.closest('table');
+    if (!table) { showToast('No data to export', 'error'); return; }
+    const rows = [];
+    table.querySelectorAll('thead tr').forEach(tr => {
+      const cells = Array.from(tr.querySelectorAll('th')).map(th => '"' + th.textContent.trim().replace(/"/g, '""') + '"');
+      rows.push(cells.join(','));
+    });
+    table.querySelectorAll('tbody tr:not(.total-row)').forEach(tr => {
+      if (tr.style.display === 'none') return;
+      const cells = Array.from(tr.querySelectorAll('td')).map(td => {
+        let val = td.textContent.trim().replace(/"/g, '""');
+        return '"' + val + '"';
+      });
+      rows.push(cells.join(','));
+    });
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename + '_' + new Date().toISOString().slice(0,10) + '.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast('CSV exported successfully!', 'success');
+  }
+
+  function getExportFilename(tabName) {
+    const map = { nap: 'NAP_Report', lcp: 'LCP_Report', olt: 'OLT_Report', node: 'Node_Report', backbone: 'Backbone_Report' };
+    return map[tabName] || 'Report';
+  }
+
+  // ==================== PULL-TO-REFRESH ====================
+  let _ptrStartY = 0, _ptrPulling = false, _ptrIndicator = null;
+  function initPullToRefresh() {
+    const main = document.querySelector('.main-container');
+    if (!main) return;
+    main.addEventListener('touchstart', e => {
+      if (main.scrollTop <= 0) {
+        _ptrStartY = e.touches[0].clientY;
+        _ptrPulling = true;
+      }
+    }, { passive: true });
+    main.addEventListener('touchmove', e => {
+      if (!_ptrPulling) return;
+      const diff = e.touches[0].clientY - _ptrStartY;
+      if (diff > 60 && main.scrollTop <= 0) {
+        if (!_ptrIndicator) {
+          _ptrIndicator = document.createElement('div');
+          _ptrIndicator.className = 'ptr-indicator pulling';
+          _ptrIndicator.innerHTML = '<div class="ptr-spinner"></div>';
+          main.prepend(_ptrIndicator);
+        }
+      }
+    }, { passive: true });
+    main.addEventListener('touchend', () => {
+      if (_ptrIndicator && _ptrIndicator.classList.contains('pulling')) {
+        _ptrIndicator.classList.remove('pulling');
+        _ptrIndicator.classList.add('refreshing');
+        showToast('Refreshing...', 'info', 1500);
+        refreshCurrentTab();
+        setTimeout(() => {
+          if (_ptrIndicator) { _ptrIndicator.remove(); _ptrIndicator = null; }
+          showToast('Data updated!', 'success', 1500);
+        }, 2000);
+      }
+      _ptrPulling = false;
+    }, { passive: true });
+  }
+  initPullToRefresh();
+
+  // ==================== INITIALIZE UX ENHANCEMENTS ====================
+  addSearchBarsDeferred();
 </script>
 
+<script src="nap-module.js"></script>
+<script src="lcp-module.js"></script>
+<script src="olt-module.js"></script>
 <script src="node-module.js"></script>
 <script src="backbone-module.js"></script>
 

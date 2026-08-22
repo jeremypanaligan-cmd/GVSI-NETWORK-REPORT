@@ -1,0 +1,96 @@
+// ====================== NAP MODULE ======================
+
+async function fetchNapData(forceRefresh = false) {
+  if (!forceRefresh && dataCache.nap) {
+    renderNapReport(dataCache.nap);
+    return;
+  }
+
+  const loader = document.getElementById('loader');
+  if (loader && !forceRefresh) loader.classList.remove('hidden');
+
+  try {
+    const data = await fetchWithRetry(BASE_API_URL + "?type=nap");
+
+    if (Array.isArray(data) && data.length > 0) {
+      dataCache.nap = data;
+      renderNapReport(data);
+      prefetchOtherTabsInBackground();
+    } else {
+      document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;">No data found.</td></tr>';
+    }
+  } catch (error) {
+    console.error('Error fetching NAP data:', error);
+    document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
+  } finally {
+    if (loader) loader.classList.add('hidden');
+  }
+}
+
+function renderNapReport(data) {
+  const tbody = document.getElementById('napTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
+
+  data.forEach(row => {
+    const area = row.A || row.AREA || row.Area || '';
+    const provinceRaw = row.P || row.PROVINCE || row.Province || '';
+    const province = provinceRaw.toString().replace(/_/g, ' ');
+
+    const h24 = parseInt(row.H || row['<24HOURS'] || 0) || 0;
+    const d13 = parseInt(row.D1 || row['1-3 DAYS'] || 0) || 0;
+    const d3 = parseInt(row.D3 || row['>3DAYS'] || 0) || 0;
+    const rowTotal = parseInt(row.T || row.TOTAL || (h24 + d13 + d3)) || 0;
+
+    if (area.toString().trim().toUpperCase() !== 'TOTAL') {
+      total24 += h24;
+      total13 += d13;
+      total3 += d3;
+      grandTotal += rowTotal;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td data-label="Area"><strong>${area}</strong></td>
+        <td data-label="Province">${province}</td>
+        <td data-label="(<24HOURS)" style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
+        <td data-label="(1-3 DAYS)" style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
+        <td data-label="(>3DAYS)" style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
+        <td data-label="Total" style="text-align: center;"><strong>${rowTotal}</strong></td>
+      `;
+      tbody.appendChild(tr);
+    }
+  });
+
+  if (document.getElementById('card24')) document.getElementById('card24').textContent = total24;
+  if (document.getElementById('card13')) document.getElementById('card13').textContent = total13;
+  if (document.getElementById('card3')) document.getElementById('card3').textContent = total3;
+  if (document.getElementById('cardTotal')) document.getElementById('cardTotal').textContent = grandTotal;
+
+  // Add export toolbar
+  const napTab = document.getElementById('tab-nap');
+  if (napTab && !napTab.querySelector('.export-toolbar')) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'export-toolbar';
+    toolbar.innerHTML = `
+      <button class="export-btn" onclick="exportTableToCSV('napTableBody', 'NAP_Report')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    `;
+    const tableCard = napTab.querySelector('.table-card');
+    if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
+  }
+
+  const totalTr = document.createElement('tr');
+  totalTr.className = 'total-row';
+  totalTr.innerHTML = `
+    <td colspan="2">TOTAL</td>
+    <td style="text-align: center;">${total24}</td>
+    <td style="text-align: center;">${total13}</td>
+    <td style="text-align: center;">${total3}</td>
+    <td style="text-align: center;">${grandTotal}</td>
+  `;
+  tbody.appendChild(totalTr);
+}

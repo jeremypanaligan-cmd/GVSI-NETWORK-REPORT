@@ -176,6 +176,20 @@ function renderBackboneReport(data) {
   `;
 
   bbTab.innerHTML = tableHtml;
+
+  // Add export toolbar
+  if (!bbTab.querySelector('.export-toolbar')) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'export-toolbar';
+    toolbar.innerHTML = `
+      <button class="export-btn" onclick="exportTableToCSV('backboneTableBody', 'Backbone_Report')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    `;
+    const tableCard = bbTab.querySelector('.table-card');
+    if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
+  }
 }
 
 // Empty State / Landing Page: Kapag walang active backbone incidents
