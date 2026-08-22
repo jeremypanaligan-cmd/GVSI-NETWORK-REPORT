@@ -1116,12 +1116,16 @@ body.dark-mode .remarks-paragraph-box {
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 2.3.1 — What's New & System Updates:</strong></p>
+            <p><strong>Version 2.3.2 — What's New & System Updates:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                  <li><strong>Mobile Responsive Stat Cards:</strong> Backbone stat cards now use a responsive 3+2 grid layout on mobile devices, preventing overflow and ensuring all 5 cards are fully visible without horizontal scroll.</li>
-                  <li><strong>Mobile Link Chips Horizontal Scroll:</strong> Long link descriptions no longer compress the table on mobile — chips now scroll horizontally for a cleaner, more compact layout.</li>
-                  <li><strong>Mobile Table Layout Fix:</strong> Backbone table is now exempt from the ultra-small card-view mode, maintaining proper column alignment and scrollability on all screen sizes.</li>
-                  <li><strong>Link Chip Compact Styling:</strong> Reduced link chip font size and padding for tighter, more readable display across all devices.</li>
+                  <li><strong>Backbone Modal — Affected Links:</strong> Added Affected Links section in the Backbone Link Details modal, displayed as chips. Ready for multiple comma-separated links per ticket (up to 5+ links).</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 2.3.1:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Mobile Responsive Stat Cards:</strong> Backbone stat cards now use a responsive 3+2 grid layout on mobile devices.</li>
+                  <li><strong>Mobile Link Chips Horizontal Scroll:</strong> Long link descriptions scroll horizontally on mobile for cleaner layout.</li>
+                  <li><strong>Mobile Table Layout Fix:</strong> Backbone table exempt from ultra-small card-view mode.</li>
+                  <li><strong>Link Chip Compact Styling:</strong> Reduced font size and padding for tighter display.</li>
                 </ul>
                 <p style="margin-top: 10px;"><strong>Version 2.3.0:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
@@ -1253,6 +1257,13 @@ body.dark-mode .remarks-paragraph-box {
         <span class="label">Aging Duration:</span>
         <span class="val" id="bbAging" style="color: var(--badge-orange-text); font-weight: 700;">-</span>
       </div>
+      <!-- AFFECTED LINKS CHIPS -->
+      <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 6px;">
+        <span class="label" style="font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Affected Links:</span>
+        <div id="bbLinks" class="link-chip-container" style="max-width: 100%;">
+          <span style="color: var(--text-muted);">-</span>
+        </div>
+      </div>
       <!-- PARAGRAPH STYLE REMARKS BOX -->
       <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
         <span class="label" style="font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Remarks:</span>
@@ -1264,7 +1275,7 @@ body.dark-mode .remarks-paragraph-box {
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "2.3.1"; 
+  const REQUIRED_APP_VERSION = "2.3.2"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1957,7 +1968,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=2.3.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=2.3.2').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });

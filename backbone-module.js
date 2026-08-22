@@ -143,12 +143,13 @@ function renderBackboneReport(data) {
     const safeDowntime = downtime.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const safeAging = aging.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const safeRemarks = remarks.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '');
+    const safeLinks = rawLinks.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
     // Badge color para sa service type
     const serviceBadge = service === 'DWDM' ? 'purple' : (service === 'MPLS' ? 'orange' : 'gray');
 
     tableHtml += `
-      <tr class="clickable-row" onclick="openBackboneModal('${safeProvince}', '${safeTicket}', '${safeService}', '${safeImpact}', '${safeDowntime}', '${safeAging}', '${safeRemarks}')">
+      <tr class="clickable-row" onclick="openBackboneModal('${safeProvince}', '${safeTicket}', '${safeService}', '${safeImpact}', '${safeDowntime}', '${safeAging}', '${safeLinks}', '${safeRemarks}')">
         <td data-label="Province"><strong>${province}</strong></td>
         <td data-label="Links Aff.">
           <div class="link-chip-container">
@@ -293,7 +294,7 @@ function renderBackboneEmptyState() {
 }
 
 // Modal: Open Backbone Link Details
-function openBackboneModal(province, ticket, service, impact, downtime, aging, remarks) {
+function openBackboneModal(province, ticket, service, impact, downtime, aging, links, remarks) {
   document.getElementById('bbProvince').textContent = province || '-';
   document.getElementById('bbTicket').textContent = ticket || '-';
   document.getElementById('bbService').textContent = service || '-';
@@ -301,7 +302,18 @@ function openBackboneModal(province, ticket, service, impact, downtime, aging, r
   document.getElementById('bbDowntime').textContent = downtime || '-';
   document.getElementById('bbAging').textContent = aging || '-';
   document.getElementById('bbRemarks').textContent = remarks || '-';
-  
+
+  // Render links as chips (ready for multiple comma-separated links)
+  const linksContainer = document.getElementById('bbLinks');
+  if (linksContainer) {
+    if (links && links.trim() !== '' && links.trim() !== '-') {
+      const linkList = links.split(',').map(l => l.trim()).filter(l => l !== '');
+      linksContainer.innerHTML = linkList.map(l => `<span class="link-chip">${l}</span>`).join('');
+    } else {
+      linksContainer.innerHTML = '<span style="color: var(--text-muted);">-</span>';
+    }
+  }
+
   document.getElementById('backboneModal').classList.add('open');
 }
 
