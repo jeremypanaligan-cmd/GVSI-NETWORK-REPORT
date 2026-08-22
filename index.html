@@ -671,7 +671,7 @@ body.dark-mode .node-chip {
   border-color: rgba(45, 212, 191, 0.3);
 }
 
-/* Link Chip Container - same layout as node chips */
+/* Link Chip Container - horizontal scroll on mobile */
 .link-chip-container {
   display: flex;
   flex-wrap: wrap;
@@ -686,13 +686,12 @@ body.dark-mode .node-chip {
   color: var(--primary-teal);
   border: 1px solid rgba(13, 138, 128, 0.3);
   font-family: 'Courier New', Courier, monospace;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 4px;
   letter-spacing: 0.3px;
-  word-break: break-word;
-  white-space: normal;
+  white-space: nowrap;
   line-height: 1.4;
 }
 
@@ -702,9 +701,55 @@ body.dark-mode .link-chip {
   border-color: rgba(45, 212, 191, 0.3);
 }
 
+/* Backbone stat cards responsive: 5 columns on desktop, 3+2 on mobile */
+.bb-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 640px) {
+  .bb-stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .bb-stats-grid .stat-card:nth-child(4),
+  .bb-stats-grid .stat-card:nth-child(5) {
+    /* Last 2 cards share remaining width */
+  }
+}
+
     /* Itago ang vertical divider sa OLT insights card kapag nag-wrap na sa maliit na screen */
     @media (max-width: 640px) {
       .olt-insight-divider {
+        display: none;
+      }
+      /* Backbone table: keep horizontal scroll, don't card-view */
+      #tab-backbone .data-table thead {
+        display: table-header-group;
+      }
+      #tab-backbone .data-table,
+      #tab-backbone .data-table tbody,
+      #tab-backbone .data-table tr {
+        display: revert;
+      }
+      #tab-backbone .data-table td {
+        display: revert;
+        text-align: left;
+      }
+      #tab-backbone .data-table td::before {
+        display: none;
+      }
+      /* Link chip container: horizontal scroll on narrow screens */
+      .link-chip-container {
+        max-width: 200px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        padding-bottom: 2px;
+      }
+      .link-chip-container::-webkit-scrollbar {
         display: none;
       }
     }
@@ -746,6 +791,12 @@ body.dark-mode .link-chip {
   .data-table td:last-child {
     border-bottom: none;
   }
+
+  /* I-exempt ang backbone table sa card view */
+  #tab-backbone .data-table thead { display: table-header-group; }
+  #tab-backbone .data-table, #tab-backbone .data-table tbody, #tab-backbone .data-table tr { display: revert; }
+  #tab-backbone .data-table td { display: revert; text-align: left; }
+  #tab-backbone .data-table td::before { display: none; }
 
   /* Gamitin ang data-label attribute bilang label sa kaliwa */
   .data-table td::before {

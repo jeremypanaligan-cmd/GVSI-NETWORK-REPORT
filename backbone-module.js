@@ -77,7 +77,7 @@ function renderBackboneReport(data) {
     </div>
 
     <!-- STAT CARDS -->
-    <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
+    <div class="bb-stats-grid">
       <div class="stat-card c-total">
         <div class="label">TOTAL LINKS AFF.</div>
         <div class="value">${totalLinks}</div>
@@ -189,7 +189,7 @@ function renderBackboneEmptyState() {
     </div>
 
     <!-- STAT CARDS - Zero State -->
-    <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
+    <div class="bb-stats-grid">
       <div class="stat-card c-total">
         <div class="label">TOTAL LINKS AFF.</div>
         <div class="value">0</div>
