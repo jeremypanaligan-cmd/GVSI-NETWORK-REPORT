@@ -680,6 +680,22 @@ body.dark-mode .link-chip {
   border-color: rgba(45, 212, 191, 0.3);
 }
 
+/* Modal link-chip: allow text wrap inside each chip + wrap chips to new lines */
+.modal-body .link-chip,
+#bbLinks .link-chip {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 100%;
+  display: inline-block;
+}
+
+.modal-body .link-chip-container,
+#bbLinks.link-chip-container {
+  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-x: visible;
+}
+
 /* Backbone stat cards responsive: 5 columns on desktop, 3+2 on mobile */
 .bb-stats-grid {
   display: grid;
@@ -725,6 +741,18 @@ body.dark-mode .link-chip {
   }
   .link-chip-container::-webkit-scrollbar {
     display: none;
+  }
+  /* Modal link-chips: keep wrapping even on mobile */
+  .modal-body .link-chip-container,
+  #bbLinks.link-chip-container {
+    flex-wrap: wrap !important;
+    max-width: 100% !important;
+    overflow-x: visible !important;
+  }
+  .modal-body .link-chip,
+  #bbLinks .link-chip {
+    white-space: normal !important;
+    word-break: break-word !important;
   }
 }
 
