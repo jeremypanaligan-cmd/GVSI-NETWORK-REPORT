@@ -113,8 +113,9 @@ function renderBackboneReport(data) {
               <th class="sortable" onclick="sortTable('backboneTableBody', 1, this)">LINKS AFF.</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 2, this)">SERVICE</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 3, this, true)">NO. OF LINKS</th>
-              <th class="sortable" onclick="sortTable('backboneTableBody', 4, this)">IMPACT</th>
-              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 5, this)">AGING</th>
+              <th class="sortable" onclick="sortTable('backboneTableBody', 4, this)">CATEGORY</th>
+              <th class="sortable" onclick="sortTable('backboneTableBody', 5, this)">IMPACT</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 6, this, false, true)">AGING</th>
             </tr>
           </thead>
           <tbody id="backboneTableBody">
@@ -125,6 +126,7 @@ function renderBackboneReport(data) {
     const service = transformBbService(item.S);
     const rawLinks = item.L || '';
     const countLinks = parseInt(item.LC || 0) || 0;
+    const category = item.IS || '-';
     const impact = item.I || '-';
     const downtime = item.DT || '-';
     const ticketNo = item.T || '-';
@@ -142,6 +144,7 @@ function renderBackboneReport(data) {
     const safeProvince = province.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const safeTicket = ticketNo.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const safeService = service.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const safeCategory = category.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const safeImpact = impact.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const safeDowntime = downtime.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const safeAging = aging.replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -153,7 +156,7 @@ function renderBackboneReport(data) {
 
     const rowAlert = countLinks > 3 ? ' alert-high' : (countLinks > 1 ? ' alert-medium' : '');
     tableHtml += `
-      <tr class="clickable-row${rowAlert}" onclick="openBackboneModal('${safeProvince}', '${safeTicket}', '${safeService}', '${safeImpact}', '${safeDowntime}', '${safeAging}', '${safeLinks}', '${safeRemarks}')">
+      <tr class="clickable-row${rowAlert}" onclick="openBackboneModal('${safeProvince}', '${safeTicket}', '${safeService}', '${safeCategory}', '${safeImpact}', '${safeDowntime}', '${safeAging}', '${safeLinks}', '${safeRemarks}')">
         <td data-label="Province"><strong>${province}</strong></td>
         <td data-label="Links Aff.">
           <div class="link-chip-container">
@@ -162,16 +165,17 @@ function renderBackboneReport(data) {
         </td>
         <td data-label="Service" style="text-align: center;"><span class="badge badge-${serviceBadge}">${service}</span></td>
         <td data-label="No. of Links" style="text-align: center;"><span class="badge badge-orange">${countLinks}</span></td>
+        <td data-label="Category">${category}</td>
         <td data-label="Impact">${impact}</td>
         <td data-label="Aging" style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${aging}</td>
       </tr>
     `;
   });
 
-  // TOTAL ROW - naka-align sa AGING column (colspan=5)
+  // TOTAL ROW - naka-align sa AGING column (colspan=6)
   tableHtml += `
             <tr class="total-row">
-              <td colspan="5" data-label="Summary">TOTAL LINKS AFFECTED</td>
+              <td colspan="6" data-label="Summary">TOTAL LINKS AFFECTED</td>
               <td data-label="Total Count" style="text-align: center; font-weight: 800; color: var(--primary-teal); font-size: 15px;">${totalLinks}</td>
             </tr>
           </tbody>
@@ -316,10 +320,11 @@ function renderBackboneEmptyState() {
 }
 
 // Modal: Open Backbone Link Details
-function openBackboneModal(province, ticket, service, impact, downtime, aging, links, remarks) {
+function openBackboneModal(province, ticket, service, category, impact, downtime, aging, links, remarks) {
   document.getElementById('bbProvince').textContent = province || '-';
   document.getElementById('bbTicket').textContent = ticket || '-';
   document.getElementById('bbService').textContent = service || '-';
+  document.getElementById('bbCategory').textContent = category || '-';
   document.getElementById('bbImpact').textContent = impact || '-';
   document.getElementById('bbDowntime').textContent = downtime || '-';
   document.getElementById('bbAging').textContent = aging || '-';

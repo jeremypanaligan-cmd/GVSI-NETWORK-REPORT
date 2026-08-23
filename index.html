@@ -268,7 +268,7 @@
                 <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY / MUNICIPALITY</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 2, this)">OLT NAME</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this, true)">AFFECTED CLIENTS</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">AGING</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this, false, true)">AGING</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 5, this)">STATUS</th>
               </tr>
             </thead>
@@ -535,6 +535,10 @@
       <div class="modal-item">
         <span class="label">Service Type:</span>
         <span class="val" id="bbService">-</span>
+      </div>
+      <div class="modal-item">
+        <span class="label">Category:</span>
+        <span class="val" id="bbCategory">-</span>
       </div>
       <div class="modal-item">
         <span class="label">Impact:</span>
@@ -818,7 +822,21 @@ function closeNodeModal(event) {
     return `<span class="badge badge-${type}">${val}</span>`;
   }
 
-  function sortTable(tbodyId, colIndex, headerElem, isNumeric = false) {
+  // Parse duration string (e.g. "18d 18h 50m") to total minutes for sorting
+  function parseDurationToMinutes(str) {
+    if (!str || str === '-' || str === 'N/A') return 0;
+    const s = str.toLowerCase().trim();
+    let total = 0;
+    const dMatch = s.match(/(\d+)\s*d/);
+    const hMatch = s.match(/(\d+)\s*h/);
+    const mMatch = s.match(/(\d+)\s*m/);
+    if (dMatch) total += parseInt(dMatch[1]) * 1440;
+    if (hMatch) total += parseInt(hMatch[1]) * 60;
+    if (mMatch) total += parseInt(mMatch[1]);
+    return total;
+  }
+
+  function sortTable(tbodyId, colIndex, headerElem, isNumeric = false, isDuration = false) {
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;
     const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -843,7 +861,9 @@ function closeNodeModal(event) {
       let cellA = rowA.children[colIndex] ? rowA.children[colIndex].textContent.trim() : '';
       let cellB = rowB.children[colIndex] ? rowB.children[colIndex].textContent.trim() : '';
 
-      if (isNumeric) {
+      if (isDuration) {
+        return (parseDurationToMinutes(cellA) - parseDurationToMinutes(cellB)) * direction;
+      } else if (isNumeric) {
         let valA = parseFloat(cellA.replace(/,/g, '')) || 0;
         let valB = parseFloat(cellB.replace(/,/g, '')) || 0;
         return (valA - valB) * direction;

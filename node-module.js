@@ -59,7 +59,7 @@ function renderNodeReport(data) {
               <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 2, this, true)">COUNT</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 3, this)">IMPACT</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 4, this)">DOWNTIME</th>
-              <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 5, this)">AGING</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 5, this, false, true)">AGING</th>
             </tr>
           </thead>
           <tbody id="nodeTableBody">
