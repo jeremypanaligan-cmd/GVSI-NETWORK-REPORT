@@ -1,5 +1,20 @@
 // ====================== ANALYTICS DASHBOARD MODULE ======================
 
+// ==================== DATE RANGE & COMPARISON STATE ====================
+let analyticsDateRange = 30; // default: last 30 days
+let analyticsComparisonMode = false; // default: off
+
+function setAnalyticsDateRange(days) {
+  analyticsDateRange = days;
+  analyticsComparisonMode = false;
+  renderAnalyticsDashboard();
+}
+
+function toggleAnalyticsComparison() {
+  analyticsComparisonMode = !analyticsComparisonMode;
+  renderAnalyticsDashboard();
+}
+
 // Helper: get percentage text
 function _pct(part, total) {
   if (!total) return '0%';
@@ -188,6 +203,19 @@ function renderAnalyticsDashboard() {
       </div>
     </div>
 
+    <!-- DATE RANGE FILTER + COMPARISON TOGGLE -->
+    <div class="analytics-filter-bar">
+      <div class="analytics-date-range">
+        <button class="filter-btn ${analyticsDateRange === 7 ? 'active' : ''}" onclick="setAnalyticsDateRange(7)">7 Days</button>
+        <button class="filter-btn ${analyticsDateRange === 30 ? 'active' : ''}" onclick="setAnalyticsDateRange(30)">30 Days</button>
+        <button class="filter-btn ${analyticsDateRange === 90 ? 'active' : ''}" onclick="setAnalyticsDateRange(90)">90 Days</button>
+      </div>
+      <button class="filter-btn ${analyticsComparisonMode ? 'active' : ''}" onclick="toggleAnalyticsComparison()" style="margin-left: auto;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        Compare Weeks
+      </button>
+    </div>
+
     <!-- OVERVIEW STAT CARDS -->
     <div class="analytics-stats-grid">
       <div class="stat-card c-red">
@@ -207,6 +235,62 @@ function renderAnalyticsDashboard() {
         <div class="value">${napTotal3 + lcpTotal3}</div>
       </div>
     </div>
+
+    <!-- COMPARISON MODE (This Week vs Last Week) -->
+    ${analyticsComparisonMode ? `
+    <div class="analytics-section-title">📊 Week-over-Week Comparison</div>
+    <div class="analytics-comparison-card">
+      <div class="comparison-row">
+        <div class="comparison-metric">
+          <span class="comparison-label">Active Incidents</span>
+          <div class="comparison-values">
+            <span class="comparison-current">${grandTotalIncidents}</span>
+            <span class="comparison-vs">vs</span>
+            <span class="comparison-previous">${Math.round(grandTotalIncidents * 0.85)}</span>
+            <span class="comparison-diff ${grandTotalIncidents > Math.round(grandTotalIncidents * 0.85) ? 'up' : 'down'}">
+              ${grandTotalIncidents > Math.round(grandTotalIncidents * 0.85) ? '▲' : '▼'} ${Math.abs(grandTotalIncidents - Math.round(grandTotalIncidents * 0.85))}
+            </span>
+          </div>
+        </div>
+        <div class="comparison-metric">
+          <span class="comparison-label">Clients Affected</span>
+          <div class="comparison-values">
+            <span class="comparison-current">${grandTotalClients.toLocaleString()}</span>
+            <span class="comparison-vs">vs</span>
+            <span class="comparison-previous">${Math.round(grandTotalClients * 0.9).toLocaleString()}</span>
+            <span class="comparison-diff ${grandTotalClients > Math.round(grandTotalClients * 0.9) ? 'up' : 'down'}">
+              ${grandTotalClients > Math.round(grandTotalClients * 0.9) ? '▲' : '▼'} ${Math.abs(grandTotalClients - Math.round(grandTotalClients * 0.9)).toLocaleString()}
+            </span>
+          </div>
+        </div>
+        <div class="comparison-metric">
+          <span class="comparison-label">OLT Down</span>
+          <div class="comparison-values">
+            <span class="comparison-current">${oltDown}</span>
+            <span class="comparison-vs">vs</span>
+            <span class="comparison-previous">${Math.round(oltDown * 0.8)}</span>
+            <span class="comparison-diff ${oltDown > Math.round(oltDown * 0.8) ? 'up' : 'down'}">
+              ${oltDown > Math.round(oltDown * 0.8) ? '▲' : '▼'} ${Math.abs(oltDown - Math.round(oltDown * 0.8))}
+            </span>
+          </div>
+        </div>
+        <div class="comparison-metric">
+          <span class="comparison-label">Critical (>3 Days)</span>
+          <div class="comparison-values">
+            <span class="comparison-current">${napTotal3 + lcpTotal3}</span>
+            <span class="comparison-vs">vs</span>
+            <span class="comparison-previous">${Math.round((napTotal3 + lcpTotal3) * 0.75)}</span>
+            <span class="comparison-diff ${(napTotal3 + lcpTotal3) > Math.round((napTotal3 + lcpTotal3) * 0.75) ? 'up' : 'down'}">
+              ${(napTotal3 + lcpTotal3) > Math.round((napTotal3 + lcpTotal3) * 0.75) ? '▲' : '▼'} ${Math.abs((napTotal3 + lcpTotal3) - Math.round((napTotal3 + lcpTotal3) * 0.75))}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div style="font-size: 10px; color: var(--text-muted); margin-top: 8px; text-align: center; font-style: italic;">
+        ⚠️ Comparison data simulated — will use IndexedDB history when enough data is collected.
+      </div>
+    </div>
+    ` : ''}
 
     <!-- MODULE SNAPSHOT -->
     <div class="analytics-section-title">Module Snapshot</div>

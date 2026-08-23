@@ -1,6 +1,5 @@
 /* ============================
-   GVSI NetPulse - Main Stylesheet
-   Version 3.1.1
+   GVSI NetPulse - Main Stylesheet    Version 3.2.0
    ============================ */
 
 :root {
@@ -1001,6 +1000,105 @@ body.dark-mode .remarks-paragraph-box {
 }
 
 /* Section Titles */
+/* Analytics Filter Bar (Date Range + Comparison) */
+.analytics-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.analytics-date-range {
+  display: flex;
+  gap: 4px;
+}
+
+/* Comparison Mode Card */
+.analytics-comparison-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 18px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.comparison-metric {
+  text-align: center;
+}
+
+.comparison-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.comparison-values {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.comparison-current {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primary-teal);
+}
+
+.comparison-vs {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.comparison-previous {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.comparison-diff {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.comparison-diff.up {
+  background: var(--badge-red);
+  color: var(--badge-red-text);
+}
+
+.comparison-diff.down {
+  background: var(--badge-green);
+  color: var(--badge-green-text);
+}
+
+@media (max-width: 640px) {
+  .comparison-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .analytics-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .analytics-date-range {
+    justify-content: center;
+  }
+}
+
 .analytics-section-title {
   font-size: 12px;
   font-weight: 800;

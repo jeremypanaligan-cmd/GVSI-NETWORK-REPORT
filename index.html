@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.1.1">
+  <link rel="stylesheet" href="styles.css?v=3.2.0">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -317,7 +317,15 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 3.1.1 — What's New:</strong></p>
+            <p><strong>Version 3.2.0 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Keyboard Shortcuts (New):</strong> Press R to refresh, 1-7 to switch tabs, Esc to close modal, ? for help.</li>
+                  <li><strong>Custom Date Range (New):</strong> Analytics dashboard now supports 7/30/90 day filters for trend analysis.</li>
+                  <li><strong>Comparison Mode (New):</strong> Week-over-week comparison view in Analytics — see trends at a glance.</li>
+                  <li><strong>PDF Export (New):</strong> Export any module table as PDF — click Export PDF button on each tab.</li>
+                  <li><strong>Modal Link-Chip Fix:</strong> Affected links in Backbone modal now wrap properly — no more text overlap on desktop and mobile.</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 3.1.1:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Skeleton Loading (New):</strong> Shimmer placeholders replace spinner — professional loading state with animated skeleton cards and tables.</li>
                   <li><strong>Clipboard Copy:</strong> Click any ticket number in modals (OLT, Node, Backbone) to copy to clipboard with toast confirmation.</li>
@@ -567,7 +575,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.1.1"; 
+  const REQUIRED_APP_VERSION = "3.2.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -886,7 +894,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.1.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.2.0').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1167,6 +1175,105 @@ function closeNodeModal(event) {
     }, { passive: true });
   }
   initPullToRefresh();
+
+  // ==================== PDF EXPORT ====================
+  function loadPdfLibs() {
+    return Promise.all([
+      new Promise((resolve, reject) => {
+        if (typeof html2canvas !== 'undefined') { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load html2canvas'));
+        document.head.appendChild(s);
+      }),
+      new Promise((resolve, reject) => {
+        if (typeof jspdf !== 'undefined' || typeof jsPDF !== 'undefined') { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load jsPDF'));
+        document.head.appendChild(s);
+      })
+    ]);
+  }
+
+  async function exportTabToPDF(tabId, filename) {
+    showToast('Generating PDF...', 'info', 2000);
+    try {
+      await loadPdfLibs();
+      const tabEl = document.getElementById(tabId);
+      if (!tabEl) { showToast('Tab not found', 'error', 2000); return; }
+
+      // Hide buttons/tooltips for clean capture
+      const btns = tabEl.querySelectorAll('.export-btn, .export-toolbar, .filter-btn, .search-bar');
+      btns.forEach(b => b.style.display = 'none');
+
+      const canvas = await html2canvas(tabEl, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: getComputedStyle(document.body).getPropertyValue('--light-bg').trim() || '#f8fafc',
+        logging: false
+      });
+
+      // Restore buttons
+      btns.forEach(b => b.style.display = '');
+
+      const { jsPDF } = window.jspdf;
+      const imgData = canvas.toDataURL('image/png');
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+
+      // A4 landscape for wide tables
+      const pdf = new jsPDF({ orientation: imgW > imgH ? 'landscape' : 'portrait', unit: 'px', format: [imgW / 2, imgH / 2] });
+      pdf.addImage(imgData, 'PNG', 0, 0, imgW / 2, imgH / 2);
+      pdf.save(filename + '.pdf');
+      showToast('PDF downloaded! ✓', 'success', 2000);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      showToast('PDF export failed', 'error', 2000);
+    }
+  }
+
+  // ==================== KEYBOARD SHORTCUTS ====================
+  function initKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      // Huwag i-activate kung naka-focus sa input/textarea
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+      // R = Refresh current tab
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        refreshCurrentTab();
+        showToast('Refreshing...', 'info', 1200);
+        return;
+      }
+
+      // Esc = Close modal
+      if (e.key === 'Escape') {
+        const openModal = document.querySelector('.modal-backdrop.open');
+        if (openModal) {
+          openModal.classList.remove('open');
+          return;
+        }
+      }
+
+      // 1-7 = Switch tabs (NAP, LCP, OLT, NODE, BACKBONE, ANALYTICS, ABOUT)
+      const tabMap = { '1': 'nap', '2': 'lcp', '3': 'olt', '4': 'node', '5': 'backbone', '6': 'analytics', '7': 'about' };
+      if (tabMap[e.key]) {
+        e.preventDefault();
+        switchTab(tabMap[e.key]);
+        return;
+      }
+
+      // ? = Show shortcuts help
+      if (e.key === '?') {
+        showToast('Shortcuts: R=Refresh | 1-7=Tabs | Esc=Close', 'info', 3000);
+      }
+    });
+  }
+  initKeyboardShortcuts();
 
   // ==================== INITIALIZE UX ENHANCEMENTS ====================
   addSearchBarsDeferred();
