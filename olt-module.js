@@ -164,7 +164,7 @@ function renderOltTable() {
 
     const tr = document.createElement('tr');
     tr.className = 'clickable-row ' + getAlertClass('clientsDown', clientsAffectedNum);
-    tr.onclick = () => openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks);
+    tr.onclick = () => openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks, clientsAffectedNum);
     tr.innerHTML = `
       <td data-label="Province">${province}</td>
       <td data-label="Municipality">${municipality}</td>
@@ -204,7 +204,7 @@ function renderOltTable() {
   }
 }
 
-function openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks) {
+function openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks, clientsAffected) {
   document.getElementById('mOltName').textContent = name;
   document.getElementById('mProvince').textContent = province;
   document.getElementById('mMunicipality').textContent = municipality;
@@ -213,6 +213,7 @@ function openOltModal(name, province, municipality, status, ticketNo, downtimeCa
   document.getElementById('mDowntimeCause').textContent = downtimeCause || '-';
   document.getElementById('mAging').textContent = aging || '-';
   document.getElementById('mRemarks').textContent = remarks || '-';
+  document.getElementById('mClientsAffected').textContent = clientsAffected || '0';
 
   document.getElementById('oltModal').classList.add('open');
 }

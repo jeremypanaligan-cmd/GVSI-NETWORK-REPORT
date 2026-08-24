@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'gvsi-shell-v3.2.0';
+const STATIC_CACHE = 'gvsi-shell-v3.2.1';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
@@ -71,6 +71,11 @@ self.addEventListener('notificationclick', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
+
+  // Skip non-http(s) requests (chrome-extension, file:, etc.)
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return;
+  }
 
   // 1. Google Apps Script API Requests -> ALWAYS NETWORK (Fresh Data)
   if (url.includes('script.google.com')) {

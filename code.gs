@@ -154,29 +154,40 @@ if (!oltSheet) {
     var oltList = [];
 
     var agingMap = {};
-    var remarksMap = {}; // Inayos: camelCase variable name
+    var remarksMap = {};
     var causeMap = {};
-    var clientsMap = {}; // IDINAGDAG: Affected Clients per ticket
+    var clientsMap = {}; // Fallback: total clients per ticket
+    var oltClientsMap = {}; // NEW: per-OLT client lookup { ticketKey: { oltName: count } }
     
     var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
     if (ticketSheet) {
       var lastRowTix = ticketSheet.getLastRow();
       if (lastRowTix >= 2) {
-        // Tiyaking sakop ang Column U (Index 21/20) at V (Index 22/21 for Aging)
         var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
         for (var t = 0; t < tixData.length; t++) {
           var ticketNoRaw = tixData[t][5];  // Column F
           var causeRaw = tixData[t][6];     // Column G
           var remarksRaw = tixData[t][20];  // Column U (Index 20)
           var agingRaw = tixData[t][23];    // Column X (Index 23)
-          var clientsRaw = tixData[t][25];  // Column Z (Index 25) - AFFECTED CLIENTS
+          var clientsRaw = tixData[t][25];  // Column Z (Index 25) - NUMBER OF CLIENTS (per-OLT, newline-separated)
+          var oltsRaw = tixData[t][27];     // Column AB (Index 27) - OLT NAMES (newline-separated)
           
           if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
             var tKey = String(ticketNoRaw).trim().toUpperCase();
             agingMap[tKey] = agingRaw ? String(agingRaw).trim() : "-";
-            remarksMap[tKey] = remarksRaw ? String(remarksRaw).trim() : "-"; // Inayos: remarksRaw na ang gamit
+            remarksMap[tKey] = remarksRaw ? String(remarksRaw).trim() : "-";
             causeMap[tKey] = causeRaw ? String(causeRaw).trim() : "-";
             clientsMap[tKey] = clientsRaw !== "" && clientsRaw !== null ? String(clientsRaw).trim() : "0";
+            
+            // NEW: Build per-OLT client map from breakline format
+            var oltNames = String(oltsRaw || "").split("\n").map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+            var clientCounts = String(clientsRaw || "").split("\n").map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+            var perOltMap = {};
+            for (var p = 0; p < oltNames.length; p++) {
+              var oltKey = oltNames[p].toUpperCase();
+              perOltMap[oltKey] = parseInt(clientCounts[p]) || 0;
+            }
+            oltClientsMap[tKey] = perOltMap;
           }
         }
       }
@@ -205,16 +216,24 @@ if (!oltSheet) {
         }
 
         var aging = "-";
-        var remarks = "-"; // Ininitialize ang remarks variable
+        var remarks = "-";
         var downtimeCause = "-";
-        var clientsAffected = "0"; // IDINAGDAG: default value
+        var clientsAffected = "0";
 
         if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
           var tKey = String(ticketNo).trim().toUpperCase();
           if (agingMap[tKey]) aging = agingMap[tKey];
           if (remarksMap[tKey]) remarks = remarksMap[tKey];
           if (causeMap[tKey]) downtimeCause = causeMap[tKey];
-          if (clientsMap[tKey]) clientsAffected = clientsMap[tKey];
+          
+          // NEW: Look up by OLT name (not just ticket total) to avoid double-counting
+          var perOlt = oltClientsMap[tKey] || {};
+          var oltLookupKey = String(oltName).trim().toUpperCase();
+          if (perOlt.hasOwnProperty(oltLookupKey)) {
+            clientsAffected = String(perOlt[oltLookupKey]);
+          } else if (clientsMap[tKey]) {
+            clientsAffected = clientsMap[tKey]; // Fallback
+          }
         }
 
         oltList.push({

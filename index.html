@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.2.0">
+  <link rel="stylesheet" href="styles.css?v=3.2.1">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -317,7 +317,13 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 3.2.0 — What's New:</strong></p>
+            <p><strong>Version 3.2.1 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>OLT Affected Clients Fix:</strong> Fixed double-counting of affected clients when multiple OLTs share the same ticket — each OLT now shows its individual client count from NLZ OLT Report.</li>
+                  <li><strong>Per-OLT Client Lookup:</strong> Apps Script now reads Column AB (OLT names) and matches each OLT to its client count in NLZ OLT Report Column A — no more summing duplicates.</li>
+                  <li><strong>Modal Affected Clients:</strong> OLT modal now displays individual affected clients for the selected OLT.</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 3.2.0:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Keyboard Shortcuts (New):</strong> Press R to refresh, 1-7 to switch tabs, Esc to close modal, ? for help.</li>
                   <li><strong>Custom Date Range (New):</strong> Analytics dashboard now supports 7/30/90 day filters for trend analysis.</li>
@@ -477,7 +483,10 @@
         <span class="label">Aging Duration:</span>
         <span class="val" id="mAging">-</span>
       </div>
-        <!-- DITO I-UPDATE SA INDEX.HTML -->
+        <div class="modal-item">
+          <span class="label">Affected Clients:</span>
+          <span class="val" id="mClientsAffected" style="color: var(--badge-red-text); font-weight: 800;">0</span>
+        </div>
         <div class="modal-item">
           <span class="label">Remarks:</span>
           <span class="val" id="mRemarks" style="color: var(--primary-teal); font-weight: 600; font-style: italic;">-</span>
@@ -579,7 +588,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.2.0"; 
+  const REQUIRED_APP_VERSION = "3.2.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -914,7 +923,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.2.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.2.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });

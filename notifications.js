@@ -33,19 +33,25 @@ async function initNotifications() {
     // Load Firebase SDK
     await loadFirebaseSDK();
 
-    // Initialize Firebase
-    firebase.initializeApp(FIREBASE_CONFIG);
+    // Check if Firebase is already initialized
+    if (!firebase.apps.length) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    
     _messaging = firebase.messaging();
 
     // Listen for foreground messages
-    _messaging.onMessage((payload) => {
-      console.log('[Notifications] Foreground message:', payload);
-      showInAppNotification(payload);
-    });
+    if (_messaging) {
+      _messaging.onMessage((payload) => {
+        console.log('[Notifications] Foreground message:', payload);
+        showInAppNotification(payload);
+      });
+    }
 
     console.log('[Notifications] Firebase Messaging initialized');
   } catch (err) {
     console.error('[Notifications] Init failed:', err);
+    _messaging = null;
   }
 }
 
