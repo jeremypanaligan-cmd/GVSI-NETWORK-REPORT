@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.3.0">
+  <link rel="stylesheet" href="styles.css?v=3.3.1">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -56,7 +56,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.3.0</div>
+    <div class="login-footer">GVSI NetPulse v3.3.1</div>
   </div>
 </div>
 
@@ -627,7 +627,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.3.0"; 
+  const REQUIRED_APP_VERSION = "3.3.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -647,8 +647,12 @@
         await Promise.all(cacheNames.map(name => caches.delete(name)));
       }
 
-      // Linisin ang storage
+      // Linisin ang storage (preserve essential keys)
+      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry'];
+      const _preserved = {};
+      _preserveKeys.forEach(k => { _preserved[k] = localStorage.getItem(k); });
       localStorage.clear();
+      Object.entries(_preserved).forEach(([k, v]) => { if (v !== null) localStorage.setItem(k, v); });
       sessionStorage.clear();
 
       // Siguraduhing loaded na ang DOM bago palitan ang HTML
@@ -827,22 +831,27 @@ function refreshCurrentTab() {
   // 1. NAP Data Fetcher
 
   function prefetchOtherTabsInBackground() {
-  // Parallel fetch — stagger ng 200ms para hindi sabay-sabay ang connection
-  const types = ['lcp', 'olt', 'node', 'backbone'];
-  types.forEach((type, i) => {
+  // Smart prefetch: Only prefetch the NEXT tab the user is likely to visit
+  // Other tabs load on-demand when user switches (via fetchWithRetry in each module)
+  // This reduces initial load time from ~1s to ~200ms and saves Apps Script quota
+  
+  // Prefetch order priority: LCP (next tab after NAP) > OLT > others
+  const prefetchPriority = ['lcp', 'olt'];
+  
+  prefetchPriority.forEach((type, i) => {
     setTimeout(() => {
       if (!dataCache[type]) {
         fetchWithRetry(BASE_API_URL + "?type=" + type)
           .then(data => { if (data) dataCache[type] = data; })
-          .catch(err => console.error('Prefetch ' + type.toUpperCase() + ' failed:', err));
+          .catch(() => {}); // Silent fail for prefetch — user can manually load later
       }
-    }, 200 * (i + 1)); // 200ms, 400ms, 600ms, 800ms — lahat within 1 second
+    }, 300 * (i + 1)); // 300ms, 600ms — non-blocking
   });
 
-  // Save daily snapshot after all modules are loaded
+  // Save daily snapshot after initial data is loaded
   setTimeout(() => {
     if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
-  }, 1500); // 1.5s buffer para sa lahat ng prefetch
+  }, 1200); // 1.2s buffer
 }
       
 
@@ -920,9 +929,10 @@ function closeNodeModal(event) {
       }
     });
 
-    tbody.innerHTML = '';
-    dataRows.forEach(row => tbody.appendChild(row));
-    if (totalRow) tbody.appendChild(totalRow);
+    let sortedHtml = '';
+    dataRows.forEach(row => { sortedHtml += row.outerHTML; });
+    if (totalRow) sortedHtml += totalRow.outerHTML;
+    tbody.innerHTML = sortedHtml;
   }
 
   initTheme();
@@ -959,15 +969,12 @@ function closeNodeModal(event) {
   if (isLoggedIn()) {
     showApp();
   } else {
-    // Check for saved credentials — auto-login
+    // Check for saved credentials — auto-login using performLogin() directly
     var savedCreds = null;
     try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
     if (savedCreds && savedCreds.u && savedCreds.p) {
-      // Auto-login: fill form and submit
-      document.getElementById('loginUsername').value = savedCreds.u;
-      document.getElementById('loginPassword').value = savedCreds.p;
-      document.getElementById('rememberMe').checked = true;
-      handleLogin(new Event('submit'));
+      // Auto-login: call performLogin directly (no form event needed)
+      performLogin(savedCreds.u, savedCreds.p, true);
     } else {
       showLogin();
     }
@@ -989,7 +996,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.3.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.3.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1127,7 +1134,7 @@ function closeNodeModal(event) {
     const wrapper = document.createElement('div');
     wrapper.className = 'search-bar-container';
     wrapper.innerHTML = `
-      <input type="text" class="search-input" placeholder="Search..." oninput="filterTable('${tbodyId}', this.value)">
+      <input type="text" class="search-input" placeholder="Search..." oninput="debounce('search-${tbodyId}', () => filterTable('${tbodyId}', this.value), 200)">
       <span class="search-count" id="count-${tbodyId}"></span>
     `;
     card.parentNode.insertBefore(wrapper, card);
@@ -1230,21 +1237,13 @@ function closeNodeModal(event) {
     }
   }
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    var username = document.getElementById('loginUsername').value.trim();
-    var password = document.getElementById('loginPassword').value.trim();
+  // Core login logic — reusable by form handler AND auto-login
+  async function performLogin(username, password, rememberMe) {
     var errorEl = document.getElementById('loginError');
     var btn = document.getElementById('loginBtn');
 
-    if (!username || !password) {
-      errorEl.textContent = 'Please enter username and password';
-      return false;
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'SIGNING IN...';
-    errorEl.textContent = '';
+    if (btn) { btn.disabled = true; btn.textContent = 'SIGNING IN...'; }
+    if (errorEl) errorEl.textContent = '';
 
     try {
       // Google Apps Script requires text/plain Content-Type for POST body parsing
@@ -1261,22 +1260,40 @@ function closeNodeModal(event) {
         localStorage.setItem(SESSION_KEY, JSON.stringify(result.user));
         localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_DURATION));
         // Save credentials if Remember Me is checked
-        if (document.getElementById('rememberMe').checked) {
+        if (rememberMe) {
           localStorage.setItem(REMEMBER_KEY, JSON.stringify({ u: username, p: password }));
         } else {
           localStorage.removeItem(REMEMBER_KEY);
         }
         showApp();
+        if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
+        return true;
       } else {
-        errorEl.textContent = result.message || 'Invalid credentials';
+        if (errorEl) errorEl.textContent = result.message || 'Invalid credentials';
+        if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
+        return false;
       }
     } catch(err) {
-      errorEl.textContent = 'Connection error. Please try again.';
+      if (errorEl) errorEl.textContent = 'Connection error. Please try again.';
       console.error('Login error:', err);
+      if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
+      return false;
+    }
+  }
+
+  // Form handler — extracts values from form elements
+  async function handleLogin(e) {
+    e.preventDefault();
+    var username = document.getElementById('loginUsername').value.trim();
+    var password = document.getElementById('loginPassword').value.trim();
+    var rememberMe = document.getElementById('rememberMe').checked;
+
+    if (!username || !password) {
+      document.getElementById('loginError').textContent = 'Please enter username and password';
+      return false;
     }
 
-    btn.disabled = false;
-    btn.textContent = 'SIGN IN';
+    await performLogin(username, password, rememberMe);
     return false;
   }
 

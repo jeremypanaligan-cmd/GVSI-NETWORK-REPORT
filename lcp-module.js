@@ -26,14 +26,14 @@ async function fetchLcpData(forceRefresh = false) {
 function renderLcpReport(agingData, impactData) {
   const agingBody = document.getElementById('lcpAgingTableBody');
   if (!agingBody) return;
-  agingBody.innerHTML = '';
+  let agingHtml = '';
 
   let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
 
   agingData.forEach(row => {
-    const area = row.A || row.AREA || '';
+    const area = typeof sanitizeHTML === 'function' ? sanitizeHTML(row.A || row.AREA || '') : (row.A || row.AREA || '');
     const provinceRaw = row.P || row.PROVINCE || '';
-    const province = provinceRaw.toString().replace(/_/g, ' ');
+    const province = typeof sanitizeHTML === 'function' ? sanitizeHTML(provinceRaw.toString().replace(/_/g, ' ')) : provinceRaw.toString().replace(/_/g, ' ');
 
     const h24 = parseInt(row.H || row['<24HOURS'] || 0) || 0;
     const d13 = parseInt(row.D1 || row['1-3 DAYS'] || 0) || 0;
@@ -46,37 +46,33 @@ function renderLcpReport(agingData, impactData) {
       total3 += d3;
       grandTotal += rowTotal;
 
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
+      agingHtml += `<tr>
         <td data-label="Area"><strong>${area}</strong></td>
         <td data-label="Province">${province}</td>
         <td data-label="(<24HOURS)" style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
         <td data-label="(1-3 DAYS)" style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
         <td data-label="(>3DAYS)" style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
         <td data-label="Total" style="text-align: center;"><strong>${rowTotal}</strong></td>
-      `;
-      agingBody.appendChild(tr);
+      </tr>`;
     }
   });
 
-  if (document.getElementById('lcpCard24')) document.getElementById('lcpCard24').textContent = total24;
-  if (document.getElementById('lcpCard13')) document.getElementById('lcpCard13').textContent = total13;
-  if (document.getElementById('lcpCard3')) document.getElementById('lcpCard3').textContent = total3;
-
-  const agingTotalTr = document.createElement('tr');
-  agingTotalTr.className = 'total-row';
-  agingTotalTr.innerHTML = `
+  agingHtml += `<tr class="total-row">
     <td colspan="2">TOTAL</td>
     <td style="text-align: center;">${total24}</td>
     <td style="text-align: center;">${total13}</td>
     <td style="text-align: center;">${total3}</td>
     <td style="text-align: center;">${grandTotal}</td>
-  `;
-  agingBody.appendChild(agingTotalTr);
+  </tr>`;
+  agingBody.innerHTML = agingHtml;
+
+  if (document.getElementById('lcpCard24')) document.getElementById('lcpCard24').textContent = total24;
+  if (document.getElementById('lcpCard13')) document.getElementById('lcpCard13').textContent = total13;
+  if (document.getElementById('lcpCard3')) document.getElementById('lcpCard3').textContent = total3;
 
   const impactBody = document.getElementById('lcpImpactTableBody');
   if (!impactBody) return;
-  impactBody.innerHTML = '';
+  let impactHtml = '';
 
   let totalTT = 0, totalLCP = 0, totalClients = 0;
 
@@ -94,15 +90,13 @@ function renderLcpReport(agingData, impactData) {
       totalLCP += lcpCount;
       totalClients += clients;
 
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
+      impactHtml += `<tr>
         <td data-label="Area"><strong>${area}</strong></td>
         <td data-label="Province">${province}</td>
         <td data-label="TT Count" style="text-align: center;">${ttCount}</td>
         <td data-label="LCP Count" style="text-align: center;">${lcpCount}</td>
         <td data-label="Clients" style="text-align: center; color: var(--primary-teal); font-weight: 700;">${clients}</td>
-      `;
-      impactBody.appendChild(tr);
+      </tr>`;
     }
   });
 
@@ -111,16 +105,14 @@ function renderLcpReport(agingData, impactData) {
   if (document.getElementById('lcpCardLCP')) document.getElementById('lcpCardLCP').textContent = totalLCP;
 
   if (impactData.length > 0) {
-    const impactTotalTr = document.createElement('tr');
-    impactTotalTr.className = 'total-row';
-    impactTotalTr.innerHTML = `
+    impactHtml += `<tr class="total-row">
       <td colspan="2">TOTAL</td>
       <td style="text-align: center;">${totalTT}</td>
       <td style="text-align: center;">${totalLCP}</td>
       <td style="text-align: center; color: var(--primary-teal);">${totalClients}</td>
-    `;
-    impactBody.appendChild(impactTotalTr);
+    </tr>`;
   }
+  impactBody.innerHTML = impactHtml;
 
   // Add export toolbar
   const lcpTab = document.getElementById('tab-lcp');

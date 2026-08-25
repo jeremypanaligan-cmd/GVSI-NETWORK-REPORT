@@ -1,12 +1,57 @@
+// ==================== COLUMN INDEX CONSTANTS ====================
+// Prevents breakage when sheet structure changes
+var COL = {
+  // OLT DOWN Tickets (Columns A-AB)
+  OLT_PROVINCE: 0,       // A
+  OLT_MUNICIPALITY: 1,   // B
+  OLT_NAME: 2,           // C
+  OLT_TICKET_NO: 5,      // F
+  OLT_CAUSE: 6,          // G
+  OLT_REMARKS: 20,       // U
+  OLT_AGING: 23,         // X
+  OLT_CLIENTS: 25,       // Z
+  OLT_NAMES_AB: 27,      // AB (OLT names for per-OLT lookup)
+  
+  // Node DOWN Tickets
+  NODE_PROVINCE: 3,      // D (Index 3)
+  NODE_IMPACT: 10,       // K (Index 10)
+  NODE_DOWNTIME: 13,     // N (Index 13)
+  NODE_REMARKS: 20,      // U (Index 20)
+  NODE_AGING: 23,        // X (Index 23)
+  NODE_COUNT: 24,        // Y (Index 24)
+  NODE_EQUIPMENT: 26,    // AA (Index 26)
+  
+  // Backbone Tickets
+  BB_PROVINCE: 3,        // D (Index 3)
+  BB_TICKET: 5,          // F (Index 5)
+  BB_SERVICE: 6,         // G (Index 6)
+  BB_IMPACT: 10,         // K (Index 10)
+  BB_CATEGORY: 11,       // L (Index 11)
+  BB_DOWNTIME: 13,       // N (Index 13)
+  BB_REMARKS: 20,        // U (Index 20)
+  BB_AGING: 23,          // X (Index 23)
+  BB_LINKS: 24,          // Y (Index 24)
+  BB_LINK_COUNT: 25      // Z (Index 25)
+};
+
 function doGet(e) {
   var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "nap";
   
   // ---------------- 1. Cache Check ----------------
   var cache = CacheService.getScriptCache();
+  var cacheKey = "cache_v2_" + type;
   try {
-    var cachedData = cache.get("cache_v2_" + type);
+    // Try CacheService first (100KB limit)
+    var cachedData = cache.get(cacheKey);
     if (cachedData) {
       return ContentService.createTextOutput(cachedData)
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    // Fallback: Check PropertiesService (500KB limit) for large payloads
+    var props = PropertiesService.getScriptProperties();
+    var propData = props.getProperty(cacheKey);
+    if (propData) {
+      return ContentService.createTextOutput(propData)
         .setMimeType(ContentService.MimeType.JSON);
     }
   } catch (err) {
@@ -31,16 +76,16 @@ if (type === "backbone") {
 
         for (var b = 0; b < bbData.length; b++) {
           var rowB = bbData[b];
-          var provinceRaw = String(rowB[3] || "").trim(); // Column D (Index 3)
-          var ticketRaw = String(rowB[5] || "").trim();   // Column F (Index 5)
-          var serviceRaw = String(rowB[6] || "").trim();  // Column G (Index 6)
-          var impactRaw = String(rowB[10] || "").trim();  // Column K (Index 10) - IMPACT
-          var issueRaw = String(rowB[11] || "").trim();   // Column L (Index 11) - ISSUE
-          var downtimeRaw = rowB[13] ? formatDateVal(rowB[13]) : "-"; // Column N (Index 13) - DOWN TIME
-          var agingRaw = String(rowB[23] || "").trim();   // Column X (Index 23) - AGING DURATION
-          var linksRaw = String(rowB[24] || "").trim();   // Column Y (Index 24)
-          var countLinks = rowB[25] !== "" ? rowB[25] : 0; // Column Z (Index 25)
-          var remarksRaw = rowB[20] ? String(rowB[20]).trim() : "-"; // Column U (Index 20)
+          var provinceRaw = String(rowB[COL.BB_PROVINCE] || "").trim();
+          var ticketRaw = String(rowB[COL.BB_TICKET] || "").trim();
+          var serviceRaw = String(rowB[COL.BB_SERVICE] || "").trim();
+          var impactRaw = String(rowB[COL.BB_IMPACT] || "").trim();
+          var issueRaw = String(rowB[COL.BB_CATEGORY] || "").trim();
+          var downtimeRaw = rowB[COL.BB_DOWNTIME] ? formatDateVal(rowB[COL.BB_DOWNTIME]) : "-";
+          var agingRaw = String(rowB[COL.BB_AGING] || "").trim();
+          var linksRaw = String(rowB[COL.BB_LINKS] || "").trim();
+          var countLinks = rowB[COL.BB_LINK_COUNT] !== "" ? rowB[COL.BB_LINK_COUNT] : 0;
+          var remarksRaw = rowB[COL.BB_REMARKS] ? String(rowB[COL.BB_REMARKS]).trim() : "-";
 
           // I-filter ang mga walang tunay na data (hindi counted ang residual values)
           var hasRealData = (provinceRaw !== "" && provinceRaw !== "-") || (ticketRaw !== "" && ticketRaw !== "-" && ticketRaw !== "N/A");
@@ -80,18 +125,18 @@ if (type === "backbone") {
 
         for (var n = 0; n < nodeData.length; n++) {
           var rowN = nodeData[n];
-          var provinceRaw = String(rowN[3] || "").trim(); // Column D (Index 3)
-          var nodesRaw = String(rowN[26] || "").trim();   // Column AA (Index 26) - EQUIPMENTS AFFECTED
+          var provinceRaw = String(rowN[COL.NODE_PROVINCE] || "").trim();
+          var nodesRaw = String(rowN[COL.NODE_EQUIPMENT] || "").trim();
 
           if (provinceRaw !== "" || nodesRaw !== "") {
             nodeList.push({
               "P": provinceRaw.replace(/_/g, " "),
-              "N": nodesRaw || "N/A",                          // EQUIPMENTS AFFECTED (Col AA)
-              "C": rowN[24] !== "" ? rowN[24] : 0,            // COUNT OF EQP (Col Y / Index 24)
-              "I": rowN[10] || "N/A",                         // Column K (Index 10)
-              "D": rowN[13] ? formatDateVal(rowN[13]) : "N/A", // DOWN TIME (Col N / Index 13)
-              "AG": rowN[23] || "N/A",                        // AGING DURATION (Col X / Index 23)
-              "RM": rowN[20] ? String(rowN[20]).trim() : "-"   // REMARKS (Col U / Index 20)
+              "N": nodesRaw || "N/A",
+              "C": rowN[COL.NODE_COUNT] !== "" ? rowN[COL.NODE_COUNT] : 0,
+              "I": rowN[COL.NODE_IMPACT] || "N/A",
+              "D": rowN[COL.NODE_DOWNTIME] ? formatDateVal(rowN[COL.NODE_DOWNTIME]) : "N/A",
+              "AG": rowN[COL.NODE_AGING] || "N/A",
+              "RM": rowN[COL.NODE_REMARKS] ? String(rowN[COL.NODE_REMARKS]).trim() : "-"
             });
           }
         }
@@ -165,12 +210,12 @@ if (!oltSheet) {
       if (lastRowTix >= 2) {
         var tixData = ticketSheet.getRange(2, 1, lastRowTix - 1, 28).getValues();
         for (var t = 0; t < tixData.length; t++) {
-          var ticketNoRaw = tixData[t][5];  // Column F
-          var causeRaw = tixData[t][6];     // Column G
-          var remarksRaw = tixData[t][20];  // Column U (Index 20)
-          var agingRaw = tixData[t][23];    // Column X (Index 23)
-          var clientsRaw = tixData[t][25];  // Column Z (Index 25) - NUMBER OF CLIENTS (per-OLT, newline-separated)
-          var oltsRaw = tixData[t][27];     // Column AB (Index 27) - OLT NAMES (newline-separated)
+          var ticketNoRaw = tixData[t][COL.OLT_TICKET_NO];
+          var causeRaw = tixData[t][COL.OLT_CAUSE];
+          var remarksRaw = tixData[t][COL.OLT_REMARKS];
+          var agingRaw = tixData[t][COL.OLT_AGING];
+          var clientsRaw = tixData[t][COL.OLT_CLIENTS];
+          var oltsRaw = tixData[t][COL.OLT_NAMES_AB];
           
           if (ticketNoRaw && String(ticketNoRaw).trim() !== "") {
             var tKey = String(ticketNoRaw).trim().toUpperCase();
@@ -282,12 +327,25 @@ if (!oltSheet) {
 
 // ---------------- SAVE TO CACHE (Dynamic TTL per Type) ----------------
   var jsonResponse = JSON.stringify(resultData);
+  var payloadSize = jsonResponse.length;
   
   // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
   var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
+  var cacheKey = "cache_v2_" + type;
 
   try {
-    cache.put("cache_v2_" + type, jsonResponse, cacheTTL);
+    // CacheService limit: 100KB per key
+    // PropertiesService limit: 500KB per property (fallback for large payloads)
+    if (payloadSize <= 90000) {
+      cache.put(cacheKey, jsonResponse, cacheTTL);
+    } else if (payloadSize <= 450000) {
+      // Fallback: Use PropertiesService for large payloads (e.g., OLT with 460+ rows)
+      var props = PropertiesService.getScriptProperties();
+      props.setProperty(cacheKey, jsonResponse);
+      Logger.log("Cache overflow fallback: " + type + " using PropertiesService (" + payloadSize + " bytes)");
+    } else {
+      Logger.log("WARNING: Payload too large for any cache: " + type + " (" + payloadSize + " bytes)");
+    }
   } catch (err) {
     Logger.log("Caching failed: " + err.message);
   }

@@ -35,14 +35,14 @@ async function fetchNapData(forceRefresh = false) {
 function renderNapReport(data) {
   const tbody = document.getElementById('napTableBody');
   if (!tbody) return;
-  tbody.innerHTML = '';
+  let tableHtml = '';
 
   let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
 
   data.forEach(row => {
-    const area = row.A || row.AREA || row.Area || '';
+    const area = typeof sanitizeHTML === 'function' ? sanitizeHTML(row.A || row.AREA || row.Area || '') : (row.A || row.AREA || row.Area || '');
     const provinceRaw = row.P || row.PROVINCE || row.Province || '';
-    const province = provinceRaw.toString().replace(/_/g, ' ');
+    const province = typeof sanitizeHTML === 'function' ? sanitizeHTML(provinceRaw.toString().replace(/_/g, ' ')) : provinceRaw.toString().replace(/_/g, ' ');
 
     const h24 = parseInt(row.H || row['<24HOURS'] || 0) || 0;
     const d13 = parseInt(row.D1 || row['1-3 DAYS'] || 0) || 0;
@@ -55,18 +55,26 @@ function renderNapReport(data) {
       total3 += d3;
       grandTotal += rowTotal;
 
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
+      tableHtml += `<tr>
         <td data-label="Area"><strong>${area}</strong></td>
         <td data-label="Province">${province}</td>
         <td data-label="(<24HOURS)" style="text-align: center;">${getBadgeHtml(h24, 'green')}</td>
         <td data-label="(1-3 DAYS)" style="text-align: center;">${getBadgeHtml(d13, 'yellow')}</td>
         <td data-label="(>3DAYS)" style="text-align: center;">${getBadgeHtml(d3, 'red')}</td>
         <td data-label="Total" style="text-align: center;"><strong>${rowTotal}</strong></td>
-      `;
-      tbody.appendChild(tr);
+      </tr>`;
     }
   });
+
+  tableHtml += `<tr class="total-row">
+    <td colspan="2">TOTAL</td>
+    <td style="text-align: center;">${total24}</td>
+    <td style="text-align: center;">${total13}</td>
+    <td style="text-align: center;">${total3}</td>
+    <td style="text-align: center;">${grandTotal}</td>
+  </tr>`;
+
+  tbody.innerHTML = tableHtml;
 
   if (document.getElementById('card24')) document.getElementById('card24').textContent = total24;
   if (document.getElementById('card13')) document.getElementById('card13').textContent = total13;
@@ -91,15 +99,4 @@ function renderNapReport(data) {
     const tableCard = napTab.querySelector('.table-card');
     if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
   }
-
-  const totalTr = document.createElement('tr');
-  totalTr.className = 'total-row';
-  totalTr.innerHTML = `
-    <td colspan="2">TOTAL</td>
-    <td style="text-align: center;">${total24}</td>
-    <td style="text-align: center;">${total13}</td>
-    <td style="text-align: center;">${total3}</td>
-    <td style="text-align: center;">${grandTotal}</td>
-  `;
-  tbody.appendChild(totalTr);
 }

@@ -39,8 +39,11 @@ function _conicGradient(segments, total) {
   return parts.length > 0 ? 'conic-gradient(' + parts.join(', ') + ')' : 'none';
 }
 
-// Helper: province short name (remove underscores)
-function _provName(p) { return (p || '').toString().replace(/_/g, ' ').trim(); }
+// Helper: province short name (remove underscores) + XSS sanitize
+function _provName(p) {
+  const cleaned = (p || '').toString().replace(/_/g, ' ').trim();
+  return typeof sanitizeHTML === 'function' ? sanitizeHTML(cleaned) : cleaned;
+}
 
 // ====================== MAIN RENDER ======================
 async function fetchAnalyticsData(forceRefresh = false) {
@@ -471,12 +474,13 @@ function renderAnalyticsDashboard() {
       else if (st.includes('UPLINK DOWN')) badgeType = 'yellow';
       else if (st.includes('DEGRADATION')) badgeType = 'purple';
 
+      const _s = typeof sanitizeHTML === 'function' ? sanitizeHTML : (v => v);
       html += `
         <tr class="clickable-row" onclick="switchTab('olt', event)">
           <td>${_provName(item.P)}</td>
-          <td><strong>${item.N || '-'}</strong></td>
+          <td><strong>${_s(item.N || '-')}</strong></td>
           <td style="text-align:center;"><span class="badge badge-${badgeType}">${st}</span></td>
-          <td style="text-align:center; color:var(--badge-red-text); font-weight:700;">${item.AG || '-'}</td>
+          <td style="text-align:center; color:var(--badge-red-text); font-weight:700;">${_s(item.AG || '-')}</td>
           <td style="text-align:center; font-weight:700;">${_si(item.CA) || '-'}</td>
         </tr>
       `;
@@ -624,6 +628,13 @@ async function renderTrendCharts() {
 
   if (note) note.innerHTML = '';
 
+  // ==================== DESTROY EXISTING CHARTS (Prevent Memory Leak) ====================
+  if (!window._analyticsCharts) window._analyticsCharts = [];
+  window._analyticsCharts.forEach(chart => {
+    if (chart && typeof chart.destroy === 'function') chart.destroy();
+  });
+  window._analyticsCharts = [];
+
   const labels = snapshots.map(s => {
     const d = new Date(s.date + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -646,7 +657,7 @@ async function renderTrendCharts() {
   // 1. Incidents per Day (stacked bar)
   const ctx1 = document.getElementById('trendIncidentsChart');
   if (ctx1) {
-    new Chart(ctx1, {
+    window._analyticsCharts.push(new Chart(ctx1, {
       type: 'bar',
       data: {
         labels: labels,
@@ -659,13 +670,13 @@ async function renderTrendCharts() {
         ]
       },
       options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } }, scales: { ...baseOptions.scales, x: { ...baseOptions.scales.x, stacked: true }, y: { ...baseOptions.scales.y, stacked: true } } }
-    });
+    }));
   }
 
   // 2. OLT Status Trend (line)
   const ctx2 = document.getElementById('trendOltChart');
   if (ctx2) {
-    new Chart(ctx2, {
+    window._analyticsCharts.push(new Chart(ctx2, {
       type: 'line',
       data: {
         labels: labels,
@@ -676,13 +687,13 @@ async function renderTrendCharts() {
         ]
       },
       options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } } }
-    });
+    }));
   }
 
   // 3. Clients Affected Trend (area)
   const ctx3 = document.getElementById('trendClientsChart');
   if (ctx3) {
-    new Chart(ctx3, {
+    window._analyticsCharts.push(new Chart(ctx3, {
       type: 'line',
       data: {
         labels: labels,
@@ -692,13 +703,13 @@ async function renderTrendCharts() {
         ]
       },
       options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } } }
-    });
+    }));
   }
 
   // 4. Aging Distribution (bar)
   const ctx4 = document.getElementById('trendAgingChart');
   if (ctx4) {
-    new Chart(ctx4, {
+    window._analyticsCharts.push(new Chart(ctx4, {
       type: 'bar',
       data: {
         labels: labels,
@@ -709,7 +720,7 @@ async function renderTrendCharts() {
         ]
       },
       options: { ...baseOptions, plugins: { legend: { display: true, position: 'bottom', labels: { color: textColor, font: { size: 9 }, boxWidth: 10, padding: 8 } } }, scales: { ...baseOptions.scales, x: { ...baseOptions.scales.x, stacked: true }, y: { ...baseOptions.scales.y, stacked: true } } }
-    });
+    }));
   }
 }
 

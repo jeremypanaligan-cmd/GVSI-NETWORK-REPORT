@@ -42,19 +42,21 @@ function processAndRenderOlt() {
     else countUp++;
   });
 
-  document.getElementById('oltCardTotal').textContent = totalOlt;
-  document.getElementById('oltCardUp').textContent = countUp;
-  document.getElementById('oltCardDown').textContent = countDown;
-  document.getElementById('oltCardLowPower').textContent = countLowPower;
-  document.getElementById('oltCardUplinkDown').textContent = countUplinkDown;
+  // Null-safe DOM updates
+  const _el = (id) => document.getElementById(id);
+  if (_el('oltCardTotal')) _el('oltCardTotal').textContent = totalOlt;
+  if (_el('oltCardUp')) _el('oltCardUp').textContent = countUp;
+  if (_el('oltCardDown')) _el('oltCardDown').textContent = countDown;
+  if (_el('oltCardLowPower')) _el('oltCardLowPower').textContent = countLowPower;
+  if (_el('oltCardUplinkDown')) _el('oltCardUplinkDown').textContent = countUplinkDown;
 
   // Apply alert thresholds to stat cards
-  const cardDown = document.getElementById('cardOltDown');
+  const cardDown = _el('cardOltDown');
   if (cardDown) cardDown.className = 'stat-card clickable ' + getAlertClass('oltDown', countDown);
-  const cardLP = document.getElementById('cardOltLowPower');
+  const cardLP = _el('cardOltLowPower');
   if (cardLP) cardLP.className = 'stat-card clickable ' + getAlertClass('oltLowPower', countLowPower);
-  document.getElementById('oltCardDegradation').textContent = countDegradation;
-  document.getElementById('oltCardClientsDown').textContent = totalClientsDown;
+  if (_el('oltCardDegradation')) _el('oltCardDegradation').textContent = countDegradation;
+  if (_el('oltCardClientsDown')) _el('oltCardClientsDown').textContent = totalClientsDown;
 
   renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
   renderOltTable();
@@ -124,7 +126,7 @@ function setOltFilter(filterType) {
 function renderOltTable() {
   const tbody = document.getElementById('oltTableBody');
   if (!tbody) return;
-  tbody.innerHTML = '';
+  let tableHtml = '';
 
   const filtered = rawOltData.filter(item => {
     const st = (item.S || item.STATUS || '').toString().trim().toUpperCase();
@@ -143,18 +145,19 @@ function renderOltTable() {
   }
 
   filtered.forEach(item => {
-    const province = item.P || item.PROVINCE || '-';
-    const municipality = item.M || item.MUNICIPALITY || '-';
-    const name = item.N || item.OLT_NAME || '-';
+    const _s = typeof sanitizeHTML === 'function' ? sanitizeHTML : (v => v);
+    const province = _s(item.P || item.PROVINCE || '-');
+    const municipality = _s(item.M || item.MUNICIPALITY || '-');
+    const name = _s(item.N || item.OLT_NAME || '-');
     const status = (item.S || item.STATUS || 'UP').toString().toUpperCase();
-    const ticketNo = item.T || '-';
-    const downtimeCause = item.DC || '-';
-    const aging = item.AG || item.AGING || '-';
+    const ticketNo = _s(item.T || '-');
+    const downtimeCause = _s(item.DC || '-');
+    const aging = _s(item.AG || item.AGING || '-');
     const clientsAffectedNum = parseInt(item.CA || 0) || 0;
     const clientsAffectedDisplay = clientsAffectedNum > 0
       ? `<strong style="color: var(--badge-red-text);">${clientsAffectedNum}</strong>`
       : `<span style="color: var(--text-muted);">–</span>`;
-    const remarks = item.RM || item.REMARKS || '-';
+    const remarks = _s(item.RM || item.REMARKS || '-');
 
     let badgeType = 'green';
     if (status === 'DOWN') badgeType = 'red';
@@ -162,27 +165,24 @@ function renderOltTable() {
     else if (status.includes('UPLINK DOWN')) badgeType = 'yellow';
     else if (status.includes('DEGRADATION')) badgeType = 'purple';
 
-    const tr = document.createElement('tr');
-    tr.className = 'clickable-row ' + getAlertClass('clientsDown', clientsAffectedNum);
-    tr.onclick = () => openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks, clientsAffectedNum);
-    tr.innerHTML = `
+    const alertClass = getAlertClass('clientsDown', clientsAffectedNum);
+    const onclickStr = `openOltModal('${_s(name).replace(/'/g, "\\'")}', '${_s(province).replace(/'/g, "\\'")}', '${_s(municipality).replace(/'/g, "\\'")}', '${status}', '${_s(ticketNo).replace(/'/g, "\\'")}', '${_s(downtimeCause).replace(/'/g, "\\'")}', '${_s(aging).replace(/'/g, "\\'")}', '${_s(remarks).replace(/'/g, "\\'")}', ${clientsAffectedNum})`;
+    tableHtml += `<tr class="clickable-row ${alertClass}" onclick="${onclickStr}">
       <td data-label="Province">${province}</td>
       <td data-label="Municipality">${municipality}</td>
       <td data-label="OLT Name"><strong>${name}</strong></td>
       <td data-label="Affected Clients" style="text-align: center;">${clientsAffectedDisplay}</td>
       <td data-label="Aging" style="text-align: center;">${aging}</td>
       <td data-label="Status" style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
-    `;
-    tbody.appendChild(tr);
+    </tr>`;
   });
 
-  const totalTr = document.createElement('tr');
-  totalTr.className = 'total-row';
-  totalTr.innerHTML = `
+  tableHtml += `<tr class="total-row">
     <td colspan="5">FILTERED TOTAL (${currentOltFilter})</td>
     <td style="text-align: center;">${filtered.length}</td>
-  `;
-  tbody.appendChild(totalTr);
+  </tr>`;
+
+  tbody.innerHTML = tableHtml;
 
   // Add export toolbar
   const oltTab = document.getElementById('tab-olt');
