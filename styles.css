@@ -1,5 +1,5 @@
 /* ============================
-   GVSI NetPulse - Main Stylesheet    Version 3.2.2
+   GVSI NetPulse - Main Stylesheet    Version 3.3.0
    ============================ */
 
 :root {
@@ -1406,6 +1406,18 @@ body.dark-mode .remarks-paragraph-box {
   }
 }
 
+/* Login screen mobile */
+@media (max-width: 480px) {
+  .login-card {
+    margin: 16px;
+    padding: 24px 20px;
+  }
+  .login-brand .brand-gallop {
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+}
+
 /* ========================
    SKELETON LOADING
    ======================== */
@@ -1636,6 +1648,165 @@ body.dark-mode .remarks-paragraph-box {
 .alert-badge svg {
   width: 12px;
   height: 12px;
+}
+
+/* ========================
+   LOGIN SCREEN
+   ======================== */
+
+.login-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: linear-gradient(135deg, #0d8a80 0%, #085f58 50%, #064e3b 100%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+.login-overlay.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.login-card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 32px 24px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  text-align: center;
+}
+
+.login-brand {
+  margin-bottom: 24px;
+}
+
+.login-brand .brand-gallop {
+  font-size: 22px;
+  letter-spacing: 3px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.login-brand .brand-converge {
+  font-size: 13px;
+}
+
+.login-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 24px;
+  font-weight: 600;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-input-group {
+  position: relative;
+  text-align: left;
+}
+
+.login-input-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.login-input-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--light-bg);
+  color: var(--dark-charcoal);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.login-input-group input:focus {
+  border-color: var(--primary-teal);
+}
+
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-teal);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: background 0.2s ease, transform 0.1s ease;
+  margin-top: 4px;
+}
+
+.login-btn:hover {
+  background: var(--primary-dark);
+}
+
+.login-btn:active {
+  transform: scale(0.98);
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-error {
+  font-size: 12px;
+  color: var(--badge-red-text);
+  font-weight: 600;
+  min-height: 18px;
+  margin-top: 4px;
+}
+
+.login-footer {
+  margin-top: 20px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+/* Logout Button */
+.logout-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.logout-btn:hover {
+  background: var(--badge-red);
+  color: var(--badge-red-text);
+  border-color: var(--badge-red-text);
 }
 
 /* ========================

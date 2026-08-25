@@ -297,6 +297,75 @@ if (!oltSheet) {
 }
 
 
+function doPost(e) {
+  var payload = JSON.parse(e.postData.contents);
+  var action = payload.action || "";
+
+  if (action === "login") {
+    var username = String(payload.username || "").trim().toLowerCase();
+    var password = String(payload.password || "").trim();
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var usersSheet = ss.getSheetByName("Users");
+    if (!usersSheet) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Users sheet not found" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var lastRow = usersSheet.getLastRow();
+    if (lastRow < 2) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "No users configured" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var usersData = usersSheet.getRange(2, 1, lastRow - 1, 4).getValues(); // Columns A-D
+    var hashedPassword = sha256(password);
+
+    for (var i = 0; i < usersData.length; i++) {
+      var userRow = usersData[i];
+      var dbUsername = String(userRow[0] || "").trim().toLowerCase();
+      var dbPasswordHash = String(userRow[1] || "").trim();
+      var dbFullName = String(userRow[2] || "").trim();
+      var dbRole = String(userRow[3] || "").trim();
+
+      if (dbUsername === username && dbPasswordHash === hashedPassword) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          user: {
+            username: dbUsername,
+            fullName: dbFullName,
+            role: dbRole
+          }
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Invalid username or password" })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Unknown action" })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// SHA-256 hash function for password verification
+function sha256(input) {
+  var rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, input, Utilities.Charset.UTF_8);
+  var hash = '';
+  for (var i = 0; i < rawHash.length; i++) {
+    var byte = rawHash[i];
+    if (byte < 0) byte += 256;
+    var hex = byte.toString(16);
+    if (hex.length === 1) hex = '0' + hex;
+    hash += hex;
+  }
+  return hash;
+}
+
+// Helper: Generate password hash (run once to set up users)
+function generateHash(plainTextPassword) {
+  var hash = sha256(plainTextPassword);
+  Logger.log('Password: ' + plainTextPassword);
+  Logger.log('Hash: ' + hash);
+  return hash;
+}
+
 function formatDateVal(d) {
   if (d instanceof Date) {
     return Utilities.formatDate(d, Session.getScriptTimeZone(), "MM/dd/yyyy HH:mm:ss");
