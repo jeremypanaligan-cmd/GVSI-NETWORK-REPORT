@@ -1550,6 +1550,17 @@ body.dark-mode .remarks-paragraph-box {
     display: none !important;
   }
 
+  /* Logout button icon-only on mobile */
+  .logout-btn {
+    padding: 6px !important;
+    font-size: 0 !important;
+    gap: 0 !important;
+  }
+  .logout-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
   /* Show bottom nav */
   .bottom-nav {
     display: flex;
@@ -1787,19 +1798,39 @@ body.dark-mode .remarks-paragraph-box {
   letter-spacing: 0.3px;
 }
 
+/* Remember Me Label */
+.remember-me-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-top: -4px;
+}
+
+.remember-me-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary-teal);
+  cursor: pointer;
+}
+
 /* Logout Button */
 .logout-btn {
   background: transparent;
   border: 1px solid var(--border-color);
   color: var(--text-muted);
-  padding: 6px 10px;
+  padding: 6px 8px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   display: none;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.2s ease;
 }
 

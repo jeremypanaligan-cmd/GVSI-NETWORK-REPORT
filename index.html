@@ -51,6 +51,9 @@
         </div>
       </div>
       <div class="login-error" id="loginError"></div>
+      <label class="remember-me-label">
+        <input type="checkbox" id="rememberMe"> Remember me
+      </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
     <div class="login-footer">GVSI NetPulse v3.3.0</div>
@@ -929,6 +932,7 @@ function closeNodeModal(event) {
   const APP_URL = 'https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec';
   const SESSION_KEY = 'netpulse_session';
   const SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
+  const REMEMBER_KEY = 'netpulse_remember';
   const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
   // ==================== AUTH CHECK ====================
@@ -955,7 +959,18 @@ function closeNodeModal(event) {
   if (isLoggedIn()) {
     showApp();
   } else {
-    showLogin();
+    // Check for saved credentials — auto-login
+    var savedCreds = null;
+    try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
+    if (savedCreds && savedCreds.u && savedCreds.p) {
+      // Auto-login: fill form and submit
+      document.getElementById('loginUsername').value = savedCreds.u;
+      document.getElementById('loginPassword').value = savedCreds.p;
+      document.getElementById('rememberMe').checked = true;
+      handleLogin(new Event('submit'));
+    } else {
+      showLogin();
+    }
   }
 
   // Kapag bumalik sa foreground — only refresh if more than 2 minutes ang lumipas
@@ -1245,6 +1260,12 @@ function closeNodeModal(event) {
       if (result.success) {
         localStorage.setItem(SESSION_KEY, JSON.stringify(result.user));
         localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_DURATION));
+        // Save credentials if Remember Me is checked
+        if (document.getElementById('rememberMe').checked) {
+          localStorage.setItem(REMEMBER_KEY, JSON.stringify({ u: username, p: password }));
+        } else {
+          localStorage.removeItem(REMEMBER_KEY);
+        }
         showApp();
       } else {
         errorEl.textContent = result.message || 'Invalid credentials';
@@ -1262,6 +1283,7 @@ function closeNodeModal(event) {
   function handleLogout() {
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(SESSION_EXPIRY_KEY);
+    localStorage.removeItem(REMEMBER_KEY);
     showLogin();
   }
 
@@ -1270,9 +1292,12 @@ function closeNodeModal(event) {
     var logoutBtn = document.getElementById('logoutBtn');
     if (overlay) overlay.classList.remove('hidden');
     if (logoutBtn) logoutBtn.style.display = 'none';
-    // Clear form
-    document.getElementById('loginUsername').value = '';
-    document.getElementById('loginPassword').value = '';
+    // Pre-fill saved credentials
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
+    document.getElementById('loginUsername').value = (saved && saved.u) ? saved.u : '';
+    document.getElementById('loginPassword').value = (saved && saved.p) ? saved.p : '';
+    document.getElementById('rememberMe').checked = !!saved;
     document.getElementById('loginError').textContent = '';
   }
 
