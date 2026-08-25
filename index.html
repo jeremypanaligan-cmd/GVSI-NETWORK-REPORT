@@ -353,7 +353,19 @@
           <div class="dev-name">GVSI Team</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.3.0 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.3.1 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>XSS Security Fix:</strong> DOMPurify now sanitizes ALL dynamic data across every module — NAP, LCP, OLT, Analytics, Node, Backbone.</li>
+                  <li><strong>CacheService Overflow Fix:</strong> Large payloads (460+ OLT rows) now fall back to PropertiesService (500KB limit) instead of failing silently.</li>
+                  <li><strong>Chart.js Memory Leak Fix:</strong> Analytics charts now properly destroy old instances before re-creating — prevents browser slowdown.</li>
+                  <li><strong>Version Guard Fix:</strong> Deploy updates no longer wipe user settings — theme, notifications, and session are preserved.</li>
+                  <li><strong>Column Constants:</strong> Backend now uses named column indexes (COL object) — prevents breakage when Google Sheet structure changes.</li>
+                  <li><strong>Search Debounce:</strong> Search inputs now have 200ms debounce — reduces unnecessary table re-renders on fast typing.</li>
+                  <li><strong>Smart Prefetching:</strong> App only preloads LCP and OLT tabs on startup instead of all tabs — faster initial load.</li>
+                  <li><strong>Batch DOM Updates:</strong> All modules now build HTML strings and set innerHTML once — smoother rendering.</li>
+                  <li><strong>Auto-Refresh Triggers:</strong> Aging duration scripts now run automatically via time-driven triggers (no more manual execution).</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 3.3.0:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Login Module (New):</strong> Secure authentication for executives — login screen with SHA-256 hashed passwords stored in Google Sheets. Session persists for 24 hours.</li>
                   <li><strong>Logout Button (New):</strong> Logout button in the header to sign out and return to login screen.</li>
