@@ -21,7 +21,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.2.1">
+  <link rel="stylesheet" href="styles.css?v=3.2.2">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -316,9 +316,9 @@
           <div class="dev-name">GVSI Team</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-            <p><strong>Version 3.2.1 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.2.2 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>PWA Card-View Fix:</strong> Fixed table layout breaking into vertical card view on some Android devices in PWA standalone mode — lowered media query threshold and added JS viewport guard.</li>
                   <li><strong>OLT Affected Clients Fix:</strong> Fixed double-counting of affected clients when multiple OLTs share the same ticket — each OLT now shows its individual client count from NLZ OLT Report.</li>
                   <li><strong>Per-OLT Client Lookup:</strong> Apps Script now reads Column AB (OLT names) and matches each OLT to its client count in NLZ OLT Report Column A — no more summing duplicates.</li>
                   <li><strong>Modal Affected Clients:</strong> OLT modal now displays individual affected clients for the selected OLT.</li>
@@ -588,7 +588,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.2.1"; 
+  const REQUIRED_APP_VERSION = "3.2.2"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -923,7 +923,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.2.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.2.2').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1128,6 +1128,19 @@ function closeNodeModal(event) {
     const map = { nap: 'NAP_Report', lcp: 'LCP_Report', olt: 'OLT_Report', node: 'Node_Report', backbone: 'Backbone_Report' };
     return map[tabName] || 'Report';
   }
+
+  // ==================== VIEWPORT GUARD (PWA Standalone Fix) ====================
+  // Some Android devices report wrong viewport width in PWA standalone mode.
+  // This forces table card-view OFF if the actual screen is wide enough.
+  (function guardCardView() {
+    var sw = window.screen ? window.screen.width : window.innerWidth;
+    if (sw > 360) {
+      // Inject override: disable the card-view media query
+      var style = document.createElement('style');
+      style.textContent = '@media (max-width: 340px){ .data-table thead{display:table-header-group!important} .data-table,.data-table tbody,.data-table tr{display:revert!important} .data-table td{display:revert!important;text-align:left!important} .data-table td::before{display:none!important} }';
+      document.head.appendChild(style);
+    }
+  })();
 
   // ==================== PULL-TO-REFRESH ====================
   let _ptrStartY = 0, _ptrPulling = false, _ptrIndicator = null;

@@ -1,5 +1,5 @@
 /* ============================
-   GVSI NetPulse - Main Stylesheet    Version 3.2.1
+   GVSI NetPulse - Main Stylesheet    Version 3.2.2
    ============================ */
 
 :root {
@@ -755,8 +755,8 @@ body.dark-mode .link-chip {
   }
 }
 
-/* Card View Layout for Ultra-Small Devices (<380px) */
-@media (max-width: 380px) {
+/* Card View Layout for Ultra-Small Devices (<340px) — lowered threshold to prevent false trigger in PWA standalone mode */
+@media (max-width: 340px) {
   .data-table thead {
     display: none;
   }
