@@ -65,11 +65,11 @@ function renderBackboneReport(data) {
     totalLinks += count;
 
     if (service === 'DWDM') {
-      if (issue.includes('LOW POWER')) dwdmLowPower++;
-      else if (issue.includes('LINK DOWN')) dwdmLinkDown++;
+      if (issue.includes('LOW POWER')) dwdmLowPower += count;
+      else if (issue.includes('LINK DOWN')) dwdmLinkDown += count;
     } else if (service === 'MPLS') {
-      if (issue.includes('LOW POWER')) mplsLowPower++;
-      else if (issue.includes('LINK DOWN')) mplsLinkDown++;
+      if (issue.includes('LOW POWER')) mplsLowPower += count;
+      else if (issue.includes('LINK DOWN')) mplsLinkDown += count;
     }
   });
 
