@@ -35,8 +35,51 @@ var COL = {
 };
 
 function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "";
   var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "nap";
-  
+
+  // ---------------- LOGIN VIA GET (Workaround for POST redirect issue) ----------------
+  if (action === "login") {
+    var username = String(e.parameter.username || "").trim().toLowerCase();
+    var password = String(e.parameter.password || "").trim();
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var usersSheet = ss.getSheetByName("Users");
+    if (!usersSheet) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Users sheet not found" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var lastRow = usersSheet.getLastRow();
+    if (lastRow < 2) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "No users configured" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var usersData = usersSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    var hashedPassword = sha256(password);
+
+    for (var i = 0; i < usersData.length; i++) {
+      var userRow = usersData[i];
+      var dbUsername = String(userRow[0] || "").trim().toLowerCase();
+      var dbPasswordHash = String(userRow[1] || "").trim();
+      var dbFullName = String(userRow[2] || "").trim();
+      var dbRole = String(userRow[3] || "").trim();
+
+      if (dbUsername === username && dbPasswordHash === hashedPassword) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          user: {
+            username: dbUsername,
+            fullName: dbFullName,
+            role: dbRole
+          }
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Invalid username or password" })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ---------------- DATA FETCHING ----------------
   // ---------------- 1. Cache Check ----------------
   var cache = CacheService.getScriptCache();
   var cacheKey = "cache_v2_" + type;

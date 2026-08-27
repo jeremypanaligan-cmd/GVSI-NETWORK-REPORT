@@ -3,13 +3,18 @@
 
 // Firebase Config — PALITAN ang values mula sa iyong Firebase Project
 // Setup: https://console.firebase.google.com → Project Settings → General → Web App
+// Firebase DISABLED — causes console errors (firebase.messaging is not a function)
+// Re-enable by replacing 'YOUR_API_KEY' with the actual apiKey below:
+// const FIREBASE_CONFIG = {
+//   apiKey: "AIzaSyAUF0X0Zo2caTQeilIPA9LTuo68WpJ7ZL8",
+//   authDomain: "tryproject-1833f.firebaseapp.com",
+//   projectId: "tryproject-1833f",
+//   storageBucket: "tryproject-1833f.firebasestorage.app",
+//   messagingSenderId: "247812195513",
+//   appId: "1:247812195513:web:8aa689921cb9d4d02a8768"
+// };
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAUF0X0Zo2caTQeilIPA9LTuo68WpJ7ZL8",
-  authDomain: "tryproject-1833f.firebaseapp.com",
-  projectId: "tryproject-1833f",
-  storageBucket: "tryproject-1833f.firebasestorage.app",
-  messagingSenderId: "247812195513",
-  appId: "1:247812195513:web:8aa689921cb9d4d02a8768"
+  apiKey: "YOUR_API_KEY"
 };
 
 // VAPID Key — mula sa Firebase Project Settings → Cloud Messaging → Web push certificates

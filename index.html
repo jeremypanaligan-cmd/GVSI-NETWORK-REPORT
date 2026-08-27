@@ -68,9 +68,6 @@
   <span class="brand-converge">CONVERGE</span>
 </div>
   <div class="header-actions">
-    <button class="theme-toggle-btn" onclick="toggleNotifications()" id="notifToggleBtn" title="Notifications OFF">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0M18.63 13A17.89 17.89 0 0 1 18 8M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-    </button>
     <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme">
       <!-- Default Moon SVG Icon -->
       <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -350,7 +347,7 @@
         <!-- Developer Credit Card -->
         <div class="developer-box">
           <div class="dev-label">Developed by:</div>
-          <div class="dev-name">GVSI Team</div>
+          <div class="dev-name">GVSI Dev</div>
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.3.1 — What's New:</strong></p>
@@ -843,27 +840,22 @@ function refreshCurrentTab() {
   // 1. NAP Data Fetcher
 
   function prefetchOtherTabsInBackground() {
-  // Smart prefetch: Only prefetch the NEXT tab the user is likely to visit
-  // Other tabs load on-demand when user switches (via fetchWithRetry in each module)
-  // This reduces initial load time from ~1s to ~200ms and saves Apps Script quota
+  // Parallel prefetch: All modules fetch simultaneously after NAP loads
+  // Best for small teams (4 users) — no API quota concerns, fastest UX
+  const allModules = ['lcp', 'olt', 'node', 'backbone'];
   
-  // Prefetch order priority: LCP > OLT > NODE > BACKBONE
-  const prefetchPriority = ['lcp', 'olt', 'node', 'backbone'];
-  
-  prefetchPriority.forEach((type, i) => {
-    setTimeout(() => {
-      if (!dataCache[type]) {
-        fetchWithRetry(BASE_API_URL + "?type=" + type)
-          .then(data => { if (data) dataCache[type] = data; })
-          .catch(() => {}); // Silent fail for prefetch — user can manually load later
-      }
-    }, 300 * (i + 1)); // 300ms, 600ms — non-blocking
+  allModules.forEach(type => {
+    if (!dataCache[type]) {
+      fetchWithRetry(BASE_API_URL + "?type=" + type)
+        .then(data => { if (data) dataCache[type] = data; })
+        .catch(() => {}); // Silent fail for prefetch — user can manually load later
+    }
   });
 
   // Save daily snapshot after initial data is loaded
   setTimeout(() => {
     if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
-  }, 1200); // 1.2s buffer
+  }, 1000); // 1s buffer for all parallel fetches
 }
       
 
@@ -1258,15 +1250,10 @@ function closeNodeModal(event) {
     if (errorEl) errorEl.textContent = '';
 
     try {
-      // Google Apps Script requires text/plain Content-Type for POST body parsing
-      var response = await fetch(APP_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-        body: JSON.stringify({ action: 'login', username: username, password: password }),
-        redirect: 'follow'
-      });
-      var text = await response.text();
-      var result = JSON.parse(text);
+      // Use GET params instead of POST — Google Apps Script loses POST body on 302 redirect
+      var loginUrl = APP_URL + '?action=login&username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
+      var response = await fetchWithRetry(loginUrl);
+      var result = response; // fetchWithRetry already returns parsed JSON
 
       if (result.success) {
         localStorage.setItem(SESSION_KEY, JSON.stringify(result.user));
