@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'gvsi-shell-v3.3.1';
+const STATIC_CACHE = 'gvsi-shell-v3.4.0';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
@@ -12,6 +12,7 @@ const STATIC_ASSETS = [
 './node-module.js',
 './backbone-module.js',
 './analytics-module.js',
+'./admin-module.js',
 './db.js',
 './notifications.js'
 ];

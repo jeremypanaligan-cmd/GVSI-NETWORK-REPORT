@@ -2,7 +2,7 @@
   "name": "GVSI NetPulse",
   "short_name": "GVSI NetPulse",
   "description": "Gallopvision Services Inc. Network Status Portal",
-  "version": "3.3.1",
+  "version": "3.4.0",
   "id": "/index.html?v=3.3.1",
   "start_url": "./index.html?v=3.3.1",
   "display": "standalone",

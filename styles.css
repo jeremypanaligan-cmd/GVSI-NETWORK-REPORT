@@ -1,5 +1,5 @@
 /* ============================
-   GVSI NetPulse - Main Stylesheet    Version 3.3.1
+   GVSI NetPulse - Main Stylesheet    Version 3.4.0
    ============================ */
 
 :root {
@@ -1867,4 +1867,53 @@ body.dark-mode .remarks-paragraph-box {
 
 .copyable-ticket:hover::after {
   opacity: 0.6;
+}
+
+/* ============================
+   ADMIN MODULE STYLES
+   ============================ */
+
+.admin-tab-btn {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white !important;
+  border: none;
+}
+
+.admin-tab-btn:hover {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+}
+
+.admin-bottom-nav-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Admin Panel Cards */
+#tab-admin .table-card {
+  border-left: 3px solid #6366f1;
+}
+
+/* Active Users Status Badges */
+.status-online {
+  background: var(--badge-green-bg);
+  color: var(--badge-green-text);
+}
+
+.status-idle {
+  background: var(--badge-yellow-bg);
+  color: var(--badge-yellow-text);
+}
+
+.status-offline {
+  background: var(--card-bg);
+  color: var(--text-muted);
+}
+
+/* Dark mode admin styles */
+body.dark-mode .admin-tab-btn {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+}
+
+body.dark-mode .admin-tab-btn:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
 }

@@ -56,7 +56,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.3.1</div>
+    <div class="login-footer">GVSI NetPulse v3.4.0</div>
   </div>
 </div>
 
@@ -91,6 +91,7 @@
     <button class="tab-btn" onclick="switchTab('backbone', event)">BACKBONE LINKS</button>
     <button class="tab-btn" onclick="switchTab('analytics', event)">ANALYTICS</button>
     <button class="tab-btn" onclick="switchTab('about', event)">ABOUT</button>
+    <button class="tab-btn admin-tab-btn" id="adminTabBtn" onclick="switchTab('admin', event)" style="display: none;">⚙️ ADMIN</button>
   </nav>
 
   <!-- Content Container -->
@@ -350,7 +351,17 @@
           <div class="dev-name">GVSI Dev</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.3.1 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.4.0 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Admin Panel (New):</strong> Dedicated admin module for Tech admin/Dev role — includes Maintenance Mode and Active Users tracking.</li>
+                  <li><strong>Maintenance Mode (New):</strong> Admin can now toggle maintenance mode to temporarily disable app access for all users.</li>
+                  <li><strong>Active Users (New):</strong> Real-time tracking of currently active users with online/idle/offline status.</li>
+                  <li><strong>Role-Based Access:</strong> Admin tab is only visible to users with 'Tech admin/Dev' role.</li>
+                  <li><strong>Parallel Prefetch:</strong> All modules now fetch data simultaneously instead of sequentially — faster initial load.</li>
+                  <li><strong>Login Fix:</strong> Fixed login issue caused by Google Apps Script POST redirect — now uses GET parameters.</li>
+                  <li><strong>Firebase Disabled:</strong> Removed Firebase messaging due to console errors (can be re-enabled later).</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 3.3.1:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>XSS Security Fix:</strong> DOMPurify now sanitizes ALL dynamic data across every module — NAP, LCP, OLT, Analytics, Node, Backbone.</li>
                   <li><strong>CacheService Overflow Fix:</strong> Large payloads (460+ OLT rows) now fall back to PropertiesService (500KB limit) instead of failing silently.</li>
@@ -465,6 +476,11 @@
       </div>
     </div>
 
+    <!-- 8. ADMIN TAB (Tech admin/Dev only) -->
+    <div id="tab-admin" class="tab-content">
+      <!-- Admin module will render here via admin-module.js -->
+    </div>
+
   </div>
 
   <!-- Bottom Navigation (Mobile only) -->
@@ -496,6 +512,10 @@
     <button class="bottom-nav-btn" onclick="switchTab('about', event)" data-tab="about">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <span>ABOUT</span>
+    </button>
+    <button class="bottom-nav-btn admin-bottom-nav-btn" onclick="switchTab('admin', event)" data-tab="admin" style="display: none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>ADMIN</span>
     </button>
   </nav>
 
@@ -633,10 +653,11 @@
 <script src="node-module.js"></script>
 <script src="backbone-module.js"></script>
 <script src="analytics-module.js"></script>
+<script src="admin-module.js"></script>
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.3.1"; 
+  const REQUIRED_APP_VERSION = "3.4.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -705,7 +726,8 @@ function showReinstallPrompt() {
   checkAppVersion();
 
   // --- MGA APPLICATION VARIABLES ---
-  const BASE_API_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
+  window.BASE_API_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
+  var BASE_API_URL = window.BASE_API_URL;
   
   let currentTab = 'nap';
   let rawOltData = [];
@@ -815,6 +837,7 @@ function switchTab(tabName, event) {
   else if (tabName === 'node') fetchNodeData();
   else if (tabName === 'backbone') fetchBackboneData();
   else if (tabName === 'analytics') fetchAnalyticsData();
+  else if (tabName === 'admin') renderAdminTab();
 
   // Sync bottom nav
   syncBottomNav(tabName);
@@ -943,11 +966,12 @@ function closeNodeModal(event) {
   if (typeof initNotifications === 'function') initNotifications();
 
   // ==================== AUTH CONSTANTS ====================
-  const APP_URL = 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
-  const SESSION_KEY = 'netpulse_session';
-  const SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
-  const REMEMBER_KEY = 'netpulse_remember';
-  const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+  window.APP_URL = 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
+  var APP_URL = window.APP_URL;
+  var SESSION_KEY = 'netpulse_session';
+  var SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
+  var REMEMBER_KEY = 'netpulse_remember';
+  var SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
   // ==================== AUTH CHECK ====================
   function loadInitialData() {
@@ -970,19 +994,38 @@ function closeNodeModal(event) {
     setInterval(() => backgroundRefresh('backbone'), 10 * 60 * 1000);
   }
 
-  if (isLoggedIn()) {
-    showApp();
-  } else {
-    // Check for saved credentials — auto-login using performLogin() directly
-    var savedCreds = null;
-    try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
-    if (savedCreds && savedCreds.u && savedCreds.p) {
-      // Auto-login: call performLogin directly (no form event needed)
-      performLogin(savedCreds.u, savedCreds.p, true);
+  // Check maintenance mode before anything else
+  async function checkMaintenanceAndLogin() {
+    try {
+      var settings = await fetchWithRetry(APP_URL + '?action=getSettings');
+      if (settings && settings.maintenance === true) {
+        // Check if current user is admin (bypass maintenance)
+        var session = null;
+        try { session = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch(e) {}
+        if (!session || session.role !== 'Tech admin/Dev') {
+          showMaintenancePage();
+          return;
+        }
+      }
+    } catch (e) {
+      // If can't check maintenance, continue with normal login
+    }
+
+    if (isLoggedIn()) {
+      showApp();
     } else {
-      showLogin();
+      // Check for saved credentials — auto-login using performLogin() directly
+      var savedCreds = null;
+      try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
+      if (savedCreds && savedCreds.u && savedCreds.p) {
+        // Auto-login: call performLogin directly (no form event needed)
+        performLogin(savedCreds.u, savedCreds.p, true);
+      } else {
+        showLogin();
+      }
     }
   }
+  checkMaintenanceAndLogin();
 
   // Kapag bumalik sa foreground — only refresh if more than 2 minutes ang lumipas
   let _lastBgTime = Date.now();
@@ -1107,6 +1150,16 @@ function closeNodeModal(event) {
     document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tabName);
     });
+
+    // Show/hide admin bottom nav button based on role
+    var adminBottomBtn = document.querySelector('.admin-bottom-nav-btn');
+    if (adminBottomBtn) {
+      if (typeof isAdmin === 'function' && isAdmin()) {
+        adminBottomBtn.style.display = 'flex';
+      } else {
+        adminBottomBtn.style.display = 'none';
+      }
+    }
   }
 
   // ==================== TOAST / SNACKBAR SYSTEM ====================
@@ -1322,6 +1375,18 @@ function closeNodeModal(event) {
     var logoutBtn = document.getElementById('logoutBtn');
     if (overlay) overlay.classList.add('hidden');
     if (logoutBtn) logoutBtn.style.display = 'inline-flex';
+
+    // Show admin tab for Tech admin/Dev role
+    var adminTabBtn = document.getElementById('adminTabBtn');
+    if (adminTabBtn && typeof isAdmin === 'function' && isAdmin()) {
+      adminTabBtn.style.display = 'inline-flex';
+    }
+
+    // Start heartbeat for active users tracking
+    if (typeof startHeartbeat === 'function') {
+      startHeartbeat();
+    }
+
     // Load data if not yet loaded
     if (typeof loadInitialData === 'function' && !window._dataLoaded) {
       loadInitialData();
