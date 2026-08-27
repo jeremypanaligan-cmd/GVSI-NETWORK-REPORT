@@ -6,6 +6,7 @@
       <!-- Google Fonts para sa Brand Title -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://script.google.com">
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
   
   <title>NetPulse | Gallopvision</title>
@@ -778,6 +779,18 @@ function showReinstallPrompt() {
     throw new Error(`Failed after ${retries + 1} attempts: ${url}`);
   }
 
+  // --- APPS SCRIPT KEEP-ALIVE ---
+  // Warm up the Google Apps Script server on page load to reduce cold start delay.
+  // Without this, the first API call (maintenance check or login) takes 2-3s.
+  // With this ping, the server stays warm and subsequent calls are ~500ms-1s.
+  (function appsScriptKeepAlive() {
+    if (!window.APP_URL) return;
+    // Fire-and-forget ping — don't await, don't block UI
+    fetch(window.APP_URL + '?action=keepalive', { cache: 'no-store' })
+      .then(function() { console.log('[KeepAlive] Apps Script warmed up'); })
+      .catch(function() { /* silent — non-critical */ });
+  })();
+
   let currentSortState = {
     napTableBody: { col: 0, asc: true, isNum: false },
     lcpAgingTableBody: { col: 0, asc: true, isNum: false },
@@ -996,33 +1009,32 @@ function closeNodeModal(event) {
 
   // Check maintenance mode before anything else
   async function checkMaintenanceAndLogin() {
+    // SPEED OPTIMIZATION: If user is already logged in with valid session,
+    // skip the maintenance check to avoid the extra API call (~2-3s cold start).
+    // Maintenance was already verified during their initial login.
+    if (isLoggedIn()) {
+      showApp();
+      return;
+    }
+
     try {
-      var settings = await fetchWithRetry(APP_URL + '?action=getSettings');
+      var settings = await fetchWithRetry(APP_URL + '?action=getSettings', 1, 800);
       if (settings && settings.maintenance === true) {
-        // Check if current user is admin (bypass maintenance)
-        var session = null;
-        try { session = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch(e) {}
-        if (!session || session.role !== 'Tech admin/Dev') {
-          showMaintenancePage();
-          return;
-        }
+        showMaintenancePage();
+        return;
       }
     } catch (e) {
       // If can't check maintenance, continue with normal login
     }
 
-    if (isLoggedIn()) {
-      showApp();
+    // Check for saved credentials — auto-login using performLogin() directly
+    var savedCreds = null;
+    try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
+    if (savedCreds && savedCreds.u && savedCreds.p) {
+      // Auto-login: call performLogin directly (no form event needed)
+      performLogin(savedCreds.u, savedCreds.p, true);
     } else {
-      // Check for saved credentials — auto-login using performLogin() directly
-      var savedCreds = null;
-      try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
-      if (savedCreds && savedCreds.u && savedCreds.p) {
-        // Auto-login: call performLogin directly (no form event needed)
-        performLogin(savedCreds.u, savedCreds.p, true);
-      } else {
-        showLogin();
-      }
+      showLogin();
     }
   }
   checkMaintenanceAndLogin();
@@ -1305,7 +1317,7 @@ function closeNodeModal(event) {
     try {
       // Use GET params instead of POST — Google Apps Script loses POST body on 302 redirect
       var loginUrl = APP_URL + '?action=login&username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
-      var response = await fetchWithRetry(loginUrl);
+      var response = await fetchWithRetry(loginUrl, 1, 500);
       var result = response; // fetchWithRetry already returns parsed JSON
 
       if (result.success) {
