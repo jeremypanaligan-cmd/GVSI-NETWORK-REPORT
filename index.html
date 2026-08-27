@@ -847,8 +847,8 @@ function refreshCurrentTab() {
   // Other tabs load on-demand when user switches (via fetchWithRetry in each module)
   // This reduces initial load time from ~1s to ~200ms and saves Apps Script quota
   
-  // Prefetch order priority: LCP (next tab after NAP) > OLT > others
-  const prefetchPriority = ['lcp', 'olt'];
+  // Prefetch order priority: LCP > OLT > NODE > BACKBONE
+  const prefetchPriority = ['lcp', 'olt', 'node', 'backbone'];
   
   prefetchPriority.forEach((type, i) => {
     setTimeout(() => {
