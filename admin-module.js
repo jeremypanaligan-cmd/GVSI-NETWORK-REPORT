@@ -16,7 +16,29 @@ function initAdminUrl() {
 
 function isAdmin() {
   var session = getSession();
-  return session && session.role === 'Tech admin/Dev';
+  console.log('[Admin] Session data:', session);
+  console.log('[Admin] Session role:', session ? JSON.stringify(session.role) : 'null');
+  
+  if (!session) {
+    console.log('[Admin] No session found');
+    return false;
+  }
+  
+  if (!session.role) {
+    console.log('[Admin] No role in session');
+    return false;
+  }
+  
+  // Trim whitespace and compare exactly
+  var userRole = String(session.role).trim();
+  var adminRole = 'Tech admin/Dev';
+  var isAdm = (userRole === adminRole);
+  
+  console.log('[Admin] User role:', JSON.stringify(userRole));
+  console.log('[Admin] Expected role:', JSON.stringify(adminRole));
+  console.log('[Admin] Match:', isAdm);
+  
+  return isAdm;
 }
 
 // ====================== RENDER ADMIN TAB ======================
