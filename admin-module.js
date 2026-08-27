@@ -2,7 +2,7 @@
 // Tech admin/Dev only — Maintenance Mode + Active Users tracking
 
 // Use window.BASE_API_URL to access the global variable defined in index.html
-var ADMIN_API_URL = '';
+var ADMIN_API_URL = window.BASE_API_URL || '';
 var _adminRefreshInterval = null;
 
 // Initialize ADMIN_API_URL when module loads
@@ -366,13 +366,15 @@ function stopHeartbeat() {
 async function sendHeartbeat() {
   var session = getSession();
   if (!session || !session.username) return;
-  if (!ADMIN_API_URL) return; // Skip if URL not initialized
+  // Lazily resolve URL — window.BASE_API_URL may not exist when this module loads
+  var url = ADMIN_API_URL || window.BASE_API_URL || '';
+  if (!url) return;
 
   try {
     // Use simple fetch instead of fetchWithRetry to avoid console spam
     // Heartbeat is non-critical — fail silently
     await fetch(
-      ADMIN_API_URL + '?action=heartbeat&username=' + encodeURIComponent(session.username) + '&fullName=' + encodeURIComponent(session.fullName || ''),
+      url + '?action=heartbeat&username=' + encodeURIComponent(session.username) + '&fullName=' + encodeURIComponent(session.fullName || ''),
       { cache: 'no-store' }
     );
   } catch (e) {
