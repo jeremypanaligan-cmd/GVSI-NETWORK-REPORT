@@ -64,7 +64,7 @@ function renderAdminTab() {
           </svg>
           <div>
             <div style="font-size: 16px; font-weight: 700; color: var(--dark-charcoal);">Maintenance Mode</div>
-            <div style="font-size: 12px; color: var(--text-muted);">I-toggle para isara ang app sa lahat ng users</div>
+            <div style="font-size: 12px; color: var(--text-muted);">Toggle to close the app for all users.</div>
           </div>
         </div>
         
@@ -123,7 +123,7 @@ function renderAdminTab() {
             </svg>
             <div>
               <div style="font-size: 16px; font-weight: 700; color: var(--dark-charcoal);">Active Users</div>
-              <div style="font-size: 12px; color: var(--text-muted);">Mga currently gumagamit ng app</div>
+              <div style="font-size: 12px; color: var(--text-muted);">Current Online Users</div>
             </div>
           </div>
           <div id="activeUsersCount" style="
@@ -200,8 +200,8 @@ async function loadMaintenanceStatus() {
 
 async function toggleMaintenance(enable) {
   var confirmMsg = enable 
-    ? '⚠️ I-enable ang Maintenance Mode?\n\nLahat ng users ay hindi na makaka-access sa app maliban sa iyo.'
-    : '✅ I-disable ang Maintenance Mode?\n\nMakaka-access na ulit ang lahat ng users sa app.';
+    ? '⚠️ Enable Maintenance Mode?\n\nAll users will be unable to access the app except you.'
+    : '✅ Disable Maintenance Mode?\n\nAll users will be able to access the app again.';
 
   if (!confirm(confirmMsg)) return;
 
@@ -243,8 +243,8 @@ function showMaintenancePage() {
         Under Maintenance
       </h1>
       <p style="color: #94a3b8; font-size: 14px; max-width: 400px; line-height: 1.6; margin-bottom: 24px;">
-        Ang sistema ay kasalukuyang naka-maintenance. 
-        Mangyaring maghintay habang ina-update ang application.
+        The system is currently under maintenance. 
+        Please wait while the application is being updated.
       </p>
       <div style="
         padding: 12px 24px; border-radius: 8px; 
