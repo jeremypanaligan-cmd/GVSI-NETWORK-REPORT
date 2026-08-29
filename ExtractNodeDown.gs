@@ -1,100 +1,68 @@
 /**
- * Custom Formula Function para mag-extract ng NPE equipment names lamang.
- * Usage sa Sheet: =EXTRACT_NODE(I2)
+ * Custom Formula Function para i-extract ang PRIMARY affected NPE(s) lamang.
+ * I-skip ang secondary NPEs (link endpoints) at non-NPE devices (AGG, etc.)
+ * 
+ * Usage sa Sheet: =EXTRACT_AFFECTED_NPE(I2)
+ * 
+ * Examples:
+ * - Single: "SZI001-NPE-01" (from single node down)
+ * - Multiple: "BYV001-NPE-01, SLV001-NPE-01, SLV001-NPE-02" (from multiple node down)
  */
-function EXTRACT_NODE(text) {
+function EXTRACT_AFFECTED_NPE(text) {
   if (!text) return "";
-
   text = String(text);
 
-  // Helper function para suriin kung ang linya ay MAY "- up" o "UP" status sa dulo
-  function isUpStatus(line) {
-    return /(?:-\s*|\s+)up\b/i.test(line);
-  }
+  // NPE name matcher: SZI001-NPE-01, BGB001-NPE-02, BYV001-NPE-01, etc.
+  var npeRegex = /\b[A-Z0-9]{3,6}[-_]?NPE[-_]?\d{2}\b/gi;
 
-  // Strictly NPE Matcher (hal. CSA002-NPE-01, BGB001-NPE-01, CVI001-NPE-01)
-  var npeRegex = /\b[A-Z0-9]{3,6}[-_\s]?NPE(?:[0-9]{2}|-[0-9]{2}|-[A-Z0-9]+)?\b/gi;
+  // Patterns that indicate SECONDARY NPE (link endpoint, not actually down)
+  var secondaryPatterns = /LINK\s+TO|GigabitEthernet|XGigabitEthernet|MEMBER\s+\d|\bGE\d|Fa\d|Gi\d|Shelf\d|NE\d{4}|S\d{4}-Shelf/i;
 
-  // 1. Suriin kung may "AFFECTED:" o "AFF:" section
+  // === Strategy A: From AFFECTED: section — collect all CLEAN NPE lines ===
   if (/(?:affected|aff)\s*:/i.test(text)) {
     var parts = text.split(/(?:affected|aff)\s*:/i);
     if (parts.length > 1) {
-      // Tinanggal ang '/' sa split para hindi maputol sa mga port numbers (hal. GigabitEthernet0/2/3)
-      var afterNodes = parts[1].split(/(?:dt:|affected users)/i)[0];
-      
-      var lines = afterNodes.split(/\r?\n/);
-      var filteredNodes = [];
+      var afterAffected = parts[1].split(/(?:dt:|note:)/i)[0];
+      var lines = afterAffected.split(/\r?\n/);
+      var primaryNpes = [];
 
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        
-        // Kung ang linya ay WALANG status na UP/up
-        if (!isUpStatus(line)) {
-          var match = line.match(npeRegex);
-          if (match && match.length > 0) {
-            for (var m = 0; m < match.length; m++) {
-              filteredNodes.push(match[m].trim().toUpperCase());
+        var line = lines[i].trim();
+        if (!line) continue;
+
+        // Skip lines with secondary patterns (these are link endpoints, not down)
+        if (secondaryPatterns.test(line)) continue;
+
+        // Check if this line contains an NPE
+        var match = line.match(npeRegex);
+        if (match && match.length > 0) {
+          for (var m = 0; m < match.length; m++) {
+            var npe = match[m].trim().toUpperCase();
+            // Avoid duplicates
+            if (primaryNpes.indexOf(npe) === -1) {
+              primaryNpes.push(npe);
             }
           }
         }
       }
 
-      if (filteredNodes.length > 0) {
-        // Kumuha lamang ng Natatangi (Unique) na NPEs
-        var uniqueNodes = filteredNodes.filter(function(item, pos) {
-          return filteredNodes.indexOf(item) === pos;
-        });
-        return uniqueNodes.join(", ");
+      if (primaryNpes.length > 0) {
+        return primaryNpes.join(", ");
       }
     }
   }
 
-  // 2. Kapag WALANG "AFFECTED:" / "AFF:", hahanapin sa BUONG TEXT kada linya
-  var allLines = text.split(/\r?\n/);
-  var fallbackNodes = [];
-
-  for (var k = 0; k < allLines.length; k++) {
-    var singleLine = allLines[k];
-    if (!isUpStatus(singleLine)) {
-      var singleMatch = singleLine.match(npeRegex);
-      if (singleMatch && singleMatch.length > 0) {
-        for (var n = 0; n < singleMatch.length; n++) {
-          fallbackNodes.push(singleMatch[n].trim().toUpperCase());
-        }
-      }
-    }
+  // === Strategy B: From ticket title (after "NODE DOWN |") ===
+  var titleMatch = text.match(/NODE\s+DOWN\s*\|\s*([A-Z0-9][-_A-Z0-9]*NPE[-_A-Z0-9]*)/i);
+  if (titleMatch) {
+    return titleMatch[1].toUpperCase();
   }
 
-  if (fallbackNodes.length > 0) {
-    var uniqueFallback = fallbackNodes.filter(function(item, pos) {
-      return fallbackNodes.indexOf(item) === pos;
-    });
-    return uniqueFallback.join(", ");
+  // === Strategy C: Fallback — first NPE in entire text ===
+  var fallbackMatch = text.match(npeRegex);
+  if (fallbackMatch && fallbackMatch.length > 0) {
+    return fallbackMatch[0].toUpperCase();
   }
 
   return "";
-}
-
-/**
- * AUTOMATION PROCESSOR: Gamitin ito para awtomatikong punan ang Column Q
- * mula sa Column I para sa Node DOWN Tickets sheet.
- */
-function processAllNodeDownRows() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Node DOWN Tickets");
-  if (!sheet) return;
-
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return;
-
-  var descriptions = sheet.getRange(2, 9, lastRow - 1, 1).getValues(); // Column I
-  var results = [];
-
-  for (var i = 0; i < descriptions.length; i++) {
-    var text = String(descriptions[i][0] || "");
-    results.push([EXTRACT_NODE(text)]);
-  }
-
-  // Isulat sa Column Q (Column 17)
-  sheet.getRange(2, 17, results.length, 1).setValues(results);
 }
