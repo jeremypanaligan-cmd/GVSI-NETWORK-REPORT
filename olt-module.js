@@ -123,6 +123,16 @@ function setOltFilter(filterType) {
   renderOltTable();
 }
 
+function getCauseColor(cause) {
+  const c = (cause || '').toUpperCase().trim();
+  if (c === 'FIBER') return { color: '#e74c3c', bg: 'rgba(231,76,60,0.18)' };
+  if (c === 'POWER') return { color: '#e67e22', bg: 'rgba(230,126,34,0.18)' };
+  if (c === 'EQUIPMENT') return { color: '#f39c12', bg: 'rgba(243,156,18,0.18)' };
+  if (c === 'TBD') return { color: '#7f8c8d', bg: 'rgba(127,140,141,0.15)' };
+  if (c === 'FIBER AND POWER') return { color: '#8e44ad', bg: 'rgba(142,68,173,0.18)' };
+  return { color: 'var(--text-muted)', bg: 'transparent' };
+}
+
 function renderOltTable() {
   const tbody = document.getElementById('oltTableBody');
   if (!tbody) return;
@@ -140,7 +150,7 @@ function renderOltTable() {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
     return;
   }
 
@@ -165,6 +175,11 @@ function renderOltTable() {
     else if (status.includes('UPLINK DOWN')) badgeType = 'yellow';
     else if (status.includes('DEGRADATION')) badgeType = 'purple';
 
+    const causeColor = getCauseColor(downtimeCause);
+    const causeDisplay = downtimeCause && downtimeCause !== '-'
+      ? `<span style="display: inline-block; color: ${causeColor.color}; background: ${causeColor.bg}; padding: 4px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 700; letter-spacing: 0.3px; border-left: 3px solid ${causeColor.color};">${downtimeCause}</span>`
+      : `<span style="color: var(--text-muted);">–</span>`;
+
     const alertClass = getAlertClass('clientsDown', clientsAffectedNum);
     const onclickStr = `openOltModal('${_s(name).replace(/'/g, "\\'")}', '${_s(province).replace(/'/g, "\\'")}', '${_s(municipality).replace(/'/g, "\\'")}', '${status}', '${_s(ticketNo).replace(/'/g, "\\'")}', '${_s(downtimeCause).replace(/'/g, "\\'")}', '${_s(aging).replace(/'/g, "\\'")}', '${_s(remarks).replace(/'/g, "\\'")}', ${clientsAffectedNum})`;
     tableHtml += `<tr class="clickable-row ${alertClass}" onclick="${onclickStr}">
@@ -172,13 +187,14 @@ function renderOltTable() {
       <td data-label="Municipality">${municipality}</td>
       <td data-label="OLT Name"><strong>${name}</strong></td>
       <td data-label="Affected Clients" style="text-align: center;">${clientsAffectedDisplay}</td>
+      <td data-label="DT Cause" style="text-align: center;">${causeDisplay}</td>
       <td data-label="Aging" style="text-align: center;">${aging}</td>
       <td data-label="Status" style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
     </tr>`;
   });
 
   tableHtml += `<tr class="total-row">
-    <td colspan="5">FILTERED TOTAL (${currentOltFilter})</td>
+    <td colspan="6">FILTERED TOTAL (${currentOltFilter})</td>
     <td style="text-align: center;">${filtered.length}</td>
   </tr>`;
 
