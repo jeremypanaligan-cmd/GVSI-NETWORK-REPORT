@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.5.0">
+  <link rel="stylesheet" href="styles.css?v=3.5.1">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -57,7 +57,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.5.0</div>
+    <div class="login-footer">GVSI NetPulse v3.5.1</div>
   </div>
 </div>
 
@@ -353,7 +353,11 @@
           <div class="dev-name">GVSI Dev</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.5.0 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.5.1 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Backbone Links Text Wrap:</strong> Long link descriptions in the LINKS AFF. column now wrap properly instead of overflowing — cleaner layout for both desktop and mobile.</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Version 3.5.0 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>OLT DT Cause Column (New):</strong> Added &quot;DT CAUSE&quot; column to OLT DOWN table with color-coded badges — FIBER (red), POWER (orange), EQUIPMENT (yellow), TBD (gray), FIBER AND POWER (violet).</li>
                   <li><strong>Login Speed Optimization:</strong> Added Apps Script keep-alive ping to reduce cold start delay — returning users now login in under 1 second.</li>
@@ -666,7 +670,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.5.0"; 
+  const REQUIRED_APP_VERSION = "3.5.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1063,7 +1067,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.5.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.5.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });

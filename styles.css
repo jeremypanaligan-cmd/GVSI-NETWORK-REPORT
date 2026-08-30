@@ -1,5 +1,5 @@
 /* ============================
-   GVSI NetPulse - Main Stylesheet    Version 3.5.0
+   GVSI NetPulse - Main Stylesheet    Version 3.5.1
    ============================ */
 
 :root {
@@ -695,6 +695,21 @@ body.dark-mode .link-chip {
   overflow-x: visible;
 }
 
+/* Backbone table link-chip: allow text wrap inside table cells */
+#tab-backbone .data-table .link-chip {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 100%;
+  display: inline-block;
+}
+
+#tab-backbone .data-table .link-chip-container {
+  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-x: visible;
+  gap: 5px;
+}
+
 /* Backbone stat cards responsive: 5 columns on desktop, 3+2 on mobile */
 .bb-stats-grid {
   display: grid;
@@ -752,6 +767,23 @@ body.dark-mode .link-chip {
   #bbLinks .link-chip {
     white-space: normal !important;
     word-break: break-word !important;
+  }
+  /* Backbone table link-chips: clip on mobile for cleaner layout */
+  #tab-backbone .data-table .link-chip-container {
+    flex-wrap: nowrap !important;
+    max-width: 200px !important;
+    overflow-x: auto !important;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  #tab-backbone .data-table .link-chip-container::-webkit-scrollbar {
+    display: none;
+  }
+  #tab-backbone .data-table .link-chip {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 180px !important;
   }
 }
 
