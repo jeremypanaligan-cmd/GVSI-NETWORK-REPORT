@@ -181,7 +181,8 @@ function renderOltTable() {
       : `<span style="color: var(--text-muted);">–</span>`;
 
     const alertClass = getAlertClass('clientsDown', clientsAffectedNum);
-    const onclickStr = `openOltModal('${_s(name).replace(/'/g, "\\'")}', '${_s(province).replace(/'/g, "\\'")}', '${_s(municipality).replace(/'/g, "\\'")}', '${status}', '${_s(ticketNo).replace(/'/g, "\\'")}', '${_s(downtimeCause).replace(/'/g, "\\'")}', '${_s(aging).replace(/'/g, "\\'")}', '${_s(remarks).replace(/'/g, "\\'")}', ${clientsAffectedNum})`;
+    const safeRemarks = remarks.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '');
+    const onclickStr = `openOltModal('${_s(name).replace(/'/g, "\'")}', '${_s(province).replace(/'/g, "\'")}', '${_s(municipality).replace(/'/g, "\'")}', '${status}', '${_s(ticketNo).replace(/'/g, "\'")}', '${_s(downtimeCause).replace(/'/g, "\'")}', '${_s(aging).replace(/'/g, "\'")}', '${safeRemarks}', ${clientsAffectedNum})`;
     tableHtml += `<tr class="clickable-row ${alertClass}" onclick="${onclickStr}">
       <td data-label="Province">${province}</td>
       <td data-label="Municipality">${municipality}</td>
@@ -228,7 +229,7 @@ function openOltModal(name, province, municipality, status, ticketNo, downtimeCa
   document.getElementById('mTicket').textContent = ticketNo;
   document.getElementById('mDowntimeCause').textContent = downtimeCause || '-';
   document.getElementById('mAging').textContent = aging || '-';
-  document.getElementById('mRemarks').textContent = remarks || '-';
+  document.getElementById('mRemarks').textContent = (remarks || '-').replace(new RegExp(String.fromCharCode(92) + 'n', 'g'), String.fromCharCode(10)).replace(new RegExp(String.fromCharCode(92) + 'r', 'g'), '');
   document.getElementById('mClientsAffected').textContent = clientsAffected || '0';
 
   document.getElementById('oltModal').classList.add('open');

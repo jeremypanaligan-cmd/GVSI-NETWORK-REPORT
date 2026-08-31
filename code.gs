@@ -14,6 +14,8 @@ var COL = {
   
   // Node DOWN Tickets
   NODE_PROVINCE: 3,      // D (Index 3)
+  NODE_TICKET: 5,        // F (Index 5)
+  NODE_CAUSE: 6,         // G (Index 6)
   NODE_IMPACT: 10,       // K (Index 10)
   NODE_DOWNTIME: 13,     // N (Index 13)
   NODE_REMARKS: 20,      // U (Index 20)
@@ -145,6 +147,8 @@ if (type === "backbone") {
               "P": provinceRaw.replace(/_/g, " "),
               "N": nodesRaw || "N/A",
               "C": rowN[COL.NODE_COUNT] !== "" ? rowN[COL.NODE_COUNT] : 0,
+              "T": rowN[COL.NODE_TICKET] ? String(rowN[COL.NODE_TICKET]).trim() : "-",
+              "DC": rowN[COL.NODE_CAUSE] ? String(rowN[COL.NODE_CAUSE]).trim() : "-",
               "I": rowN[COL.NODE_IMPACT] || "N/A",
               "D": rowN[COL.NODE_DOWNTIME] ? formatDateVal(rowN[COL.NODE_DOWNTIME]) : "N/A",
               "AG": rowN[COL.NODE_AGING] || "N/A",

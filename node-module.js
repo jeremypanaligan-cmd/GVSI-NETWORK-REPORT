@@ -58,8 +58,9 @@ function renderNodeReport(data) {
               <th class="sortable" onclick="sortTable('nodeTableBody', 1, this)">AFFECTED NODES</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 2, this, true)">COUNT</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 3, this)">IMPACT</th>
-              <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 4, this)">DOWNTIME</th>
-              <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 5, this, false, true)">AGING</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 4, this)">DT CAUSE</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 5, this)">DOWNTIME</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 6, this, false, true)">AGING</th>
             </tr>
           </thead>
           <tbody id="nodeTableBody">
@@ -72,6 +73,22 @@ function renderNodeReport(data) {
     const rawNodes = item.N || '';
     const count = parseInt(item.C || 0) || 0;
     const impact = item.I || '-';
+    const downtimeCause = item.DC || '-';
+
+    // DT Cause color coding (same as OLT module)
+    const getNodeCauseColor = (cause) => {
+      const c = (cause || '').toUpperCase();
+      if (c === 'FIBER') return { color: '#ef4444', bg: 'rgba(239,68,68,0.18)' };
+      if (c === 'POWER') return { color: '#f97316', bg: 'rgba(249,115,22,0.18)' };
+      if (c === 'EQUIPMENT') return { color: '#f39c12', bg: 'rgba(243,156,18,0.18)' };
+      if (c === 'TBD') return { color: '#7f8c8d', bg: 'rgba(127,140,141,0.18)' };
+      if (c.includes('FIBER') && c.includes('POWER')) return { color: '#8e44ad', bg: 'rgba(142,68,173,0.18)' };
+      return { color: '#95a5a6', bg: 'rgba(149,165,166,0.12)' };
+    };
+    const causeColor = getNodeCauseColor(downtimeCause);
+    const causeDisplay = downtimeCause && downtimeCause !== '-'
+      ? `<span style="display: inline-block; color: ${causeColor.color}; background: ${causeColor.bg}; padding: 4px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 700; letter-spacing: 0.3px; border-left: 3px solid ${causeColor.color};">${downtimeCause}</span>`
+      : `<span style="color: var(--text-muted);">–</span>`;
     const downtime = item.D || '-';
     const aging = item.AG || '-';
 
@@ -104,6 +121,7 @@ function renderNodeReport(data) {
         </td>
         <td data-label="Count" style="text-align: center;"><span class="badge badge-purple">${count}</span></td>
         <td data-label="Impact" style="text-align: center;"><span class="badge badge-red">${impact}</span></td>
+        <td data-label="DT Cause" style="text-align: center;">${causeDisplay}</td>
         <td data-label="Downtime" style="text-align: center;">${downtime}</td>
         <td data-label="Aging" style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${aging}</td>
       </tr>
@@ -114,7 +132,7 @@ function renderNodeReport(data) {
             <tr class="total-row">
               <td colspan="2" data-label="Summary">TOTAL AFFECTED EQUIPMENT</td>
               <td data-label="Total Count" style="text-align: center;">${totalCount}</td>
-              <td colspan="3"></td>
+              <td colspan="4"></td>
             </tr>
           </tbody>
         </table>

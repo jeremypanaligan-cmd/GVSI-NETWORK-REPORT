@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.5.1">
+  <link rel="stylesheet" href="styles.css?v=3.6.0">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -57,7 +57,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.5.1</div>
+    <div class="login-footer">GVSI NetPulse v3.6.0</div>
   </div>
 </div>
 
@@ -353,8 +353,12 @@
           <div class="dev-name">GVSI Dev</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.5.1 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.6.0 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Node Module DT Cause Column (New):</strong> Added &quot;DT CAUSE&quot; column to Node DOWN table with color-coded badges — same as OLT module.</li>
+                  <li><strong>Node Modal Ticket Fix:</strong> Fixed ticket number not showing in Node Incident Details modal — now fetches from database Column F.</li>
+                  <li><strong>OLT Modal Latest Update:</strong> Changed &quot;Remarks&quot; label to &quot;LATEST UPDATE:&quot; and moved to bottom in paragraph form — matches Node modal style.</li>
+                  <li><strong>OLT Modal Syntax Fix:</strong> Fixed SyntaxError when clicking MOUNTAIN PROVINCE rows — properly escapes newlines in remarks field.</li>
                   <li><strong>Backbone Links Text Wrap:</strong> Long link descriptions in the LINKS AFF. column now wrap properly instead of overflowing — cleaner layout for both desktop and mobile.</li>
                 </ul>
                 <p style="margin-top: 10px;"><strong>Version 3.5.0 — What's New:</strong></p>
@@ -568,10 +572,12 @@
           <span class="label">Affected Clients:</span>
           <span class="val" id="mClientsAffected" style="color: var(--badge-red-text); font-weight: 800;">0</span>
         </div>
-        <div class="modal-item">
-          <span class="label">Remarks:</span>
-          <span class="val" id="mRemarks" style="color: var(--primary-teal); font-weight: 600; font-style: italic;">-</span>
-        </div>
+      
+      <!-- PARAGRAPH STYLE REMARKS BOX -->
+      <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+        <span class="label" style="font-weight: 700; color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Latest update:</span>
+        <div id="mRemarks" class="remarks-paragraph-box">-</div>
+      </div>
     </div>
   </div>
 </div>
@@ -670,7 +676,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.5.1"; 
+  const REQUIRED_APP_VERSION = "3.6.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1067,7 +1073,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.5.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.6.0').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
