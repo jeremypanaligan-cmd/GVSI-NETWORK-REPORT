@@ -1,5 +1,5 @@
 /* ============================
-   GVSI NetPulse - Main Stylesheet    Version 3.6.0
+   GVSI NetPulse - Main Stylesheet    Version 3.7.0
    ============================ */
 
 :root {
@@ -1948,4 +1948,291 @@ body.dark-mode .admin-tab-btn {
 
 body.dark-mode .admin-tab-btn:hover {
   background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+}
+
+/* ============================
+   KIOSK MODE / FULLSCREEN PRESENTATION
+   ============================ */
+
+/* Hide header, nav, bottom nav in kiosk mode */
+body.kiosk-mode .app-header,
+body.kiosk-mode .nav-tabs-container,
+body.kiosk-mode .bottom-nav {
+  display: none !important;
+}
+
+/* Force dark mode in kiosk */
+body.kiosk-mode:not(.dark-mode) {
+  background-color: #0f172a;
+  color: #f8fafc;
+}
+
+body.kiosk-mode:not(.dark-mode) .tab-content .page-title,
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card .label,
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card .value,
+body.kiosk-mode:not(.dark-mode) .tab-content .table-card,
+body.kiosk-mode:not(.dark-mode) .tab-content .data-table thead th,
+body.kiosk-mode:not(.dark-mode) .tab-content .data-table tbody td {
+  color: #f8fafc;
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+body.kiosk-mode:not(.dark-mode) .tab-content .data-table {
+  border-color: #334155;
+}
+
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card.c-green {
+  background-color: #064e3b;
+  border-color: #065f46;
+}
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card.c-yellow {
+  background-color: #713f12;
+  border-color: #854d0e;
+}
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card.c-red {
+  background-color: #7f1d1d;
+  border-color: #991b1b;
+}
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card.c-total {
+  background-color: #0e7490;
+  border-color: #0891b2;
+}
+
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card .label,
+body.kiosk-mode:not(.dark-mode) .tab-content .stats-grid .stat-card .value {
+  color: #f8fafc;
+}
+
+/* Main container takes full viewport */
+body.kiosk-mode .main-container {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 56px; /* space for overlay bar */
+}
+
+/* Kiosk Overlay Bar */
+.kiosk-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(20, 184, 166, 0.3);
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 9999;
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body.kiosk-mode .kiosk-overlay {
+  display: flex;
+}
+
+.kiosk-overlay .kiosk-left,
+.kiosk-overlay .kiosk-center,
+.kiosk-overlay .kiosk-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kiosk-overlay .kiosk-left {
+  flex: 1;
+}
+
+.kiosk-overlay .kiosk-center {
+  flex: 2;
+  justify-content: center;
+}
+
+.kiosk-overlay .kiosk-right {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+/* Clock */
+.kiosk-clock {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tab Name */
+.kiosk-tab-name {
+  color: #14b8a6;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+/* Countdown */
+.kiosk-countdown {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kiosk-countdown-bar {
+  width: 60px;
+  height: 3px;
+  background: #334155;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.kiosk-countdown-fill {
+  height: 100%;
+  background: #14b8a6;
+  border-radius: 2px;
+  transition: width 1s linear;
+  width: 100%;
+}
+
+body.kiosk-mode-paused .kiosk-countdown-fill {
+  background: #f59e0b;
+}
+
+/* Kiosk Buttons */
+.kiosk-btn {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.kiosk-btn:hover {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #475569;
+}
+
+.kiosk-btn-exit {
+  border-color: #991b1b;
+  color: #fca5a5;
+}
+
+.kiosk-btn-exit:hover {
+  background: #7f1d1d;
+  color: #fee2e2;
+  border-color: #b91c1c;
+}
+
+.kiosk-btn-pause {
+  border-color: #854d0e;
+  color: #fde047;
+}
+
+.kiosk-btn-pause:hover {
+  background: #713f12;
+  color: #fef9c3;
+  border-color: #ca8a04;
+}
+
+/* Kiosk mode larger fonts for TV readability */
+body.kiosk-mode .tab-content .page-title {
+  font-size: 20px;
+}
+
+body.kiosk-mode .tab-content .stats-grid .stat-card .value {
+  font-size: 32px;
+}
+
+body.kiosk-mode .tab-content .data-table thead th {
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
+body.kiosk-mode .tab-content .data-table tbody td {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+/* Smooth fade transition between tabs */
+body.kiosk-mode .tab-content {
+  animation: kioskFadeIn 0.5s ease;
+}
+
+@keyframes kioskFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Kiosk exit hint (shown briefly) */
+.kiosk-exit-hint {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  padding: 16px 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  text-align: center;
+}
+
+.kiosk-exit-hint.show {
+  opacity: 1;
+}
+
+/* Mobile kiosk adjustments */
+@media (max-width: 640px) {
+  body.kiosk-mode .main-container {
+    padding-bottom: 50px;
+  }
+
+  .kiosk-overlay {
+    height: 44px;
+    padding: 0 10px;
+  }
+
+  .kiosk-clock {
+    font-size: 11px;
+  }
+
+  .kiosk-tab-name {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  .kiosk-countdown {
+    font-size: 10px;
+  }
+
+  .kiosk-countdown-bar {
+    width: 40px;
+  }
+
+  .kiosk-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  body.kiosk-mode .tab-content .stats-grid .stat-card .value {
+    font-size: 24px;
+  }
 }

@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.6.0">
+  <link rel="stylesheet" href="styles.css?v=3.7.0">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
 </head>
@@ -57,7 +57,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.6.0</div>
+    <div class="login-footer">GVSI NetPulse v3.7.0</div>
   </div>
 </div>
 
@@ -353,8 +353,9 @@
           <div class="dev-name">GVSI Dev</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.6.0 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.7.0 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Kiosk Mode / Fullscreen Presentation (New):</strong> Fullscreen presentation mode for NOC/TV display — auto-cycles through NAP, LCP, OLT, NODE, and BACKBONE tabs every 15 seconds with live clock, countdown timer, and pause/play controls. Activate with <code>Ctrl+Shift+K</code> or add <code>?kiosk=true</code> to URL.</li>
                   <li><strong>Node Module DT Cause Column (New):</strong> Added &quot;DT CAUSE&quot; column to Node DOWN table with color-coded badges — same as OLT module.</li>
                   <li><strong>Node Modal Ticket Fix:</strong> Fixed ticket number not showing in Node Incident Details modal — now fetches from database Column F.</li>
                   <li><strong>OLT Modal Latest Update:</strong> Changed &quot;Remarks&quot; label to &quot;LATEST UPDATE:&quot; and moved to bottom in paragraph form — matches Node modal style.</li>
@@ -676,7 +677,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.6.0"; 
+  const REQUIRED_APP_VERSION = "3.7.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1073,7 +1074,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.6.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.7.0').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1613,7 +1614,289 @@ function closeNodeModal(event) {
 
   // ==================== INITIALIZE UX ENHANCEMENTS ====================
   addSearchBarsDeferred();
+
+  // ==================== KIOSK MODE / FULLSCREEN PRESENTATION ====================
+  const KIOSK_TABS = ['nap', 'lcp', 'olt', 'node', 'backbone'];
+  const KIOSK_TAB_LABELS = {
+    nap: 'NAP OUTAGES REPORT',
+    lcp: 'LCP OUTAGES REPORT',
+    olt: 'OLT STATUS REPORT',
+    node: 'NODE STATUS REPORT',
+    backbone: 'BACKBONE LINKS STATUS'
+  };
+  let _kioskMode = false;
+  let _kioskCycleTimer = null;
+  let _kioskClockTimer = null;
+  let _kioskPaused = false;
+  let _kioskCycleInterval = 15; // seconds per tab
+  let _kioskCountdown = 0;
+  let _kioskEscapeCount = 0;
+  let _kioskEscapeTimer = null;
+
+  function isKioskMode() {
+    return _kioskMode;
+  }
+
+  function enterKioskMode() {
+    if (_kioskMode) return;
+    _kioskMode = true;
+    _kioskPaused = false;
+    document.body.classList.add('kiosk-mode');
+
+    // Force dark mode in kiosk
+    if (!document.body.classList.contains('dark-mode')) {
+      document.body.classList.add('dark-mode');
+      const themeBtn = document.getElementById('themeBtn');
+      if (themeBtn) themeBtn.innerHTML = SUN_ICON;
+    }
+
+    // Request fullscreen
+    try {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (document.documentElement.webkitRequestFullscreen) {
+        document.documentElement.webkitRequestFullscreen();
+      }
+    } catch(e) {}
+
+    // Start clock
+    updateKioskClock();
+    _kioskClockTimer = setInterval(updateKioskClock, 1000);
+
+    // Start tab cycling
+    _kioskCountdown = _kioskCycleInterval;
+    updateKioskOverlay();
+    startKioskCycle();
+
+    showToast('Kiosk Mode ON — Press Escape x3 to exit', 'info', 3000);
+  }
+
+  function exitKioskMode() {
+    if (!_kioskMode) return;
+    _kioskMode = false;
+    _kioskPaused = false;
+    document.body.classList.remove('kiosk-mode', 'kiosk-mode-paused');
+
+    // Exit fullscreen
+    try {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    } catch(e) {}
+
+    // Stop timers
+    stopKioskCycle();
+    clearInterval(_kioskClockTimer);
+    _kioskClockTimer = null;
+
+    showToast('Kiosk Mode OFF', 'info', 2000);
+  }
+
+  function toggleKioskMode() {
+    if (_kioskMode) {
+      exitKioskMode();
+    } else {
+      enterKioskMode();
+    }
+  }
+
+  function startKioskCycle() {
+    stopKioskCycle();
+    _kioskCountdown = _kioskCycleInterval;
+    _kioskCycleTimer = setInterval(() => {
+      if (_kioskPaused) return;
+      _kioskCountdown--;
+      updateKioskCountdown();
+      if (_kioskCountdown <= 0) {
+        cycleKioskTab();
+        _kioskCountdown = _kioskCycleInterval;
+      }
+    }, 1000);
+  }
+
+  function stopKioskCycle() {
+    if (_kioskCycleTimer) {
+      clearInterval(_kioskCycleTimer);
+      _kioskCycleTimer = null;
+    }
+  }
+
+  function cycleKioskTab() {
+    var idx = KIOSK_TABS.indexOf(currentTab);
+    var nextIdx = (idx + 1) % KIOSK_TABS.length;
+    var nextTab = KIOSK_TABS[nextIdx];
+
+    // Switch tab
+    switchTab(nextTab);
+    updateKioskOverlay();
+  }
+
+  function toggleKioskPause() {
+    _kioskPaused = !_kioskPaused;
+    var btn = document.getElementById('kioskPauseBtn');
+    if (btn) {
+      btn.innerHTML = _kioskPaused
+        ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> PLAY'
+        : '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> PAUSE';
+    }
+    document.body.classList.toggle('kiosk-mode-paused', _kioskPaused);
+  }
+
+  function updateKioskClock() {
+    var el = document.getElementById('kioskClock');
+    if (!el) return;
+    var now = new Date();
+    var h = String(now.getHours()).padStart(2, '0');
+    var m = String(now.getMinutes()).padStart(2, '0');
+    var s = String(now.getSeconds()).padStart(2, '0');
+    el.textContent = h + ':' + m + ':' + s;
+  }
+
+  function updateKioskOverlay() {
+    var tabLabel = document.getElementById('kioskTabName');
+    if (tabLabel) {
+      tabLabel.textContent = KIOSK_TAB_LABELS[currentTab] || currentTab.toUpperCase();
+    }
+    updateKioskCountdown();
+  }
+
+  function updateKioskCountdown() {
+    var fill = document.getElementById('kioskCountdownFill');
+    var text = document.getElementById('kioskCountdownText');
+    if (fill) {
+      var pct = (_kioskCountdown / _kioskCycleInterval) * 100;
+      fill.style.width = pct + '%';
+    }
+    if (text) {
+      text.textContent = _kioskCountdown + 's';
+    }
+  }
+
+  // ==================== KIOSK KEYBOARD SHORTCUTS ====================
+  (function initKioskShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Shift+K = Toggle kiosk mode
+      if (e.ctrlKey && e.shiftKey && e.key === 'K') {
+        e.preventDefault();
+        toggleKioskMode();
+        return;
+      }
+
+      // Only handle kiosk shortcuts when in kiosk mode
+      if (!_kioskMode) return;
+
+      // Space = Pause/Play
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        toggleKioskPause();
+        return;
+      }
+
+      // Arrow Left/Right = Manual tab switch
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        _kioskCountdown = _kioskCycleInterval;
+        cycleKioskTab();
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        var idx = KIOSK_TABS.indexOf(currentTab);
+        var prevIdx = (idx - 1 + KIOSK_TABS.length) % KIOSK_TABS.length;
+        switchTab(KIOSK_TABS[prevIdx]);
+        _kioskCountdown = _kioskCycleInterval;
+        updateKioskOverlay();
+        return;
+      }
+
+      // Escape x3 quickly = Exit kiosk mode
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        _kioskEscapeCount++;
+        clearTimeout(_kioskEscapeTimer);
+        _kioskEscapeTimer = setTimeout(() => { _kioskEscapeCount = 0; }, 1500);
+
+        if (_kioskEscapeCount >= 3) {
+          _kioskEscapeCount = 0;
+          exitKioskMode();
+          return;
+        }
+
+        // Show hint
+        showKioskExitHint(_kioskEscapeCount);
+        return;
+      }
+    });
+  })();
+
+  function showKioskExitHint(count) {
+    var hint = document.getElementById('kioskExitHint');
+    if (!hint) return;
+    hint.textContent = 'Press Escape ' + (3 - count) + ' more time' + (3 - count > 1 ? 's' : '') + ' to exit';
+    hint.classList.add('show');
+    setTimeout(() => hint.classList.remove('show'), 1200);
+  }
+
+  // ==================== KIOSK URL PARAM AUTO-START ====================
+  (function checkKioskUrlParam() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('kiosk') === 'true') {
+      // Set custom interval if provided
+      var interval = parseInt(params.get('interval'));
+      if (interval && interval >= 5 && interval <= 300) {
+        _kioskCycleInterval = interval;
+      }
+
+      // Auto-start kiosk mode after login
+      var _origShowApp = showApp;
+      showApp = function() {
+        _origShowApp.call(this);
+        // Small delay to let app render first
+        setTimeout(() => enterKioskMode(), 500);
+      };
+    }
+  })();
+
+  // ==================== KIOSK: Override switchTab to update overlay ====================
+  (function patchSwitchTabForKiosk() {
+    var _origSwitchTab = switchTab;
+    switchTab = function(tabName, event) {
+      _origSwitchTab(tabName, event);
+      if (_kioskMode) {
+        updateKioskOverlay();
+      }
+    };
+  })();
 </script>
+
+<!-- Kiosk Mode Overlay Bar -->
+<div class="kiosk-overlay" id="kioskOverlay">
+  <div class="kiosk-left">
+    <span class="kiosk-clock" id="kioskClock">00:00:00</span>
+  </div>
+  <div class="kiosk-center">
+    <span class="kiosk-tab-name" id="kioskTabName">NAP OUTAGES REPORT</span>
+  </div>
+  <div class="kiosk-right">
+    <div class="kiosk-countdown">
+      <div class="kiosk-countdown-bar"><div class="kiosk-countdown-fill" id="kioskCountdownFill"></div></div>
+      <span id="kioskCountdownText">15s</span>
+    </div>
+    <button class="kiosk-btn kiosk-btn-pause" id="kioskPauseBtn" onclick="toggleKioskPause()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      PAUSE
+    </button>
+    <button class="kiosk-btn kiosk-btn-exit" onclick="exitKioskMode()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      EXIT
+    </button>
+  </div>
+</div>
+
+<!-- Kiosk Exit Hint -->
+<div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 </body>
 </html>
