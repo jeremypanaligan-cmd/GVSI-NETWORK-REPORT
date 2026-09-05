@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'gvsi-shell-v3.8.1';
+const STATIC_CACHE = 'gvsi-shell-v3.8.2';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',

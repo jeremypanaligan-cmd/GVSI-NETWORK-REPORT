@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.8.1">
+  <link rel="stylesheet" href="styles.css?v=3.8.2">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -67,7 +67,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.8.1</div>
+    <div class="login-footer">GVSI NetPulse v3.8.2</div>
   </div>
 </div>
 
@@ -376,7 +376,7 @@
           <div class="dev-name">GVSI Dev</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.8.1 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.8.2 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Mobile Header Fix:</strong> Hidden KIOSK button and &quot;| CONVERGE&quot; text on mobile devices — only &quot;GALLOPVISION&quot; shows. Header spacing compacted for smaller screens.</li>
                   <li><strong>Vignette Removed:</strong> Removed dark edge vignette overlay for cleaner dashboard view on both web and mobile.</li>
@@ -708,7 +708,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.8.1"; 
+  const REQUIRED_APP_VERSION = "3.8.2"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -748,29 +748,17 @@
   }
 
 function showReinstallPrompt() {
-    document.body.innerHTML = `
-      <div style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#0f172a; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center; z-index:999999;">
-        <div style="margin-bottom: 16px; color: #2dd4bf;">
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.71 1.26-1.5 1.63-2.32L5.82 13.8c-.82.37-1.61.92-2.32 1.63z"></path>
-            <path d="M12 15l-3-3 7.5-7.5c1.33-1.33 3.5-1.33 4.83 0 1.33 1.33 1.33 3.5 0 4.83L12 15z"></path>
-            <path d="M9 12l-2 2"></path>
-            <path d="M15 9l-2 2"></path>
-          </svg>
-        </div>
-        <h1 style="color:#2dd4bf; font-size:20px; margin-bottom:8px; font-weight:800;">App Update Available</h1>
-        <p style="color:#94a3b8; font-size:13px; max-width:340px; margin-bottom:20px; line-height:1.5;">
-          A new version of NetPulse is ready. Tap below to sync the latest improvements and continue seamlessly.
-        </p>
-        <button onclick="finishUpdate()" style="background:#0d8a80; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow: 0 4px 12px rgba(13,138,128,0.4);">
-          Refresh & Sync App
-        </button>
-      </div>
-    `;
+    // Use overlay instead of replacing body.innerHTML to preserve DOM structure
+    var overlay = document.createElement('div');
+    overlay.id = 'updateOverlay';
+    overlay.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.97); color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center; z-index:999999;';
+    overlay.innerHTML = '<div style="margin-bottom: 16px; color: #2dd4bf;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.71 1.26-1.5 1.63-2.32L5.82 13.8c-.82.37-1.61.92-2.32 1.63z"></path><path d="M12 15l-3-3 7.5-7.5c1.33-1.33 3.5-1.33 4.83 0 1.33 1.33 1.33 3.5 0 4.83L12 15z"></path><path d="M9 12l-2 2"></path><path d="M15 9l-2 2"></path></svg></div><h1 style="color:#2dd4bf; font-size:20px; margin-bottom:8px; font-weight:800;">App Update Available</h1><p style="color:#94a3b8; font-size:13px; max-width:340px; margin-bottom:20px; line-height:1.5;">A new version of NetPulse is ready. Tap below to sync the latest improvements and continue seamlessly.</p><button onclick="finishUpdate()" style="background:#0d8a80; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow: 0 4px 12px rgba(13,138,128,0.4);">Refresh & Sync App</button>';
+    document.body.appendChild(overlay);
   }
   function finishUpdate() {
     localStorage.setItem('app_version', REQUIRED_APP_VERSION);
-    window.location.reload(true);
+    // Use cache-busting URL reload instead of deprecated reload(true) for reliable mobile PWA reload
+    window.location.href = window.location.pathname + '?_v=' + Date.now();
   }
 
   // Patakbuhin ang Version Check
@@ -1110,7 +1098,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.8.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.8.2').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
