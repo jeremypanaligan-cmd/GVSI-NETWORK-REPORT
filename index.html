@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.8.0">
+  <link rel="stylesheet" href="styles.css?v=3.8.1">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -67,7 +67,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.8.0</div>
+    <div class="login-footer">GVSI NetPulse v3.8.1</div>
   </div>
 </div>
 
@@ -376,8 +376,9 @@
           <div class="dev-name">GVSI Dev</div>
         </div>
 
-        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.8.0 — What's New:</strong></p>
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.8.1 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Mobile Header Fix:</strong> Hidden KIOSK button and &quot;| CONVERGE&quot; text on mobile devices — only &quot;GALLOPVISION&quot; shows. Header spacing compacted for smaller screens.</li>
                   <li><strong>Dark Mode Default (New):</strong> Dark theme is now the default on first load — no more white flash. Anti-FOUC script ensures instant dark background.</li>
                   <li><strong>Frosted Glassmorphism UI (New):</strong> All cards, header, nav, and modals now feature frosted glass with backdrop blur, crystal borders, and metallic top-edge accents.</li>
                   <li><strong>Live Activity Ticker (New):</strong Scrolling status ticker bar below header — shows real-time system events. Pause on hover to read.</li>
@@ -706,7 +707,7 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.8.0"; 
+  const REQUIRED_APP_VERSION = "3.8.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1108,7 +1109,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.8.0').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.8.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });

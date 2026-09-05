@@ -1,5 +1,5 @@
 /* ============================
-   GVSI NetPulse - Main Stylesheet    Version 3.8.0
+   GVSI NetPulse - Main Stylesheet    Version 3.8.1
    ============================ */
 
 :root {
@@ -3108,5 +3108,31 @@ body.kiosk-mode .tab-content {
 
   body.kiosk-mode .tab-content .stats-grid .stat-card .value {
     font-size: 24px;
+  }
+
+  /* Hide KIOSK button on mobile to prevent header overflow */
+  .kiosk-toggle-btn {
+    display: none !important;
+  }
+
+  /* Hide | Converge on mobile — show only Gallopvision */
+  .brand-divider,
+  .brand-converge {
+    display: none !important;
+  }
+
+  /* Compact header on mobile */
+  .header-actions {
+    gap: 4px;
+  }
+
+  .refresh-btn {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+
+  .logout-btn {
+    padding: 6px 8px;
+    font-size: 10px;
   }
 }
