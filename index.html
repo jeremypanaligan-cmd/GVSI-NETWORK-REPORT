@@ -1030,20 +1030,22 @@ function closeNodeModal(event) {
   var REMEMBER_KEY = 'netpulse_remember';
   var SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
+  // Global background refresh function (used by visibilitychange listener)
+  function backgroundRefresh(type) {
+    if (typeof dataCache !== 'undefined' && dataCache[type] !== undefined) dataCache[type] = null;
+    if (type === 'nap') fetchNapData(true);
+    else if (type === 'lcp') fetchLcpData(true);
+    else if (type === 'olt') fetchOltData(true);
+    else if (type === 'node') fetchNodeData(true);
+    else if (type === 'backbone') fetchBackboneData(true);
+  }
+
   // ==================== AUTH CHECK ====================
   function loadInitialData() {
     window._dataLoaded = true;
     showLoader();
     fetchNapData();
     // I-refresh ang BAWAT tab sa sarili nitong interval
-    function backgroundRefresh(type) {
-      if (dataCache[type] !== undefined) dataCache[type] = null;
-      if (type === 'nap') fetchNapData(true);
-      else if (type === 'lcp') fetchLcpData(true);
-      else if (type === 'olt') fetchOltData(true);
-      else if (type === 'node') fetchNodeData(true);
-      else if (type === 'backbone') fetchBackboneData(true);
-    }
     setInterval(() => backgroundRefresh('nap'),  60 * 60 * 1000);
     setInterval(() => backgroundRefresh('lcp'),  30 * 60 * 1000);
     setInterval(() => backgroundRefresh('olt'),  15 * 60 * 1000);
