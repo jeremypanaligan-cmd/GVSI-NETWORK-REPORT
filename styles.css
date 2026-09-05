@@ -2817,10 +2817,24 @@ body.dark-mode .admin-tab-btn:hover {
 
 /* Hide header, nav, bottom nav, ticker in kiosk mode */
 body.kiosk-mode .app-header,
-body.kiosk-mode .nav-tabs-container,
-body.kiosk-mode .bottom-nav,
+body.kiosk-mode .nav-tabs-container,  body.kiosk-mode .bottom-nav,
 body.kiosk-mode .ticker-bar {
   display: none !important;
+}
+
+/* Update overlay for version sync */
+#updateOverlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.97);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  z-index: 999999;
 }
 
 /* Force dark mode in kiosk (fallback if JS doesn't add .dark-mode) */
