@@ -82,15 +82,7 @@ body.dark-mode {
   background-size: 24px 24px;
 }
 
-/* Vignette overlay — radial fade to dark edges */
-body.dark-mode::after {
-  content: '';
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 9998;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(7, 10, 15, 0.7) 100%);
-}
+
 
 /* ── FROSTED GLASS: Stat Cards ── */
 body.dark-mode .stat-card {
@@ -413,7 +405,7 @@ body.dark-mode #tab-about .about-card {
   border: 1px solid rgba(148, 163, 184, 0.1);
 }
 
-/* ── KIOSK OVERLAY above vignette ── */
+/* ── KIOSK OVERLAY ── */
 body.dark-mode .kiosk-overlay {
   z-index: 10001;
 }
