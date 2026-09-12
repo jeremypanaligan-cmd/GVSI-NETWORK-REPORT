@@ -13,6 +13,20 @@ Versions follow the app's own numbering. Newest first.
 ## [Unreleased]
 
 ### Fixed
+- **Kiosk NODE slide with an active node-down incident.** With data present the slide led
+  straight into the incident list, so a single incident drew one card across the top and left
+  most of a wall display blank — it read as a broken layout rather than an alert. The slide now
+  leads with a summary band (**active incidents · nodes affected · provinces affected · worst
+  aging**) and then presents the incident itself:
+  - **One incident** gets the whole stage as a spotlight — the node name (`ATB002-NPE-01`) is
+    the headline, with nodes affected, aging, downtime-since and down cause as tiles. The node
+    name was previously not shown at all, only its province.
+  - **Several** share the stage using the same card idiom as the DOWN OLT list, worst blast
+    radius first, so the two urgent slides read alike.
+  - Empty sheet cells (`-`) render as a neutral `—` instead of a lone amber dash, and **SA /
+    NSA** is now a chip rather than the largest number on the slide. Every figure still comes
+    from the live feed, and the existing new/changed highlight chips are preserved.
+  - The calm all-clear state (0 incidents) is unchanged.
 - **API request storm / intermittent 404s.** A single call could stall ~15s and then return
   `HTTP 404` on `script.googleusercontent.com` while a sibling call succeeded — a transient
   Apps Script throttle, not a missing route. The client turned that brief window into a
@@ -99,18 +113,35 @@ Versions follow the app's own numbering. Newest first.
   "Monitored regions"), and the sub-headline matches.
 
 ### Added
-- **Skeleton loading while a module fetches.** Earlier on load, NAP, LCP and OLT showed a row of
-  `0`s above an empty table, which reads as "no outages" rather than "not loaded yet". All three
-  now shimmer while their first fetch is in flight: NAP (4 stats + table), LCP (6 stats + the
-  aging and impact tables) and OLT (6 stats + table + the donut total and its legend).
-  The skeleton is built **inside the parts each module owns** — shimmer `<tr>`s in the real
-  `tbody` and a placeholder in place of a number — because NAP/LCP/OLT keep their markup in
-  `index.html` and only fill the tbody and the card values. The pre-existing `showSkeleton()`
-  swaps a *whole tab*, which is right for NODE and BACKBONE (they rebuild their tab) but would
-  have deleted markup nothing puts back. Column counts come from each table's own `<thead>`, so
-  the LCP aging skeleton draws 6 cells per row and the impact one draws 5. Every render assigns
-  `textContent`/`innerHTML` and so overwrites its own placeholder; a failed fetch clears the
-  skeleton instead of leaving the table shimmering as if it were still loading.
+- **Script-order guard against the temporal-dead-zone bug class.** A top-level `const` in a
+  classic `<script>` throws `Cannot access 'X' before initialization` if a statement above it
+  reads it — at first paint only, which is why the console afterwards looks fine. It has shipped
+  twice (`dataCache`, then the module-skeleton table). `tests/inline-order.js` now walks every
+  script `index.html` loads, in load order, follows the call graph from each top-level call, and
+  reports any top-level `const`/`let`/`class` read too early. 18 tests: the app-clean gate, the
+  rule cases (await, `try/catch`, `try/finally`, shadowing, callbacks), and a **re-introduction
+  of each historical bug in its real shape** so the check cannot quietly stop working. Both
+  readers lived in a separate file, so the walk is cross-file: it follows a property call
+  (`netpulseCache.invalidateAll(`) into an IIFE-wrapped file, which is how the `dataCache` chain
+  is found. Suite total: 105 tests.
+- **Skeleton loading while a module fetches — all five modules, one mechanism.** Earlier on load
+  a module showed a row of `0`s above an empty table, which reads as "no outages" rather than
+  "not loaded yet". Now every module shimmers while its first fetch is in flight: NAP (4 stats +
+  table), LCP (6 stats + the aging and impact tables), OLT (6 stats + table + the donut total and
+  its legend), NODE and BACKBONE (stats + table). Export buttons are deliberately held back until
+  there is something to export.
+- **The old whole-tab skeleton is gone.** It swapped a whole tab for a fake table built from
+  `div`s, so the loading state had a header and a column count with nothing to do with the table
+  it stood in for — and it could not be used on NAP/LCP/OLT at all, because those keep their
+  markup in `index.html` and their renderers fill only the tbody and the cards, so swapping the
+  tab would have deleted markup nothing puts back. NODE and BACKBONE used it only because they
+  build their entire tab. Their renderers now emit their shell (`nodeTableShellHtml` /
+  `backboneShellHtml`) and fill its tbody, so all five modules go through the same shimmer rows
+  inside the module's **real** table, with column counts read from each table's own `<thead>` —
+  the LCP aging skeleton draws 6 cells per row and the impact one draws 5, matching their headers
+  exactly. `getSkeletonHTML`/`showSkeleton` and the fake-table CSS were deleted. Every render
+  assigns `textContent`/`innerHTML` and so overwrites its own placeholder; a failed fetch clears
+  the skeleton instead of leaving the table shimmering as if it were still loading.
 - **Browser-free backend test harness.** `tests/` runs the real `code.gs` and
   `admin.gs` inside a Node `vm` against faked Google services, so `doGet` routing
   and every caching layer can be checked **without deploying to Apps Script**.
