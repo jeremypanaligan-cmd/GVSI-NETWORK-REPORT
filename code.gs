@@ -43,6 +43,7 @@ function doGet(e) {
   // ---------------- ROUTING: Login, Admin, Keep-Alive ----------------
   // All handled by admin.gs functions
   if (action === "login")          return handleLogin(e);
+  if (action === "logout")         return handleLogout(e);
   if (action === "keepalive")      return handleKeepAlive();
   if (action === "getSettings")    return handleGetSettings(e);
   if (action === "setMaintenance") return handleSetMaintenance(e);

@@ -822,19 +822,81 @@
     _debounceTimers[key] = setTimeout(fn, ms);
   }
 
-  // --- UTILITY: Fetch with Retry ---
-  async function fetchWithRetry(url, retries = 2, delay = 500) {
-    for (let i = 0; i <= retries; i++) {
-      try {
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-      } catch (err) {
-        console.warn(`[Retry ${i + 1}/${retries + 1}] ${url}:`, err.message);
-        if (i < retries) await new Promise(r => setTimeout(r, delay * (i + 1)));
+  // --- UTILITY: Fetch with Retry (deduped + backoff) ---
+  // Apps Script throttles when many calls overlap, so this guards twice:
+  //   1. identical in-flight URLs share ONE request, so a burst (tab click +
+  //      prefetch + visibility refresh) collapses into a single call. This is
+  //      what stops the request storm.
+  //   2. only TRANSIENT failures are retried, with jittered backoff, so a busy
+  //      server never gets retried into the ground.
+  //
+  // Note on the 404: a real call to this deployment can stall ~15s and then
+  // come back 404 on script.googleusercontent.com while a sibling call
+  // succeeds, i.e. the 404 is a transient throttle — NOT a missing route. So it
+  // is retried, but only once. A 400/401/403 will not fix itself and is fatal.
+  const _inflightFetches = new Map();
+
+  function fetchWithRetry(url, retries = 2, delay = 500) {
+    // Attach the session token BEFORE the dedupe lookup, so a burst of identical
+    // calls still collapses into one request.
+    url = withAuthToken(url);
+
+    if (_inflightFetches.has(url)) return _inflightFetches.get(url);
+
+    const promise = (async () => {
+      const maxAttempts = retries + 1;
+
+      for (let attempt = 1; ; attempt++) {
+        let status = 0;                       // 0 = network/offline failure
+        let rejectedSession = false;
+
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (res.ok) {
+            const body = await res.json();
+            // Apps Script always answers 200 (ContentService cannot set a status
+            // code), so a rejected session arrives as a body marker instead.
+            if (body && body.unauthorized) rejectedSession = true;
+            else return body;
+          } else {
+            status = res.status;
+          }
+        } catch (err) {
+          status = 0;
+        }
+
+        // A rejected session is fatal and already reported: never retried, and
+        // never mistaken for a network blip.
+        if (rejectedSession) {
+          onUnauthorized();
+          throw new Error(`Unauthorized for ${url}`);
+        }
+
+        const isNetworkError = status === 0;
+        const isServerBusy = status === 429 || status === 500 || status === 502 ||
+                             status === 503 || status === 504;
+        const isAppsScriptStall = status === 404;   // transient here (see above)
+
+        const canRetry =
+          attempt < maxAttempts &&
+          (isNetworkError || isServerBusy || (isAppsScriptStall && attempt < 2));
+
+        if (!canRetry) {
+          throw new Error(status ? `HTTP ${status} for ${url}` : `Network request failed: ${url}`);
+        }
+
+        // Exponential backoff with jitter so parallel callers don't sync up.
+        await new Promise(r => setTimeout(r, delay * Math.pow(2, attempt - 1) + Math.random() * 250));
       }
-    }
-    throw new Error(`Failed after ${retries + 1} attempts: ${url}`);
+    })();
+
+    // Share the work; release the slot as soon as it settles (either way).
+    _inflightFetches.set(url, promise);
+    promise.then(
+      () => _inflightFetches.delete(url),
+      () => _inflightFetches.delete(url)
+    );
+    return promise;
   }
 
   // --- APPS SCRIPT KEEP-ALIVE ---
@@ -1048,6 +1110,45 @@ function closeNodeModal(event) {
   var SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
   var REMEMBER_KEY = 'netpulse_remember';
   var SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+  // Server-issued session token (P1). The backend verifies this and derives the
+  // caller's identity from it — the session object above only drives UI
+  // decisions like isAdmin(), and never was a security boundary.
+  // Declared with `var` on purpose: `fetchWithRetry` can run before this block
+  // executes, and a `let`/`const` here would throw in its temporal dead zone.
+  var TOKEN_KEY = 'netpulse_session_token';
+
+  function getSessionToken() {
+    try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  // Attaches the token to our own API calls only — never to third-party URLs
+  // (FCM, CDNs). A missing token is a no-op, which is what keeps phase 1 working
+  // for a cached shell that predates tokens.
+  function withAuthToken(url) {
+    var api = window.BASE_API_URL || window.APP_URL || '';
+    var href = String(url || '');
+    if (!api || href.indexOf(api) !== 0) return url;
+    var token = getSessionToken();
+    if (!token) return url;
+    return href + (href.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(token);
+  }
+  window.withAuthToken = withAuthToken;
+
+  // A rejected session is fatal but arrives as HTTP 200 with a marker body, so it
+  // has to be detected on the payload. Report once, then drop to the login screen
+  // rather than leaving the app quietly broken.
+  var _unauthorizedHandled = false;
+  function onUnauthorized(message) {
+    if (_unauthorizedHandled) return;
+    _unauthorizedHandled = true;
+    try {
+      if (typeof showToast === 'function') {
+        showToast(message || 'Session expired — please sign in again', 'error', 5000);
+      }
+    } catch (e) { /* the toast is cosmetic — it must never block the logout */ }
+    handleLogout();
+  }
 
   // Global background refresh function (used by visibilitychange listener)
   function backgroundRefresh(type) {
@@ -1388,13 +1489,20 @@ function closeNodeModal(event) {
       if (result.success) {
         localStorage.setItem(SESSION_KEY, JSON.stringify(result.user));
         localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_DURATION));
+        // Server-issued token — every later API call carries it, and the backend
+        // takes the caller's identity from it instead of trusting the URL.
+        if (result.token) {
+          localStorage.setItem(TOKEN_KEY, result.token);
+          _unauthorizedHandled = false;
+        }
         // Save credentials if Remember Me is checked
         if (rememberMe) {
           localStorage.setItem(REMEMBER_KEY, JSON.stringify({ u: username, p: password }));
         } else {
           localStorage.removeItem(REMEMBER_KEY);
         }
-        showApp();
+        // Deferred when a maintenance check is racing us — see the auto-login path.
+        if (!deferShow) showApp();
         if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
         return true;
       } else {
@@ -1427,9 +1535,27 @@ function closeNodeModal(event) {
   }
 
   function handleLogout() {
+    // Revoke server-side and drop the active-users row while the token is still
+    // valid. Both are fire-and-forget: logout must never wait on the network.
+    // This is also the only place that cleanup actually runs — the "override" in
+    // admin-module.js never installed (that file loads before this one declares
+    // handleLogout), so ?action=removeActiveUser had never fired on logout.
+    var token = getSessionToken();
+    var session = getSession();
+    if (token) {
+      fetch(APP_URL + '?action=logout&token=' + encodeURIComponent(token)).catch(function() {});
+    }
+    if (session && session.username) {
+      fetch(APP_URL + '?action=removeActiveUser&username=' + encodeURIComponent(session.username) +
+            (token ? '&token=' + encodeURIComponent(token) : '')).catch(function() {});
+    }
+    // Stop the heartbeat interval too, or it keeps ticking after logout.
+    if (typeof stopHeartbeat === 'function') stopHeartbeat();
+
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(SESSION_EXPIRY_KEY);
     localStorage.removeItem(REMEMBER_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     showLogin();
   }
 
