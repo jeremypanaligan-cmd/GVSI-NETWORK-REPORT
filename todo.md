@@ -87,6 +87,70 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
 
 ---
 
+## 📉 Next session — app weight (lahat sinukat 2026-09-13)
+
+> **Baseline na sinukat** (huwag nang ulitin ang pagsukat, gamitin ito bilang "bago"):
+>
+> | Kaso | requests | decoded |
+> |---|---|---|
+> | Unang bisita, static | — | **~389 KB sa network** (607 KB raw text → 105 KB gzip, + 202 KB icons, + ~74 KB fonts, + ~8 KB DOMPurify) |
+> | Pagbabalik na bisita | — | 0 app code (SW cache) |
+> | Dashboard cold boot | 6 | 51.7 KB |
+> | Dashboard, naka-idle 60 s | 2 | 0.4 KB |
+> | Kiosk cold load | 10 | 102.5 KB |
+> | Kiosk, tumatakbo 60 s | 11 | 198.7 KB |
+>
+> Paraan ng pagsukat (para maulit nang pareho): `performance.getEntriesByType('resource')` sa page
+> para sa bilang at `decodedBodySize`; `curl -s -L --compressed -w '%{size_download}'` para sa
+> totoong bytes sa wire; `caches.keys()` + `cache.keys()` para sa laman ng SW cache.
+> Paalala: **hindi nagsi-gzip ang Live Server locally**, kaya ~2× na mas malala ang lokal na
+> numero kaysa sa isang gzip-capable na host.
+
+- ⬜ **1. Putulin ang bigat ng icons** — ang `icon-512.png` at `apple-touch-icon.png` ay
+  **byte-for-byte identical** (parehong md5 `9a198d5e958426cce8e654e8a7cc7b32`, 86.9 KB bawat isa),
+  at **kapwa nasa `sw.js` `UNVERSIONED_ASSETS`** — kaya **87 KB ay dina-download nang dalawang beses**
+  sa bawat SW install. Ang icons ay **202 KB = 52% ng unang load**, mas malaki pa sa buong JS.
+  Ang `icon-192.png` ay 28.6 KB para sa 192×192, napakabigat para sa isang flat logo.
+  **Gawin:** ihinto ang duplicate (isang 180×180 na `apple-touch-icon`), i-re-encode ang dalawa;
+  isaalang-alang ang maskable/simpleng logo. Nasa precache → kailangang ma-revalidate.
+  **Walang backend change.** **Tsek:** ang unang-load total ay bumababa, masukat sa parehong paraan.
+
+- ⬜ **2. Paliitin ang OLT payload** — `?type=olt` ay **50,059 bytes decoded** (461 rows × 9 field)
+  kumpara sa `nap` na 836 bytes lamang. Ito ang **96.9% ng lahat ng API bytes** (dashboard boot:
+  50,059 sa 51,664). Ang mga field: `N` 33%, `P` 22%, `M` 22% ng chars — pero **16 distinct na
+  province, 211 municipality, 3 status, 3 down-cause** lang, kaya sobrang redundant.
+  **Gawin:** (a) server-side dictionary — ang `P`/`M` ay index sa isang header array, o
+  (b) ipadala ang aggregates + ang mga down na row lang para sa kiosk, o (c) paikliin ang keys.
+  **Tandaan:** ang gzip ay nagpapababa na sa **3,534 bytes sa wire** — kaya ang panalo dito ay
+  pangunahin ang **decoded/parse** (~287 MB/araw sa kiosk) at ang CPU sa mahinang TV, hindi ang
+  bytes sa wire. **Backend change → nangangailangan ng redeploy.**
+  **Tsek:** `curl -L --compressed | wc -c` bago/kalaban, at dapat 461 row pa ring nagre-render.
+
+- ⬜ **3. Itigil ang kiosk re-fetch storm** — ang `fetchOltData()` ay cache-first **pero laging
+  nagpapaputok ng background revalidation** (`olt-module.js:3-12`), at tinatawag ito ng kiosk sa
+  **bawat rotation papunta sa OLT slide** (`kiosk-module.js:188-200`). Sinukat: **4 na 50 KB kada
+  minuto**; ang kiosk ay 11 requests / 198.7 KB kada minuto laban sa dashboard na naka-idle na
+  2 requests / 0.4 KB. Sa wire iyon ay ~927 KB/oras (~22 MB/araw).
+  **Gawin:** i-throttle ang revalidation (galangin ang 15-minutong poll interval ng module), o
+  hayaan ang kiosk rotation na mag-render mula sa cache nang hindi nagre-revalidate.
+  **Tsek:** sa isang 60 s na window sa kiosk, bumaba sa ≤1 OLT fetch; hindi dapat masira ang live
+  updates (hayaan ang `KIOSK_REFRESH_MS` na humawak ng refresh). **Walang backend change.**
+
+- ⬜ **4. Ayusin ang stale-shell boot** ("state-shell") — isang always-on display ay nag-boot sa
+  **lumang code** na may TDZ bug habang ang SW cache ay may **naayos** nang kopya:
+  `runningCodeHasBuggyConst: true` at `cachedIndexHasFix: true` sa parehong page load. Ang SWR ay
+  naghahatid ng cached shell at iniimbak ang bago para sa *susunod* na load, kaya ang isang fix ay
+  maaaring mabulok sa cache ng isang 24/7 na display at manatili roon hangga't walang ikalawang load.
+  **Gawin:** ang install ay may `skipWaiting()` + `clients.claim()` na; kailangan ang isang
+  **kontroladong isahang reload kapag may bagong worker**, o gawing network-first ang shell na may
+  cache fallback (laging online ang display). **Tsek:** pagkatapos i-edit ang `index.html`,
+  **isang** reload lang ang magpapakita ng bagong code. **Walang backend change.**
+
+> **Hindi dapat galawin:** ang API responses ay `Cache-Control: no-store` — tama iyon, at doon
+> nakasalalay ang in-memory `dataCache`. Huwag itong baguhin bilang "optimization".
+
+---
+
 ## 🟢 Later
 
 - ⬜ **P2** remove the plaintext password from `netpulse_remember`
