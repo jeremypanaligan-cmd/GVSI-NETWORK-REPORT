@@ -1792,11 +1792,7 @@ body.dark-mode .remarks-paragraph-box {
    SKELETON LOADING
    ======================== */
 
-.skeleton-container {
-  padding: 12px;
-}
-
-/* Shimmer animation */
+/* Shimmer animation — one placeholder mechanism for all five modules. */
 @keyframes shimmer {
   0% { background-position: -400px 0; }
   100% { background-position: 400px 0; }
@@ -1809,67 +1805,10 @@ body.dark-mode .remarks-paragraph-box {
   border-radius: 6px;
 }
 
-/* Skeleton stat cards */
-.skeleton-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.skeleton-stat {
-  height: 60px;
-  border-radius: 8px;
-}
-
-/* Skeleton table rows */
-.skeleton-table-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  overflow: hidden;
-  margin-bottom: 14px;
-}
-
-.skeleton-thead {
-  display: flex;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--primary-teal);
-  opacity: 0.7;
-}
-
-.skeleton-th {
-  height: 14px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.3);
-  flex: 1;
-}
-
-.skeleton-row {
-  display: flex;
-  gap: 8px;
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.skeleton-row:last-child {
-  border-bottom: none;
-}
-
-.skeleton-cell {
-  height: 16px;
-  border-radius: 4px;
-  flex: 1;
-}
-
-.skeleton-cell.wide { flex: 2; }
-.skeleton-cell.narrow { flex: 0.5; }
-.skeleton-cell.badge { width: 50px; flex: none; height: 22px; border-radius: 12px; }
-
-/* Rows written into a REAL <tbody> (NAP / LCP / OLT). Those modules keep their
-   markup in index.html and only fill the tbody, so the skeleton lives inside it
-   instead of replacing the tab — see showModuleSkeleton() in index.html. */
+/* Rows written into a REAL <tbody> — every module, including NODE and BACKBONE,
+   which emit their own shell and then fill its tbody. The skeleton is always the
+   module's actual table with shimmer rows in it, never a stand-in table built from
+   divs whose header and columns had nothing to do with the real one. */
 .skeleton-tr td {
   padding: 12px 10px;
   border-bottom: 1px solid var(--border-color);
@@ -1894,14 +1833,6 @@ body.dark-mode .remarks-paragraph-box {
   height: 26px;
   border-radius: 6px;
   vertical-align: middle;
-}
-
-/* Skeleton donut placeholder */
-.skeleton-donut {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  flex-shrink: 0;
 }
 
 .skeleton-legend {

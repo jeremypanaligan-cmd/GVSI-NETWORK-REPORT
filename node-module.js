@@ -16,8 +16,9 @@ async function fetchNodeData(forceRefresh = false) {
     return;
   }
 
-  // Show skeleton on first load
-  if (!dataCache.node) showSkeleton('node');
+  // Show skeleton on first load. This module builds its whole tab, so the shell is
+  // emitted first and its own tbody filled — the same shimmer rows NAP/LCP/OLT use.
+  if (!dataCache.node) renderNodeSkeleton();
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=node");
@@ -35,17 +36,11 @@ async function fetchNodeData(forceRefresh = false) {
   }
 }
 
-function renderNodeReport(data) {
-  const nodeTab = document.getElementById('tab-node');
-  if (!nodeTab) return;
-
-  // SAFETY CHECK: Kapag walang laman ang data, ipakita agad ang empty state
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    renderNodeEmptyState();
-    return;
-  }
-
-  let tableHtml = `
+// The tab shell: title, table card, header, and the tbody left open. Shared by the
+// loading state and the data render, so the skeleton sits in the REAL table with
+// the real columns instead of a stand-in built out of divs.
+function nodeTableShellHtml() {
+  return `
     <div class="page-title-row">
       <div class="page-title">NODE Status Report</div>
     </div>
@@ -63,8 +58,33 @@ function renderNodeReport(data) {
               <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 6, this, false, true)">AGING</th>
             </tr>
           </thead>
-          <tbody id="nodeTableBody">
-  `;
+          <tbody id="nodeTableBody">`;
+}
+
+function nodeTableCloseHtml() {
+  return '</tbody></table></div></div>';
+}
+
+// Emit the real shell, then fill its tbody with the shared shimmer rows. Deliberately
+// no export buttons while loading — there is nothing to export yet.
+function renderNodeSkeleton() {
+  const nodeTab = document.getElementById('tab-node');
+  if (!nodeTab) return;
+  nodeTab.innerHTML = nodeTableShellHtml() + nodeTableCloseHtml();
+  renderSkeletonRows('nodeTableBody');
+}
+
+function renderNodeReport(data) {
+  const nodeTab = document.getElementById('tab-node');
+  if (!nodeTab) return;
+
+  // SAFETY CHECK: Kapag walang laman ang data, ipakita agad ang empty state
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    renderNodeEmptyState();
+    return;
+  }
+
+  let tableHtml = nodeTableShellHtml();
 
   let totalCount = 0;
 
@@ -133,12 +153,7 @@ function renderNodeReport(data) {
               <td colspan="2" data-label="Summary">TOTAL AFFECTED EQUIPMENT</td>
               <td data-label="Total Count" style="text-align: center;">${totalCount}</td>
               <td colspan="4"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
+            </tr>` + nodeTableCloseHtml();
 
   nodeTab.innerHTML = tableHtml;
 

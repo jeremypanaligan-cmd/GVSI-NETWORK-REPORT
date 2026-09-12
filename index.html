@@ -1279,63 +1279,86 @@ function closeNodeModal(event) {
   }
 
   // ==================== SKELETON LOADING ====================
-  function getSkeletonHTML(type) {
-    const rows = 6;
-    let html = '<div class="skeleton-container">';
+  // -------------------- the loading placeholder, in one place --------------------
+  // Shimmer rows written into the module's REAL table, plus a shimmer block in
+  // place of a number. Column counts come from each table's own <thead>, so a
+  // skeleton cannot drift out of step with the table it stands in for, and every
+  // render assigns textContent/innerHTML and so overwrites its own placeholder.
+  //
+  // This replaces an earlier whole-tab swap that put a FAKE div "table" on screen
+  // whose header and columns had nothing to do with the real one. NODE and
+  // BACKBONE used that only because they build their entire tab; they now emit
+  // their shell and fill its tbody through these same helpers.
+  //
+  // Functions, not top-level `const`s, on purpose: a top-level const in this script
+  // sits in its temporal dead zone until its own statement runs, and
+  // loadInitialData() -> fetchNapData() is invoked from a statement further UP this
+  // same script. A table here throws "Cannot access ... before initialization" on
+  // the real boot path only — never when called from the console afterwards.
+  // (cache-control.js documents the same hazard for dataCache.)
+  function skeletonRowCount() { return 6; }
 
-    // Stat cards skeleton
-    if (type === 'nap' || type === 'lcp') {
-      html += '<div class="skeleton-stats">';
-      for (let i = 0; i < 4; i++) html += '<div class="skeleton skeleton-stat"></div>';
-      html += '</div>';
-    } else if (type === 'olt') {
-      html += '<div class="skeleton-stats" style="grid-template-columns: repeat(3, 1fr);">';
-      for (let i = 0; i < 6; i++) html += '<div class="skeleton skeleton-stat"></div>';
-      html += '</div>';
-    } else if (type === 'analytics') {
-      html += '<div class="skeleton-stats" style="grid-template-columns: repeat(2, 1fr);">';
-      for (let i = 0; i < 4; i++) html += '<div class="skeleton skeleton-stat"></div>';
-      html += '</div>';
+  function skeletonRowHtml(cols) {
+    let html = '<tr class="skeleton-tr">';
+    for (let c = 0; c < Math.max(1, cols); c++) {
+      html += '<td><span class="skeleton skeleton-bar"></span></td>';
     }
+    return html + '</tr>';
+  }
 
-    // Table skeleton
-    html += '<div class="skeleton-table-card">';
-    html += '<div class="skeleton-thead">';
-    for (let i = 0; i < 5; i++) html += '<div class="skeleton skeleton-th"></div>';
-    html += '</div>';
-    for (let i = 0; i < rows; i++) {
-      html += '<div class="skeleton-row">';
-      html += '<div class="skeleton skeleton-cell wide"></div>';
-      html += '<div class="skeleton skeleton-cell"></div>';
-      html += '<div class="skeleton skeleton-cell badge"></div>';
-      html += '<div class="skeleton skeleton-cell narrow"></div>';
-      html += '</div>';
-    }
-    html += '</div></div>';
+  function skeletonRowsHtml(cols, count) {
+    let html = '';
+    for (let r = 0; r < count; r++) html += skeletonRowHtml(cols);
     return html;
   }
 
-  function showSkeleton(tabName) {
-    const tab = document.getElementById('tab-' + tabName);
-    if (tab) tab.innerHTML = getSkeletonHTML(tabName);
+  function skeletonNumberHtml() {
+    return '<span class="skeleton skeleton-num"></span>';
   }
 
-  // ==================== IN-PLACE MODULE SKELETONS ====================
-  // NAP, LCP and OLT keep their markup in index.html, and their render functions
-  // fill only the <tbody> and the card values. showSkeleton() replaces a whole
-  // tab, which is correct for NODE/BACKBONE (they rebuild their tab from scratch)
-  // but for these three would delete markup that nothing puts back — the tables
-  // and cards would stay skeletons forever. So this skeleton lives INSIDE the
-  // parts the module itself owns: shimmer rows in the real tbody, and a shimmer
-  // block in place of a number. Every render assigns textContent/innerHTML, which
-  // overwrites the placeholder — no cleanup needed on the happy path.
-  // Deliberately a function, NOT a top-level `const`: a top-level const in this
-  // script sits in the temporal dead zone until its own statement executes, and
-  // loadInitialData() -> fetchNapData() runs from a statement further UP this same
-  // script. A top-level table here throws "Cannot access ... before
-  // initialization" on the very first paint — and only on the real boot path, not
-  // when called from the console afterwards. (cache-control.js documents the same
-  // hazard for dataCache.) Rebuilding a small literal per call is free.
+  function skeletonLegendHtml(count) {
+    // Uses the legend placeholder classes that already existed in styles.css but
+    // were never wired to anything.
+    let html = '<div class="skeleton-legend">';
+    for (let i = 0; i < count; i++) {
+      html += '<div class="skeleton-legend-row">' +
+                '<span class="skeleton skeleton-dot"></span>' +
+                '<span class="skeleton skeleton-text"></span>' +
+              '</div>';
+    }
+    return html + '</div>';
+  }
+
+  function tableColCount(body) {
+    const table = (body && body.closest) ? body.closest('table') : null;
+    return table ? table.querySelectorAll('thead th').length : 0;
+  }
+
+  // The two entry points every module renderer uses. They take the element the
+  // module owns, so the static-markup modules (NAP/LCP/OLT) and the tab-building
+  // ones (NODE/BACKBONE) go through exactly the same code.
+  function renderSkeletonRows(bodyOrId, count) {
+    const body = (typeof bodyOrId === 'string') ? document.getElementById(bodyOrId) : bodyOrId;
+    if (!body) return false;
+    body.innerHTML = skeletonRowsHtml(tableColCount(body), count == null ? skeletonRowCount() : count);
+    return true;
+  }
+
+  function renderSkeletonNumbers(ids, legendId) {
+    (ids || []).forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = skeletonNumberHtml();
+    });
+    if (legendId) {
+      const legend = document.getElementById(legendId);
+      if (legend) legend.innerHTML = skeletonLegendHtml(5);
+    }
+  }
+
+  // What the three static-markup modules (NAP/LCP/OLT) need filled. NODE and
+  // BACKBONE have no entry here: their renderers call renderSkeletonRows /
+  // renderSkeletonNumbers themselves, because their tbody only exists once they
+  // have emitted their own shell (see renderNodeShell / renderBackboneShell).
   function moduleSkeletonSpec(name) {
     const TARGETS = {
       nap: {
@@ -1358,63 +1381,14 @@ function closeNodeModal(event) {
     return TARGETS[name] || null;
   }
 
-  function skeletonRowsHtml(body, count) {
-    // Column count comes from the table's own header, so adding or removing a
-    // column later cannot leave the skeleton out of step with the table.
-    const table = body.closest('table');
-    const cols = table ? table.querySelectorAll('thead th').length : 0;
-    const cells = Math.max(1, cols);
-
-    let html = '';
-    for (let r = 0; r < count; r++) {
-      html += '<tr class="skeleton-tr">';
-      for (let c = 0; c < cells; c++) {
-        html += '<td><span class="skeleton skeleton-bar"></span></td>';
-      }
-      html += '</tr>';
-    }
-    return html;
-  }
-
-  function skeletonLegendHtml(count) {
-    // Reuses the legend placeholder classes that already existed in styles.css
-    // but were never wired to anything.
-    let html = '<div class="skeleton-legend">';
-    for (let i = 0; i < count; i++) {
-      html += '<div class="skeleton-legend-row">' +
-                '<span class="skeleton skeleton-dot"></span>' +
-                '<span class="skeleton skeleton-text"></span>' +
-              '</div>';
-    }
-    return html + '</div>';
-  }
-
   // Returns false when the module has no skeleton defined, so a caller can tell
   // "nothing to draw" from "drawn empty".
   function showModuleSkeleton(name) {
     const spec = moduleSkeletonSpec(name);
     if (!spec) return false;
 
-    const ROWS = 6;
-
-    if (spec.bodies) {
-      spec.bodies.forEach(function (id) {
-        const body = document.getElementById(id);
-        if (body) body.innerHTML = skeletonRowsHtml(body, ROWS);
-      });
-    }
-
-    if (spec.numbers) {
-      spec.numbers.forEach(function (id) {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = '<span class="skeleton skeleton-num"></span>';
-      });
-    }
-
-    if (spec.legend) {
-      const legend = document.getElementById(spec.legend);
-      if (legend) legend.innerHTML = skeletonLegendHtml(5);
-    }
+    (spec.bodies || []).forEach(function (id) { renderSkeletonRows(id); });
+    renderSkeletonNumbers(spec.numbers, spec.legend);
 
     return true;
   }
