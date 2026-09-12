@@ -1,0 +1,152 @@
+# GVSI NetPulse — TODO
+
+Live work board. `changelogs.md` records what shipped; this records what is
+next and what is in flight. `GVSI_NetPulse_System_Roadmap.md` is the older
+audit narrative — several of its HIGH findings are already fixed, so treat
+this file as the source of truth for outstanding work.
+
+Legend: ⬜ todo · 🔄 in progress · ✅ done · ⏸ blocked
+Last updated: 2026-09-12 · Version: 3.9.0 · Backend suite: 87/87 green
+
+---
+
+## 🔴 Now — P1 Phase 1: session tokens, accept-if-present
+
+> **Why:** every `doGet` action is open to anyone holding the deployment URL,
+> and `handleSetMaintenance` takes the actor name straight from the URL
+> (`e.parameter.admin`) and stamps it into `AppSettings.UpdatedBy` — so a caller
+> can both flip maintenance mode and forge the audit trail. The client-side
+> `isAdmin()` check is cosmetic only.
+
+**Shape:** a token minted at login, stored server-side, presented on protected
+routes. Identity comes from the token, never the URL. `REQUIRE_SESSION = false`
+keeps a *missing* token tolerated (so an old cached shell keeps working) while a
+*present-but-invalid* token always fails. Phase 2 is one constant.
+
+### Backend (`admin.gs` / `code.gs`)
+
+- ✅ Token constants + helpers: `issueSessionToken` / `readSessionToken` /
+  `revokeSessionToken` / `pruneExpiredTokens` / `requireSession` / `jsonOut`
+- ✅ `handleLogin` returns a token; login throttling (5 fails → 5 min lockout)
+- ✅ Gate `setMaintenance` + `getActiveUsers` (admin role), `heartbeat` and
+  `removeActiveUser` (any session); `UpdatedBy` from the token, not `?admin=`
+- ✅ New `logout` action in the router that revokes the token
+
+### Tests (offline harness)
+
+- ✅ Harness: `Utilities.getUuid`, recorded `Utilities.sleep`, `utilities`
+  recreated on `reset()`
+- ✅ 26 tests: mint / expiry / revoke / prune, role rejection, forged-username
+  rejection, accept-if-present switch, throttling (85 total, up from 59)
+- ✅ Mutation-check the new tests (delete the role check and the `UpdatedBy`
+  override; each must fail) and restore `admin.gs` byte-for-byte
+
+### Frontend
+
+- ✅ Store the token; inject it in `fetchWithRetry` and the 3 raw `fetch` calls
+- ✅ Detect the unauthorized marker → toast + forced re-login
+- ✅ Revoke + `removeActiveUser` on logout, in the `handleLogout` that actually
+  runs (the `admin-module` override was dead code — see Notes)
+- ✅ Add `netpulse_session_token` to `_preserveKeys`
+
+### Docs & rollout
+
+- ✅ `changelogs.md` entry + security note on the token model and the flip
+  (see `GVSI_NetPulse_Auth_Notes.md`)
+- ⏸ **Redeploy the Apps Script web app** — required before any of this is live.
+  Until then the deployed endpoint ignores `?token=` entirely and never issues
+  one, so the client runs exactly as before (verified: un-tokened request URLs are
+  byte-identical to the old ones).
+
+---
+
+## 🟡 Next — P1 Phase 2: enforce
+
+- ✅ Flip `REQUIRE_SESSION` to `true` — done 2026-09-12 after the token path was
+  verified against the deployed backend. **Backend change: needs a redeploy.**
+- ✅ Drop the `?admin=` param from the client, and remove the server fallback so
+  there is only one source of truth for `UpdatedBy`
+- ✅ Tests updated for enforcement (87 total) + a tripwire test that fails if the
+  switch is ever turned back off
+- ⬜ Optional: sliding token refresh on heartbeat (no rotation today)
+- ⬜ Optional: token TTL shortener — 24 h is aligned to the client session, not
+  the shortest safe window
+- ⬜ Optional: an active-sessions view in the admin panel so a token can be
+  revoked without waiting out its 24 h TTL
+
+> **Confirmed deployed** the same day: a tokenless heartbeat answers `"Sign-in required"`, which
+> only exists in the enforced version.
+>
+> **Rollout note.** A client whose session predates the flip holds no token, so
+> its gated calls are refused. Data routes and the kiosk are unaffected, and the
+> admin panel shows "Session expired" → one re-login mints a token. Also note the
+> client stops sending `?admin=` **as soon as it reloads**, which is before the
+> backend flip is redeployed — in that window a maintenance toggle from a
+> tokenless session would record `unknown` as the actor. Harmless, but it is why
+> the redeploy should follow promptly.
+
+---
+
+## 🟢 Later
+
+- ⬜ **P2** remove the plaintext password from `netpulse_remember`
+- ⬜ **P2** salt + iterate password hashes (`sha256()` is one unsalted round)
+- ⬜ **P2** stop the nightly `.xlsx` backup emailing the `Users` sheet
+- ⬜ **P3** per-module "last updated" in the UI
+- ⬜ Frontend / kiosk tests — still the largest uncovered surface
+- ✅ Login boot no longer makes two sequential round trips: the maintenance check and the login run
+  in parallel and are reconciled after (measured same-millisecond start, 2255 ms overlap). If
+  maintenance wins, the freshly minted session is dropped but saved credentials are kept.
+- ⬜ Consider making `isLoggedIn()` re-verify maintenance instead of short-circuiting the check —
+  today a session skips it entirely, which is what the parallel-login teardown has to work around.
+- ⬜ A visible backend-health / offline indicator, so a throttled Apps Script stops looking like
+  an app bug. Measured cold start on this deployment: **36.9s** (warm requests: 1–4s).
+- ⬜ Backend test coverage for the six `Extract*` / trigger `.gs` files
+
+---
+
+## ✅ Done
+
+### 2026-09-12 — Backend test harness (`tests/`)
+59 tests, browser-free. See `tests/README.md` and `changelogs.md`.
+
+### 2026-09-12 — P1 Phase 1: session tokens (accept-if-present)
+`admin.gs` + `code.gs` + `index.html` + `admin-module.js`, 26 new tests, all
+mutation-checked. Deployed and verified live the same day: a real login issued a
+token, a role-gated route accepted it, and the heartbeat's raw fetch carried it.
+
+### 2026-09-12 — Client reliability (SW + heartbeat)
+Three client-side defects found while diagnosing a reported "CORS error" + slow login:
+- Service worker's API passthrough had no `catch`, so a stalled/throttled response surfaced as an
+  unhandled `Failed to fetch` that read like a CORS misconfiguration. Now a clean synthetic 503.
+- `sw.js` could sit dormant for up to 24h (browser's per-navigation update throttle), keeping an
+  old `admin-module.js` alive. `index.html` now calls `reg.update()` on every load.
+- The heartbeat never stopped on a refused session — it beat every 60s forever against a
+  throttling backend. Now it stops; a re-login restarts it.
+
+### 2026-09-12 — P1 Phase 2: enforce
+`REQUIRE_SESSION = true`; `?admin=` removed from the client **and** the server
+fallback deleted, so `UpdatedBy` has exactly one source. 87 tests, mutation-checked
+(turning the switch off, restoring the forgeable actor, or re-trusting the URL in
+heartbeat each fail the suite). **Backend change: needs a redeploy.** Docs:
+`GVSI_NetPulse_Auth_Notes.md`. See `changelogs.md` → Unreleased.
+
+---
+
+## 🔎 Notes & findings
+
+- **The logout cleanup in `admin-module.js` (lines 494–520) was dead code.**
+  `admin-module.js` loads at `index.html:717`, but `handleLogout` is declared in
+  the *later* inline script at `index.html:1471`. At admin-module load time
+  `typeof handleLogout === 'undefined'`, so the override never installed,
+  `_originalHandleLogout` stayed `null`, and `adminHandleLogout()` was
+  referenced nowhere. `?action=removeActiveUser` had **never** fired on logout —
+  the 5-minute staleness prune in `handleGetActiveUsers` was doing the cleanup.
+  Fixed by folding that intent into the `handleLogout` that really runs.
+- **This is not a full auth system.** All `?type=` reads stay open, so anyone
+  with the deployment URL can still read outage data. The token also travels in
+  the query string (Apps Script only exposes `e.parameter`, and a JSON POST body
+  triggers a CORS preflight the deployment does not answer), so it can surface
+  in browser history / `Referer`.
+- **Anything new that lands in `PropertiesService` needs a prefix and a prune
+  rule**, or it accumulates the way the oversized-payload cache once did.
