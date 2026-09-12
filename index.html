@@ -1183,25 +1183,47 @@ function closeNodeModal(event) {
       return;
     }
 
-    try {
-      var settings = await fetchWithRetry(APP_URL + '?action=getSettings', 1, 800);
-      if (settings && settings.maintenance === true) {
-        showMaintenancePage();
-        return;
-      }
-    } catch (e) {
-      // If can't check maintenance, continue with normal login
-    }
+    // Fire the maintenance check NOW but don't await it yet. Awaiting it first
+    // made signing in cost two sequential round trips — measured ~3s warm, and a
+    // cold start on this deployment can be ~37s, so the wait was paid twice.
+    var settingsPromise = fetchWithRetry(APP_URL + '?action=getSettings', 1, 800)
+      .catch(function () { return null; }); // can't check -> carry on to login
 
     // Check for saved credentials — auto-login using performLogin() directly
     var savedCreds = null;
     try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
-    if (savedCreds && savedCreds.u && savedCreds.p) {
-      // Auto-login: call performLogin directly (no form event needed)
-      performLogin(savedCreds.u, savedCreds.p, true);
-    } else {
+
+    var settings;
+
+    if (!savedCreds || !savedCreds.u || !savedCreds.p) {
+      // Nothing to sign in with yet, so the form is shown and the maintenance
+      // result still decides what the user ends up seeing.
       showLogin();
+      settings = await settingsPromise;
+      if (settings && settings.maintenance === true) showMaintenancePage();
+      return;
     }
+
+    // Auto-login runs in PARALLEL with the maintenance check. Showing the app is
+    // deferred so maintenance can still win without the app flashing on screen.
+    var results = await Promise.all([
+      settingsPromise,
+      performLogin(savedCreds.u, savedCreds.p, true, true)
+    ]);
+    settings = results[0];
+    var loggedIn = results[1];
+
+    if (settings && settings.maintenance === true) {
+      // Maintenance wins. The parallel login may already have minted a session,
+      // and isLoggedIn() SHORT-CIRCUITS the maintenance check — so leaving it
+      // would let the user straight in on the next load. Drop the session but
+      // keep the saved credentials, so auto-login works again once it ends.
+      if (loggedIn) discardSession();
+      showMaintenancePage();
+      return;
+    }
+
+    if (loggedIn) showApp();
   }
   checkMaintenanceAndLogin();
 
@@ -1221,7 +1243,15 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.8.2').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.0').then(reg => {
+        // Force an update check on every load. Without this the browser only
+        // re-checks sw.js on a navigation once every 24h, so a change to the
+        // worker itself can sit dormant for a day even though app assets update
+        // on their own through stale-while-revalidate. The update fetch bypasses
+        // both the HTTP cache and this worker, so it sees the real bytes; the
+        // worker's own skipWaiting()/clients.claim() then makes it live at once.
+        reg.update().catch(() => { /* offline or blocked — nothing to do */ });
+      }).catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1472,8 +1502,23 @@ function closeNodeModal(event) {
     }
   }
 
-  // Core login logic — reusable by form handler AND auto-login
-  async function performLogin(username, password, rememberMe) {
+  // Drops the local session and revokes the token, WITHOUT touching saved
+  // credentials. Used when the session must not survive (maintenance came back
+  // on); handleLogout() is the user-initiated path, which also forgets them.
+  function discardSession() {
+    var token = getSessionToken();
+    if (token) {
+      fetch(APP_URL + '?action=logout&token=' + encodeURIComponent(token)).catch(function () {});
+    }
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_EXPIRY_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+  }
+
+  // Core login logic — reusable by form handler AND auto-login.
+  // `deferShow` leaves showApp() to the caller, so a concurrent maintenance check
+  // can win the decision without the app appearing first.
+  async function performLogin(username, password, rememberMe, deferShow) {
     var errorEl = document.getElementById('loginError');
     var btn = document.getElementById('loginBtn');
 
