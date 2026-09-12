@@ -705,45 +705,55 @@
   </div>
 </div>
 
-<script src="db.js"></script>
-<script src="notifications.js"></script>
-<script src="nap-module.js"></script>
-<script src="lcp-module.js"></script>
-<script src="olt-module.js"></script>
-<script src="node-module.js"></script>
-<script src="backbone-module.js"></script>
-<script src="analytics-module.js"></script>
-<script src="admin-module.js"></script>
+<script src="db.js?v=3.9.0"></script>
+<script src="notifications.js?v=3.9.0"></script>
+<script src="cache-control.js?v=3.9.0"></script>
+<script src="nap-module.js?v=3.9.0"></script>
+<script src="lcp-module.js?v=3.9.0"></script>
+<script src="olt-module.js?v=3.9.0"></script>
+<script src="node-module.js?v=3.9.0"></script>
+<script src="backbone-module.js?v=3.9.0"></script>
+<script src="analytics-module.js?v=3.9.0"></script>
+<script src="admin-module.js?v=3.9.0"></script>
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.8.2"; 
+  const REQUIRED_APP_VERSION = "3.9.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
 
     if (!currentVersion || currentVersion !== REQUIRED_APP_VERSION) {
-      // Unregister lahat ng Service Worker
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (let reg of registrations) {
-          await reg.unregister();
+      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry', 'netpulse_session_token'];
+
+      if (window.netpulseCache) {
+        // One call clears the client-side caching layers instead of the old
+        // five ad-hoc steps. See cache-control.js.
+        await netpulseCache.invalidateAll({
+          serviceWorker: true,
+          storage: true,
+          preserve: _preserveKeys
+        });
+      } else {
+        // Fallback using native APIs only. The update path must never depend on
+        // a file that may itself be missing — that is the one case it exists to
+        // recover from.
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (let reg of registrations) {
+            await reg.unregister();
+          }
         }
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+        }
+        const _preserved = {};
+        _preserveKeys.forEach(k => { _preserved[k] = localStorage.getItem(k); });
+        localStorage.clear();
+        Object.entries(_preserved).forEach(([k, v]) => { if (v !== null) localStorage.setItem(k, v); });
+        sessionStorage.clear();
       }
-
-      // Burahin ang lahat ng CacheStorage
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map(name => caches.delete(name)));
-      }
-
-      // Linisin ang storage (preserve essential keys)
-      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry'];
-      const _preserved = {};
-      _preserveKeys.forEach(k => { _preserved[k] = localStorage.getItem(k); });
-      localStorage.clear();
-      Object.entries(_preserved).forEach(([k, v]) => { if (v !== null) localStorage.setItem(k, v); });
-      sessionStorage.clear();
 
       // Siguraduhing loaded na ang DOM bago palitan ang HTML
       if (document.readyState === 'loading') {

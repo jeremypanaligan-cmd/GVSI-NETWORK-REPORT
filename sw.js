@@ -1,26 +1,98 @@
-const STATIC_CACHE = 'gvsi-shell-v3.8.2';
-const STATIC_ASSETS = [
+/* ------------------------------------------------------------------ *
+   GVSI NetPulse — service worker
+
+   Strategy
+     • Google Apps Script API  -> network only. Never cached here: the app owns
+                                  its own data cache (dataCache + IndexedDB) and
+                                  a stale API reply is worse than a slow one.
+     • App shell / static     -> stale-while-revalidate.
+
+   Why SWR: the cached copy paints instantly, the fresh copy is fetched and
+   stored in the background, and the NEXT load is current. That means an edit
+   reaches the browser on its own — no need to bump STATIC_CACHE (or a ?v=
+   token) every time a file changes.
+ * ------------------------------------------------------------------ */
+
+const STATIC_CACHE = 'gvsi-shell-v3.9.4';
+
+/* Must match the ?v= token on the <script>/<link> tags in index.html.
+
+   The precache has to warm the SAME keys the page asks for. Caching
+   './nap-module.js' while the page requests './nap-module.js?v=3.9.0' stores a
+   copy nobody ever reads, and quietly leaves the offline shell depending
+   entirely on stale-while-revalidate. Keep the two in step. */
+const ASSET_VERSION = '3.9.0';
+
+// Requested without a version token.
+const UNVERSIONED_ASSETS = [
   './index.html',
-  './styles.css',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './apple-touch-icon.png',
-'./nap-module.js',
-'./lcp-module.js',
-'./olt-module.js',
-'./node-module.js',
-'./backbone-module.js',
-'./analytics-module.js',
-'./admin-module.js',
-'./db.js',
-'./notifications.js'
+  './apple-touch-icon.png'
 ];
+
+// Requested by index.html as `<name>?v=<ASSET_VERSION>`.
+const VERSIONED_ASSETS = [
+  './styles.css',
+  './kiosk.css',
+  './nap-module.js',
+  './lcp-module.js',
+  './olt-module.js',
+  './node-module.js',
+  './backbone-module.js',
+  './analytics-module.js',
+  './admin-module.js',
+  './kiosk-module.js',
+  './db.js',
+  './notifications.js',
+  './cache-control.js'
+].map((file) => file + '?v=' + ASSET_VERSION);
+
+const STATIC_ASSETS = UNVERSIONED_ASSETS.concat(VERSIONED_ASSETS);
+
+/* Drop stale variants of the assets we manage — e.g. the unversioned URLs used
+   before the ?v= token was mirrored here, or a copy left under an older token.
+   They would otherwise sit in the cache forever, never read.
+
+   Deliberately narrow: only keys whose *pathname* is a file we precache are
+   considered, so unrelated entries like the stale-while-revalidate navigation
+   copy of `index.html?kiosk=true` survive. Pruning is safe because anything
+   still wanted is re-fetched on demand. */
+function pruneStaleAssets() {
+  const wanted = new Set(STATIC_ASSETS.map((u) => new URL(u, self.location).href));
+  const managed = new Set(VERSIONED_ASSETS.map((u) => new URL(u, self.location).pathname));
+  return caches.open(STATIC_CACHE)
+    .then((cache) => cache.keys().then((reqs) =>
+      Promise.all(
+        reqs
+          .filter((req) => {
+            if (wanted.has(req.url)) return false;
+            return managed.has(new URL(req.url).pathname);
+          })
+          .map((req) => cache.delete(req))
+      )
+    ))
+    .catch(() => {});
+}
+
+/* Store a response only when it can safely be replayed. Errors, partial
+   content (206) and opaque cross-origin replies are all skipped. */
+function isCacheable(res) {
+  return !!res && res.ok && res.status !== 206 && res.type !== 'opaque';
+}
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      // Precache for offline-first startup. 'reload' bypasses the HTTP cache so a
+      // fresh install never seeds itself from stale copies. Each file is added
+      // independently — one missing asset must not fail the whole install.
+      return Promise.all(
+        STATIC_ASSETS.map((url) =>
+          cache.add(new Request(url, { cache: 'reload' })).catch(() => {})
+        )
+      );
     })
   );
   self.skipWaiting();
@@ -36,7 +108,9 @@ self.addEventListener('activate', (e) => {
           }
         })
       );
-    }).then(() => self.clients.claim())
+    })
+      .then(() => pruneStaleAssets())
+      .then(() => self.clients.claim())
   );
 });
 
@@ -78,22 +152,64 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // 1. Google Apps Script API Requests -> ALWAYS NETWORK (Fresh Data)
+  // 1. Google Apps Script API -> ALWAYS NETWORK (fresh data).
+  //    If it fails the app's own retry/backoff layer handles it — which is
+  //    exactly why the catch matters. Unhandled, a stalled or mid-deploy
+  //    response (this deployment throttles, and Google can answer with a page
+  //    that has no CORS header) rejects here and surfaces in the console as an
+  //    unhandled "Failed to fetch" that looks like a CORS misconfiguration.
+  //    Converting it to a plain 503 lets fetchWithRetry classify and retry it.
   if (url.includes('script.google.com')) {
     e.respondWith(
-      fetch(e.request, { cache: 'no-store' }).catch(() => fetch(e.request))
+      fetch(e.request, { cache: 'no-store' }).catch(() => new Response(
+        JSON.stringify({ offline: true, message: 'Network unavailable' }),
+        {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'application/json' }
+        }
+      ))
     );
-  } else {
-    // 2. Static Assets (App Shell) -> CACHE FIRST (Instant Load)
-    e.respondWith(
-      caches.match(e.request).then((cachedResponse) => {
-        return cachedResponse || fetch(e.request).then((networkResponse) => {
-          return caches.open(STATIC_CACHE).then((cache) => {
-            cache.put(e.request, networkResponse.clone());
-            return networkResponse;
-          });
-        });
-      })
-    );
+    return;
   }
+
+  // Only GET is cacheable.
+  if (e.request.method !== 'GET') return;
+
+  // 2. App shell / static assets -> STALE-WHILE-REVALIDATE.
+  const cachePromise = caches.open(STATIC_CACHE);
+
+  // Start the network request straight away so the refresh overlaps the paint.
+  // 'no-cache' forces revalidation — that is what makes an edit actually land
+  // instead of being served from a still-"fresh" HTTP cache entry.
+  const networkPromise = fetch(e.request, { cache: 'no-cache' });
+
+  e.respondWith(
+    cachePromise.then((cache) =>
+      cache.match(e.request).then((cached) => {
+        const revalidate = networkPromise
+          .then((res) => {
+            if (isCacheable(res)) {
+              // clone() before the body is read; a failed put must never matter.
+              cache.put(e.request, res.clone()).catch(() => {});
+            }
+            return res;
+          })
+          .catch(() => null);
+
+        if (cached) {
+          // Serve from cache immediately, finish the refresh in the background.
+          // waitUntil is valid here: respondWith keeps the event alive until
+          // its promise settles.
+          e.waitUntil(revalidate);
+          return cached;
+        }
+
+        // Nothing cached yet -> wait for the network.
+        return revalidate.then(
+          (res) => res || new Response('', { status: 504, statusText: 'Offline' })
+        );
+      })
+    )
+  );
 });

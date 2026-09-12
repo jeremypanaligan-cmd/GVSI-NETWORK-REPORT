@@ -7,8 +7,16 @@ const STORE_NAME = 'snapshots';
 const RETENTION_DAYS = 90;
 
 // Open database
+//
+// The connection is opened once and reused. It used to open a brand-new
+// connection on every call (saveDailySnapshot calls this twice, and analytics
+// calls it on every render) without ever closing one — so connections piled up
+// and an external deleteDatabase could never release the database.
+let dbPromise = null;
+
 function openDB() {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
@@ -16,9 +24,30 @@ function openDB() {
         db.createObjectStore(STORE_NAME, { keyPath: 'date' });
       }
     };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = (e) => reject(e.target.error);
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      // Release the connection when another context (or our own purge entry
+      // point in cache-control.js) wants to delete or upgrade the database.
+      // Without this the delete request sits pending forever.
+      db.onversionchange = () => { db.close(); dbPromise = null; };
+      db.onclose = () => { dbPromise = null; };
+      resolve(db);
+    };
+    req.onerror = (e) => { dbPromise = null; reject(e.target.error); };
   });
+  return dbPromise;
+}
+
+// Close the shared connection so the database can be deleted or upgraded.
+// Safe to call when nothing is open. Used by netpulseCache.clearIndexedDB().
+function closeDB() {
+  if (!dbPromise) return Promise.resolve('no open connection');
+  const pending = dbPromise;
+  dbPromise = null;
+  return pending.then((db) => {
+    try { db.close(); } catch (e) { /* already closed */ }
+    return 'connection closed';
+  }).catch(() => 'no open connection');
 }
 
 // Save daily snapshot (one per day)

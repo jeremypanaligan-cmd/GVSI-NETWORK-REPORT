@@ -54,6 +54,14 @@ function doGet(e) {
   // ---------------- 1. Cache Check ----------------
   var cache = CacheService.getScriptCache();
   var cacheKey = "cache_v2_" + type;
+
+  // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
+  var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
+
+  // PropertiesService has no TTL of its own, so a payload stored there is
+  // stamped with its write time and expired here by hand.
+  var PROP_TS_KEY = cacheKey + "_cached_at";
+
   try {
     // Try CacheService first (100KB limit)
     var cachedData = cache.get(cacheKey);
@@ -61,12 +69,24 @@ function doGet(e) {
       return ContentService.createTextOutput(cachedData)
         .setMimeType(ContentService.MimeType.JSON);
     }
-    // Fallback: Check PropertiesService (500KB limit) for large payloads
+
+    // Fallback: PropertiesService (500KB limit) for payloads too big for
+    // CacheService. Nothing expires these on its own, so a missing stamp counts
+    // as expired and anything older than cacheTTL is dropped — otherwise one
+    // oversized payload would be served forever and silently freeze a module.
     var props = PropertiesService.getScriptProperties();
     var propData = props.getProperty(cacheKey);
     if (propData) {
-      return ContentService.createTextOutput(propData)
-        .setMimeType(ContentService.MimeType.JSON);
+      var cachedAt = Number(props.getProperty(PROP_TS_KEY)) || 0;
+      var ageSeconds = (Date.now() - cachedAt) / 1000;
+      if (cachedAt > 0 && ageSeconds < cacheTTL) {
+        return ContentService.createTextOutput(propData)
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      props.deleteProperty(cacheKey);
+      props.deleteProperty(PROP_TS_KEY);
+      Logger.log("Stale PropertiesService cache dropped for " + type +
+                 " (age " + Math.round(ageSeconds) + "s, ttl " + cacheTTL + "s)");
     }
   } catch (err) {
     Logger.log("Cache get error: " + err.message);
@@ -345,19 +365,27 @@ if (!oltSheet) {
   var jsonResponse = JSON.stringify(resultData);
   var payloadSize = jsonResponse.length;
   
-  // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
-  var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
-  var cacheKey = "cache_v2_" + type;
-
   try {
     // CacheService limit: 100KB per key
     // PropertiesService limit: 500KB per property (fallback for large payloads)
     if (payloadSize <= 90000) {
       cache.put(cacheKey, jsonResponse, cacheTTL);
+
+      // If this module previously overflowed into PropertiesService it may have
+      // left a copy behind. Clear it, or that never-expiring copy would outlive
+      // this fresh write and keep being served.
+      var propsToClear = PropertiesService.getScriptProperties();
+      if (propsToClear.getProperty(cacheKey)) {
+        propsToClear.deleteProperty(cacheKey);
+        propsToClear.deleteProperty(PROP_TS_KEY);
+      }
     } else if (payloadSize <= 450000) {
-      // Fallback: Use PropertiesService for large payloads (e.g., OLT with 460+ rows)
+      // Fallback for payloads too big for CacheService (e.g. OLT with 460+ rows).
+      // These entries never expire, so stamp the write time — the read path
+      // above enforces cacheTTL against it.
       var props = PropertiesService.getScriptProperties();
       props.setProperty(cacheKey, jsonResponse);
+      props.setProperty(PROP_TS_KEY, String(Date.now()));
       Logger.log("Cache overflow fallback: " + type + " using PropertiesService (" + payloadSize + " bytes)");
     } else {
       Logger.log("WARNING: Payload too large for any cache: " + type + " (" + payloadSize + " bytes)");
