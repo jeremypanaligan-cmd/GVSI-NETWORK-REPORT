@@ -93,6 +93,23 @@ function kioskProvince(value) {
   return s || '—';
 }
 
+/* A feed cell that means "nothing recorded". The sheet uses a bare "-" for empty
+   fields, which on a wall display reads as a rendering fault rather than a
+   missing value — so every optional field goes through here. */
+function kioskField(value) {
+  var s = String(value === null || value === undefined ? '' : value).trim();
+  return (!s || s === '-' || s === '\u2013' || s === '\u2014') ? '\u2014' : s;
+}
+
+/* SA = service affecting, NSA = not. Rendered as a chip, never as a hero number:
+   the raw code in a 40px font was the single least readable part of this slide. */
+function kioskImpactClass(value) {
+  var v = String(value || '').trim().toUpperCase();
+  if (v === 'SA') return ' is-sa';
+  if (v === 'NSA') return ' is-nsa';
+  return '';
+}
+
 /* "NUEVA ECIJA" -> "Nueva Ecija" */
 function kioskTitleCase(value) {
   return String(value === null || value === undefined ? '' : value)
@@ -1079,54 +1096,99 @@ function kioskRenderNode() {
 
   var provinces = {};
   var totalNodes = 0;
+  var worstMinutes = -1;
+  var worstAging = '\u2014';
   rows.forEach(function (r) {
     provinces[kioskProvince(r.P)] = 1;
     totalNodes += kioskInt(r.C);
+    var minutes = kioskDurationMinutes(r.AG || r.AGING);
+    if (minutes >= worstMinutes) { worstMinutes = minutes; worstAging = kioskField(r.AG || r.AGING); }
   });
+  var provinceCount = Object.keys(provinces).length;
 
   var subtitle = kioskPlural(rows.length, 'incident') + ' · ' +
-    kioskPlural(kioskInt(totalNodes), 'affected node') + ' across ' + kioskPlural(Object.keys(provinces).length, 'province');
+    kioskPlural(kioskInt(totalNodes), 'affected node') + ' across ' + kioskPlural(provinceCount, 'province');
+
+  /* Summary band. Every other slide leads with its numbers; NODE used to lead
+     with the incident list, so a single incident left most of a wall display
+     blank. Figures come from the live feed and keep the change chips. */
+  function bandItem(valueHtml, label, color) {
+    return '<div class="kiosk-node-stat">' +
+      '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>' + valueHtml + '</div>' +
+      '<div class="k">' + kioskEsc(label) + '</div>' +
+      '</div>';
+  }
+
+  var band = '<div class="kiosk-node-summary">' +
+    bandItem(kioskChanged('node', 'incidents', rows.length), 'Active incidents', 'var(--k-red)') +
+    bandItem(kioskChanged('node', 'nodes', kioskInt(totalNodes)), 'Nodes affected', 'var(--k-red)') +
+    bandItem(kioskEsc(provinceCount), 'Provinces affected', 'var(--k-amber)') +
+    bandItem(kioskEsc(worstAging), 'Worst aging', 'var(--k-amber)') +
+    '</div>';
 
   var sorted = rows.slice().sort(function (a, bRow) {
-    return kioskInt(bRow.C) - kioskInt(a.C);
+    var byNodes = kioskInt(bRow.C) - kioskInt(a.C);
+    if (byNodes) return byNodes;
+    return kioskDurationMinutes(bRow.AG || bRow.AGING) - kioskDurationMinutes(a.AG || a.AGING);
   });
   var top = sorted.slice(0, KIOSK_LIMITS.nodeCards);
   var rest = sorted.slice(KIOSK_LIMITS.nodeCards);
 
-  function causeColor(cause) {
-    var c = String(cause || '').toUpperCase();
-    if (c.indexOf('FIBER') !== -1 && c.indexOf('POWER') !== -1) return 'var(--k-violet)';
-    if (c.indexOf('FIBER') !== -1) return 'var(--k-red)';
-    if (c.indexOf('POWER') !== -1) return 'var(--k-amber)';
-    if (c.indexOf('EQUIPMENT') !== -1) return 'var(--k-amber)';
-    return 'var(--k-text-dim)';
+  function impactChip(value) {
+    var text = kioskField(value);
+    return '<span class="kiosk-node-impact' + kioskImpactClass(text) + '">' + kioskEsc(text) + '</span>';
   }
 
-  var cards = top.map(function (r) {
-    var nodeCount = kioskInt(r.C);
-    var cause = String(r.DC || '—');
-    var areaKey = kioskAreaKey(kioskProvince(r.P), '');
-    return '<div class="kiosk-node-card' + kioskFlashClass('node', areaKey) + '">' +
-      '<div style="min-width:0">' +
-      '<div class="province">' + kioskEsc(kioskProvince(r.P)) + kioskNewChip('node', areaKey) + '</div>' +
-      '<div class="cause" style="color:' + causeColor(cause) + '">' + kioskEsc(cause) + '</div>' +
-      '</div>' +
-      '<div class="nodes">' +
-      '<div class="kiosk-down-stat"><div class="v">' + kioskEsc(String(r.I || '—')) + '</div><div class="k">Impact</div></div>' +
-      '<div class="kiosk-down-stat"><div class="v">' + kioskEsc(String(r.AG || '—')) + '</div><div class="k">Aging</div></div>' +
-      '<div class="kiosk-down-stat"><div class="v">' + kioskChanged('node', areaKey, nodeCount) + '</div><div class="k">Nodes</div></div>' +
+  var incidents;
+
+  if (rows.length === 1) {
+    /* One incident gets the whole stage. A single row of a list on a wall display
+       reads as a broken layout — and this is the case that matters most. */
+    var only = rows[0];
+    var onlyArea = kioskAreaKey(kioskProvince(only.P), '');
+    incidents = '<div class="kiosk-node-hero' + kioskFlashClass('node', onlyArea) + '">' +
+      '<div class="hero-kicker">Node down' + kioskNewChip('node', onlyArea) + impactChip(only.I) + '</div>' +
+      '<div class="hero-name">' + kioskEsc(kioskField(only.N)) + '</div>' +
+      '<div class="hero-loc">' + kioskEsc(kioskProvince(only.P)) + '</div>' +
+      '<div class="kiosk-stat-row">' +
+      '<div class="kiosk-stat-tile"><div class="v" style="color:var(--k-red)">' +
+      kioskChanged('node', onlyArea, kioskInt(only.C)) + '</div><div class="k">Nodes affected</div></div>' +
+      '<div class="kiosk-stat-tile"><div class="v" style="color:var(--k-amber)">' +
+      kioskEsc(kioskField(only.AG)) + '</div><div class="k">Aging</div></div>' +
+      '<div class="kiosk-stat-tile"><div class="v">' + kioskEsc(kioskField(only.D)) +
+      '</div><div class="k">Downtime since</div></div>' +
+      '<div class="kiosk-stat-tile"><div class="v">' + kioskEsc(kioskField(only.DC)) +
+      '</div><div class="k">Down cause</div></div>' +
       '</div>' +
       '</div>';
-  }).join('');
+  } else {
+    /* Several incidents share the stage, worst blast radius first. Same card
+       idiom as the DOWN OLT list, so the two urgent slides read alike. */
+    var cards = top.map(function (r) {
+      var areaKey = kioskAreaKey(kioskProvince(r.P), '');
+      return '<div class="kiosk-down-card' + kioskFlashClass('node', areaKey) + '">' +
+        '<div style="min-width:0">' +
+        '<div class="oname">' + kioskEsc(kioskField(r.N)) + kioskNewChip('node', areaKey) + '</div>' +
+        '<div class="oloc">' + kioskEsc(kioskProvince(r.P)) + ' · ' + kioskEsc(kioskField(r.DC)) + '</div>' +
+        '</div>' +
+        '<div class="kiosk-down-stats">' +
+        impactChip(r.I) +
+        '<div class="kiosk-down-stat"><div class="v">' + kioskChanged('node', areaKey, kioskInt(r.C)) + '</div><div class="k">Nodes</div></div>' +
+        '<div class="kiosk-down-stat"><div class="v">' + kioskEsc(kioskField(r.AG)) + '</div><div class="k">Aging</div></div>' +
+        '<span class="kiosk-down-badge">DOWN</span>' +
+        '</div>' +
+        '</div>';
+    }).join('');
+
+    incidents = '<div class="kiosk-down-list">' + cards + '</div>';
+  }
 
   var foot = rest.length
     ? '+' + kioskPlural(rest.length, 'more incident') + ' · ' +
       kioskPlural(rest.reduce(function (s, r) { return s + kioskInt(r.C); }, 0), 'node') + ' affected'
     : '';
 
-  el.innerHTML = kioskSlideHead('node', subtitle) +
-    '<div class="kiosk-node-list">' + cards + '</div>' +
-    kioskFootNote(foot);
+  el.innerHTML = kioskSlideHead('node', subtitle) + band + incidents + kioskFootNote(foot);
 }
 
 /* ------------------------------------------------------------------ *
