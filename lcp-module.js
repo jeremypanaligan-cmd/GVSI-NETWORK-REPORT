@@ -9,7 +9,9 @@ async function fetchLcpData(forceRefresh = false) {
     return;
   }
 
-  // No skeleton for LCP — has hardcoded HTML elements
+  // The tab markup lives in index.html and only the two tbodies and the cards are
+  // ours to fill, so the skeleton goes inside those — never over the whole tab.
+  if (!dataCache.lcp) showModuleSkeleton('lcp');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=lcp");
@@ -20,6 +22,10 @@ async function fetchLcpData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching LCP data:', error);
+  } finally {
+    // This catch has no UI of its own, so without the clear a failed LCP fetch
+    // would leave the tables shimmering as if they were still loading.
+    clearModuleSkeleton('lcp');
   }
 }
 

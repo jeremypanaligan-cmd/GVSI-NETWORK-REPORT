@@ -20,10 +20,23 @@ Versions follow the app's own numbering. Newest first.
   - `fetchWithRetry` now **de-duplicates in-flight requests** — identical URLs share one
     network call, so a burst (tab click + prefetch + visibility refresh) collapses into a
     single request instead of many.
-  - Only **transient** failures are retried (network error, `429`, `5xx`, and `404` once),
+  - Only **transient** failures are retried (network error, `429`, `5xx`, and `404`),
     with jittered exponential backoff. `400`/`401`/`403` fail immediately instead of being
-    retried three times.
+    retried three times. A `404` used to be tolerated only **once**, so two consecutive stalls
+    gave up — and the module then sat on "Error loading data." until its next poll, which is
+    **up to an hour** for NAP (30 min LCP, 15 min OLT, 10 min NODE/BACKBONE). It now gets the
+    caller's full retry budget. Reproduced deliberately: 1 failure in 20 rapid requests, gone on
+    the very next one. A persistent `404` still fails after the budget, so a bad URL cannot loop.
+  - A failed request now names the **hop that failed**. Every `/exec` call answers `302` and the
+    payload arrives from `scriptusercontent.com`, so Chrome reports a failure on *either* hop
+    against the request URL — which is why the same event looked like a `404` one day and a CORS
+    error the next. `res.url` separates them: `… (failed hop: …/macros/echo)` means the redirect
+    target rejected the content key, while no suffix means `/exec` itself throttled.
   - The per-retry `console.warn` spam was removed.
+- **`isAdmin()` flooded the console on every tab change.** Six `console.log` lines per call, and
+  it is called from `showTab()` *and* `showApp()` — nine tab switches printed ~54 lines and
+  buried the real errors in the middle of them. The verdict is now silent; every error path in
+  `admin-module.js` still logs.
 - **Heartbeat load reduced.** Active-user heartbeat moved from every **30s to 60s** (the
   `ActiveUsers` sheet only drops a user after 5 minutes idle) and now **backs off two cycles
   after a failure** instead of hammering a struggling server.
@@ -86,6 +99,18 @@ Versions follow the app's own numbering. Newest first.
   "Monitored regions"), and the sub-headline matches.
 
 ### Added
+- **Skeleton loading while a module fetches.** Earlier on load, NAP, LCP and OLT showed a row of
+  `0`s above an empty table, which reads as "no outages" rather than "not loaded yet". All three
+  now shimmer while their first fetch is in flight: NAP (4 stats + table), LCP (6 stats + the
+  aging and impact tables) and OLT (6 stats + table + the donut total and its legend).
+  The skeleton is built **inside the parts each module owns** — shimmer `<tr>`s in the real
+  `tbody` and a placeholder in place of a number — because NAP/LCP/OLT keep their markup in
+  `index.html` and only fill the tbody and the card values. The pre-existing `showSkeleton()`
+  swaps a *whole tab*, which is right for NODE and BACKBONE (they rebuild their tab) but would
+  have deleted markup nothing puts back. Column counts come from each table's own `<thead>`, so
+  the LCP aging skeleton draws 6 cells per row and the impact one draws 5. Every render assigns
+  `textContent`/`innerHTML` and so overwrites its own placeholder; a failed fetch clears the
+  skeleton instead of leaving the table shimmering as if it were still loading.
 - **Browser-free backend test harness.** `tests/` runs the real `code.gs` and
   `admin.gs` inside a Node `vm` against faked Google services, so `doGet` routing
   and every caching layer can be checked **without deploying to Apps Script**.

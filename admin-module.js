@@ -23,31 +23,20 @@ function withToken(url) {
 
 // ====================== ROLE CHECK ======================
 
+// Called from showTab() and showApp(), i.e. on every tab switch — so it must stay
+// silent. A zero-argument log here used to dump six lines per call, which buried
+// real console errors. The error paths below still log; only this verdict is quiet.
 function isAdmin() {
   var session = getSession();
-  console.log('[Admin] Session data:', session);
-  console.log('[Admin] Session role:', session ? JSON.stringify(session.role) : 'null');
-  
-  if (!session) {
-    console.log('[Admin] No session found');
-    return false;
-  }
-  
-  if (!session.role) {
-    console.log('[Admin] No role in session');
-    return false;
-  }
-  
+
+  if (!session) return false;
+  if (!session.role) return false;
+
   // Trim whitespace and compare exactly
   var userRole = String(session.role).trim();
   var adminRole = 'Tech admin/Dev';
-  var isAdm = (userRole === adminRole);
-  
-  console.log('[Admin] User role:', JSON.stringify(userRole));
-  console.log('[Admin] Expected role:', JSON.stringify(adminRole));
-  console.log('[Admin] Match:', isAdm);
-  
-  return isAdm;
+
+  return userRole === adminRole;
 }
 
 // ====================== RENDER ADMIN TAB ======================

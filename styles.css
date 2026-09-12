@@ -1867,6 +1867,35 @@ body.dark-mode .remarks-paragraph-box {
 .skeleton-cell.narrow { flex: 0.5; }
 .skeleton-cell.badge { width: 50px; flex: none; height: 22px; border-radius: 12px; }
 
+/* Rows written into a REAL <tbody> (NAP / LCP / OLT). Those modules keep their
+   markup in index.html and only fill the tbody, so the skeleton lives inside it
+   instead of replacing the tab — see showModuleSkeleton() in index.html. */
+.skeleton-tr td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.skeleton-tr:last-child td {
+  border-bottom: none;
+}
+
+.skeleton-bar {
+  display: block;
+  height: 14px;
+  width: 100%;
+  border-radius: 4px;
+}
+
+/* Stands in for a stat-card number while its module is loading. The render
+   assigns textContent, which overwrites it — no cleanup needed. */
+.skeleton-num {
+  display: inline-block;
+  width: 44px;
+  height: 26px;
+  border-radius: 6px;
+  vertical-align: middle;
+}
+
 /* Skeleton donut placeholder */
 .skeleton-donut {
   width: 120px;

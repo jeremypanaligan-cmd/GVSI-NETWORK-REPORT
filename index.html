@@ -849,6 +849,7 @@
       for (let attempt = 1; ; attempt++) {
         let status = 0;                       // 0 = network/offline failure
         let rejectedSession = false;
+        let finalHop = '';                    // see the failure message below
 
         try {
           const res = await fetch(url, { cache: 'no-store' });
@@ -860,6 +861,13 @@
             else return body;
           } else {
             status = res.status;
+            // An /exec call redirects to scriptusercontent.com, so a failure can
+            // originate on either hop and Chrome reports both against the request
+            // URL. res.url is the hop that actually produced the status — the only
+            // way to tell a frontend throttle on /exec apart from a rejected
+            // content key on the redirect target. Without it the next occurrence
+            // is another guess.
+            finalHop = res.url || '';
           }
         } catch (err) {
           status = 0;
@@ -875,14 +883,27 @@
         const isNetworkError = status === 0;
         const isServerBusy = status === 429 || status === 500 || status === 502 ||
                              status === 503 || status === 504;
-        const isAppsScriptStall = status === 404;   // transient here (see above)
+
+        // A 404 here is Google answering an /exec call with its own error page —
+        // observed repeatedly on this deployment, and always transient: the same
+        // URL returns 200 moments later. It is never real data, so retrying costs
+        // nothing but the backoff. Tolerating only ONE 404 meant two consecutive
+        // stalls gave up, and a failed module then sat on "Error loading data."
+        // until its next poll — up to an hour for NAP. Retry it like any other
+        // transient server condition, bounded by the caller's retry budget.
+        const isAppsScriptStall = status === 404;
 
         const canRetry =
           attempt < maxAttempts &&
-          (isNetworkError || isServerBusy || (isAppsScriptStall && attempt < 2));
+          (isNetworkError || isServerBusy || isAppsScriptStall);
 
         if (!canRetry) {
-          throw new Error(status ? `HTTP ${status} for ${url}` : `Network request failed: ${url}`);
+          // Name the hop that failed, but only when it is NOT the URL we asked for —
+          // otherwise the message just repeats itself.
+          const hop = (finalHop && finalHop !== url)
+            ? ` (failed hop: ${finalHop.split('?')[0]})`
+            : '';
+          throw new Error(status ? `HTTP ${status} for ${url}${hop}` : `Network request failed: ${url}`);
         }
 
         // Exponential backoff with jitter so parallel callers don't sync up.
@@ -1297,6 +1318,133 @@ function closeNodeModal(event) {
   function showSkeleton(tabName) {
     const tab = document.getElementById('tab-' + tabName);
     if (tab) tab.innerHTML = getSkeletonHTML(tabName);
+  }
+
+  // ==================== IN-PLACE MODULE SKELETONS ====================
+  // NAP, LCP and OLT keep their markup in index.html, and their render functions
+  // fill only the <tbody> and the card values. showSkeleton() replaces a whole
+  // tab, which is correct for NODE/BACKBONE (they rebuild their tab from scratch)
+  // but for these three would delete markup that nothing puts back — the tables
+  // and cards would stay skeletons forever. So this skeleton lives INSIDE the
+  // parts the module itself owns: shimmer rows in the real tbody, and a shimmer
+  // block in place of a number. Every render assigns textContent/innerHTML, which
+  // overwrites the placeholder — no cleanup needed on the happy path.
+  // Deliberately a function, NOT a top-level `const`: a top-level const in this
+  // script sits in the temporal dead zone until its own statement executes, and
+  // loadInitialData() -> fetchNapData() runs from a statement further UP this same
+  // script. A top-level table here throws "Cannot access ... before
+  // initialization" on the very first paint — and only on the real boot path, not
+  // when called from the console afterwards. (cache-control.js documents the same
+  // hazard for dataCache.) Rebuilding a small literal per call is free.
+  function moduleSkeletonSpec(name) {
+    const TARGETS = {
+      nap: {
+        bodies: ['napTableBody'],
+        numbers: ['card24', 'card13', 'card3', 'cardTotal']
+      },
+      lcp: {
+        bodies: ['lcpAgingTableBody', 'lcpImpactTableBody'],
+        numbers: ['lcpCard24', 'lcpCard13', 'lcpCard3',
+                  'lcpCardClients', 'lcpCardTT', 'lcpCardLCP']
+      },
+      olt: {
+        bodies: ['oltTableBody'],
+        numbers: ['oltCardTotal', 'oltCardUp', 'oltCardDown', 'oltCardLowPower',
+                  'oltCardUplinkDown', 'oltCardDegradation', 'oltCardClientsDown',
+                  'oltDonutTotalLabel'],
+        legend: 'oltDonutLegend'
+      }
+    };
+    return TARGETS[name] || null;
+  }
+
+  function skeletonRowsHtml(body, count) {
+    // Column count comes from the table's own header, so adding or removing a
+    // column later cannot leave the skeleton out of step with the table.
+    const table = body.closest('table');
+    const cols = table ? table.querySelectorAll('thead th').length : 0;
+    const cells = Math.max(1, cols);
+
+    let html = '';
+    for (let r = 0; r < count; r++) {
+      html += '<tr class="skeleton-tr">';
+      for (let c = 0; c < cells; c++) {
+        html += '<td><span class="skeleton skeleton-bar"></span></td>';
+      }
+      html += '</tr>';
+    }
+    return html;
+  }
+
+  function skeletonLegendHtml(count) {
+    // Reuses the legend placeholder classes that already existed in styles.css
+    // but were never wired to anything.
+    let html = '<div class="skeleton-legend">';
+    for (let i = 0; i < count; i++) {
+      html += '<div class="skeleton-legend-row">' +
+                '<span class="skeleton skeleton-dot"></span>' +
+                '<span class="skeleton skeleton-text"></span>' +
+              '</div>';
+    }
+    return html + '</div>';
+  }
+
+  // Returns false when the module has no skeleton defined, so a caller can tell
+  // "nothing to draw" from "drawn empty".
+  function showModuleSkeleton(name) {
+    const spec = moduleSkeletonSpec(name);
+    if (!spec) return false;
+
+    const ROWS = 6;
+
+    if (spec.bodies) {
+      spec.bodies.forEach(function (id) {
+        const body = document.getElementById(id);
+        if (body) body.innerHTML = skeletonRowsHtml(body, ROWS);
+      });
+    }
+
+    if (spec.numbers) {
+      spec.numbers.forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<span class="skeleton skeleton-num"></span>';
+      });
+    }
+
+    if (spec.legend) {
+      const legend = document.getElementById(spec.legend);
+      if (legend) legend.innerHTML = skeletonLegendHtml(5);
+    }
+
+    return true;
+  }
+
+  // Removes only what showModuleSkeleton() put there, so it is safe to call on
+  // every exit path (including success) and safe to call after a render has
+  // already written real content. Without this a failed fetch would leave the
+  // table shimmering forever, which reads as "still loading" rather than "failed".
+  function clearModuleSkeleton(name) {
+    const spec = moduleSkeletonSpec(name);
+    if (!spec) return;
+
+    if (spec.bodies) {
+      spec.bodies.forEach(function (id) {
+        const body = document.getElementById(id);
+        if (body && body.querySelector('.skeleton-tr')) body.innerHTML = '';
+      });
+    }
+
+    if (spec.numbers) {
+      spec.numbers.forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el && el.querySelector('.skeleton')) el.textContent = '0';
+      });
+    }
+
+    if (spec.legend) {
+      const legend = document.getElementById(spec.legend);
+      if (legend && legend.querySelector('.skeleton-legend')) legend.innerHTML = '';
+    }
   }
 
   // ==================== CLIPBOARD COPY ====================

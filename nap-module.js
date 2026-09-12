@@ -11,7 +11,9 @@ async function fetchNapData(forceRefresh = false) {
     return;
   }
 
-  // No skeleton for NAP — has hardcoded HTML elements
+  // The tab markup lives in index.html and only the tbody and the cards are
+  // ours to fill, so the skeleton goes inside those — never over the whole tab.
+  if (!dataCache.nap) showModuleSkeleton('nap');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=nap");
@@ -27,6 +29,9 @@ async function fetchNapData(forceRefresh = false) {
     console.error('Error fetching NAP data:', error);
     document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
   } finally {
+    // No-op once a render has written real content, so this covers the empty and
+    // failed paths without touching the success path.
+    clearModuleSkeleton('nap');
     hideLoader();
     _isInitialLoad = false;
   }

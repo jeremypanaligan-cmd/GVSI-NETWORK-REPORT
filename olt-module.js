@@ -10,7 +10,10 @@ async function fetchOltData(forceRefresh = false) {
     return;
   }
 
-  // No skeleton for OLT — has hardcoded HTML elements
+  // The tab markup lives in index.html and only the tbody, the cards and the
+  // donut legend are ours to fill, so the skeleton goes inside those — never over
+  // the whole tab.
+  if (!dataCache.olt) showModuleSkeleton('olt');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
@@ -22,6 +25,10 @@ async function fetchOltData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching OLT data:', error);
+  } finally {
+    // This catch has no UI of its own, so without the clear a failed OLT fetch
+    // would leave the tables shimmering as if they were still loading.
+    clearModuleSkeleton('olt');
   }
 }
 

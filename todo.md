@@ -6,7 +6,7 @@ audit narrative — several of its HIGH findings are already fixed, so treat
 this file as the source of truth for outstanding work.
 
 Legend: ⬜ todo · 🔄 in progress · ✅ done · ⏸ blocked
-Last updated: 2026-09-12 · Version: 3.9.0 · Backend suite: 87/87 green
+Last updated: 2026-09-13 · Version: 3.9.0 · Backend suite: 87/87 green
 
 ---
 
@@ -107,6 +107,24 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
 
 ## ✅ Done
 
+### 2026-09-13 — Module skeletons, and the `404` diagnosis
+- **Skeleton loading for NAP, LCP and OLT.** In-place (shimmer rows in the real
+  tbody, a placeholder in place of each number) rather than the whole-tab swap
+  `showSkeleton()` uses for NODE/BACKBONE — those three keep their markup in
+  `index.html` and only fill the tbody and the card values, so a tab swap would
+  delete markup nothing puts back. Column counts come from each table's own
+  `<thead>`, so the two LCP tables draw 6 and 5 cells per row respectively.
+- **The intermittent `404` on `?type=` is Google-side, not configuration.**
+  Reproduced deliberately — 1 failure in 20 rapid sequential requests, with a
+  `200` on the immediate retry. Then ~250 follow-up requests, including a 60-way
+  parallel burst, all returned `200`. Ruled out with evidence: CORS (both hops
+  carry `Access-Control-Allow-Origin: *`, even with an `Origin` header), a cached
+  `302` (it is `no-cache, no-store`), our code (the identical URL succeeds a second
+  later), and the service worker (it can only synthesise 503/504, never 404).
+  `404` retries widened to the caller's full budget, and a failure now names the
+  hop that broke so the next occurrence is diagnosable.
+- **A TDZ bug I introduced, caught on the real boot path** — see Notes.
+
 ### 2026-09-12 — Backend test harness (`tests/`)
 59 tests, browser-free. See `tests/README.md` and `changelogs.md`.
 
@@ -148,5 +166,16 @@ heartbeat each fail the suite). **Backend change: needs a redeploy.** Docs:
   the query string (Apps Script only exposes `e.parameter`, and a JSON POST body
   triggers a CORS preflight the deployment does not answer), so it can surface
   in browser history / `Referer`.
+- **A top-level `const` in the big inline script of `index.html` is a live trap.**
+  The boot path runs from a statement *further up the same script* than the
+  helpers declared near the bottom: `loadInitialData()` → `fetchNapData()` is
+  invoked around line 1249 while `const` tables declared near the skeleton
+  helpers sit at ~1360, so at first paint they are still in their temporal dead
+  zone and the module throws `Cannot access '…' before initialization`. It breaks
+  **only** on a real boot — calling the same function from the console afterwards
+  works fine, which is exactly how it survives manual testing. This bit the
+  module-skeleton table and had already bit `dataCache` in `checkAppVersion()`.
+  Declare such a table inside the function that reads it, or wrap the lookup the
+  way `cache-control.js` wraps `dataCache`.
 - **Anything new that lands in `PropertiesService` needs a prefix and a prune
   rule**, or it accumulates the way the oversized-payload cache once did.
