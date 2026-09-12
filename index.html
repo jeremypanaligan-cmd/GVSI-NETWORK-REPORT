@@ -22,7 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.8.2">
+  <link rel="stylesheet" href="styles.css?v=3.9.0">
+  <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
+  <link rel="stylesheet" href="kiosk.css?v=3.9.0">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -67,7 +69,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.8.2</div>
+    <div class="login-footer">GVSI NetPulse v3.9.0</div>
   </div>
 </div>
 
@@ -375,6 +377,13 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.0 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Kiosk Mode Redesign (New):</strong> The NOC/TV wall display is now its own presentation layer — severity band and hotspot provinces for NAP, client-impact hero for LCP, status donut with down-OLT alert cards for OLT, a calm all-clear state for NODE, and DWDM/MPLS link cards for BACKBONE. Admin tables, export buttons and sorting are unchanged.</li>
+                  <li><strong>Live Slides with Auto-Rotation:</strong> Slides read the same live data source and refresh on their own — no manual reload needed. Auto-rotate every 9 seconds with progress dots, pause-on-interaction, prev/pause/next controls, and a live-data ticker.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">                <p><strong>Version 3.8.2 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
@@ -1642,269 +1651,6 @@ function closeNodeModal(event) {
   // ==================== INITIALIZE UX ENHANCEMENTS ====================
   addSearchBarsDeferred();
 
-  // ==================== KIOSK MODE / FULLSCREEN PRESENTATION ====================
-  const KIOSK_TABS = ['nap', 'lcp', 'olt', 'node', 'backbone'];
-  const KIOSK_TAB_LABELS = {
-    nap: 'NAP OUTAGES REPORT',
-    lcp: 'LCP OUTAGES REPORT',
-    olt: 'OLT STATUS REPORT',
-    node: 'NODE STATUS REPORT',
-    backbone: 'BACKBONE LINKS STATUS'
-  };
-  let _kioskMode = false;
-  let _kioskCycleTimer = null;
-  let _kioskClockTimer = null;
-  let _kioskPaused = false;
-  let _kioskCycleInterval = 15; // seconds per tab
-  let _kioskCountdown = 0;
-  let _kioskEscapeCount = 0;
-  let _kioskEscapeTimer = null;
-
-  function isKioskMode() {
-    return _kioskMode;
-  }
-
-  function enterKioskMode() {
-    if (_kioskMode) return;
-    _kioskMode = true;
-    _kioskPaused = false;
-    document.body.classList.add('kiosk-mode');
-
-    // Force dark mode in kiosk
-    if (!document.body.classList.contains('dark-mode')) {
-      document.body.classList.add('dark-mode');
-      const themeBtn = document.getElementById('themeBtn');
-      if (themeBtn) themeBtn.innerHTML = SUN_ICON;
-    }
-
-    // Request fullscreen
-    try {
-      if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      } else if (document.documentElement.webkitRequestFullscreen) {
-        document.documentElement.webkitRequestFullscreen();
-      }
-    } catch(e) {}
-
-    // Start clock
-    updateKioskClock();
-    _kioskClockTimer = setInterval(updateKioskClock, 1000);
-
-    // Start tab cycling
-    _kioskCountdown = _kioskCycleInterval;
-    updateKioskOverlay();
-    startKioskCycle();
-
-    // Update toggle button state
-    var kioskBtn = document.getElementById('kioskToggleBtn');
-    if (kioskBtn) kioskBtn.classList.add('active-kiosk');
-
-    showToast('Kiosk Mode ON — Press Escape x3 to exit', 'info', 3000);
-  }
-
-  function exitKioskMode() {
-    if (!_kioskMode) return;
-    _kioskMode = false;
-    _kioskPaused = false;
-    document.body.classList.remove('kiosk-mode', 'kiosk-mode-paused');
-
-    // Exit fullscreen
-    try {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      }
-    } catch(e) {}
-
-    // Stop timers
-    stopKioskCycle();
-    clearInterval(_kioskClockTimer);
-    _kioskClockTimer = null;
-
-    // Update toggle button state
-    var kioskBtn = document.getElementById('kioskToggleBtn');
-    if (kioskBtn) kioskBtn.classList.remove('active-kiosk');
-
-    showToast('Kiosk Mode OFF', 'info', 2000);
-  }
-
-  function toggleKioskMode() {
-    if (_kioskMode) {
-      exitKioskMode();
-    } else {
-      enterKioskMode();
-    }
-  }
-
-  function startKioskCycle() {
-    stopKioskCycle();
-    _kioskCountdown = _kioskCycleInterval;
-    _kioskCycleTimer = setInterval(() => {
-      if (_kioskPaused) return;
-      _kioskCountdown--;
-      updateKioskCountdown();
-      if (_kioskCountdown <= 0) {
-        cycleKioskTab();
-        _kioskCountdown = _kioskCycleInterval;
-      }
-    }, 1000);
-  }
-
-  function stopKioskCycle() {
-    if (_kioskCycleTimer) {
-      clearInterval(_kioskCycleTimer);
-      _kioskCycleTimer = null;
-    }
-  }
-
-  function cycleKioskTab() {
-    var idx = KIOSK_TABS.indexOf(currentTab);
-    var nextIdx = (idx + 1) % KIOSK_TABS.length;
-    var nextTab = KIOSK_TABS[nextIdx];
-
-    // Switch tab
-    switchTab(nextTab);
-    updateKioskOverlay();
-  }
-
-  function toggleKioskPause() {
-    _kioskPaused = !_kioskPaused;
-    var btn = document.getElementById('kioskPauseBtn');
-    if (btn) {
-      btn.innerHTML = _kioskPaused
-        ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> PLAY'
-        : '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> PAUSE';
-    }
-    document.body.classList.toggle('kiosk-mode-paused', _kioskPaused);
-  }
-
-  function updateKioskClock() {
-    var el = document.getElementById('kioskClock');
-    if (!el) return;
-    var now = new Date();
-    var h = String(now.getHours()).padStart(2, '0');
-    var m = String(now.getMinutes()).padStart(2, '0');
-    var s = String(now.getSeconds()).padStart(2, '0');
-    el.textContent = h + ':' + m + ':' + s;
-  }
-
-  function updateKioskOverlay() {
-    var tabLabel = document.getElementById('kioskTabName');
-    if (tabLabel) {
-      tabLabel.textContent = KIOSK_TAB_LABELS[currentTab] || currentTab.toUpperCase();
-    }
-    updateKioskCountdown();
-  }
-
-  function updateKioskCountdown() {
-    var fill = document.getElementById('kioskCountdownFill');
-    var text = document.getElementById('kioskCountdownText');
-    if (fill) {
-      var pct = (_kioskCountdown / _kioskCycleInterval) * 100;
-      fill.style.width = pct + '%';
-    }
-    if (text) {
-      text.textContent = _kioskCountdown + 's';
-    }
-  }
-
-  // ==================== KIOSK KEYBOARD SHORTCUTS ====================
-  (function initKioskShortcuts() {
-    document.addEventListener('keydown', (e) => {
-      // Ctrl+Shift+K = Toggle kiosk mode
-      if (e.ctrlKey && e.shiftKey && e.key === 'K') {
-        e.preventDefault();
-        toggleKioskMode();
-        return;
-      }
-
-      // Only handle kiosk shortcuts when in kiosk mode
-      if (!_kioskMode) return;
-
-      // Space = Pause/Play
-      if (e.key === ' ' || e.code === 'Space') {
-        e.preventDefault();
-        toggleKioskPause();
-        return;
-      }
-
-      // Arrow Left/Right = Manual tab switch
-      if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        _kioskCountdown = _kioskCycleInterval;
-        cycleKioskTab();
-        return;
-      }
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        var idx = KIOSK_TABS.indexOf(currentTab);
-        var prevIdx = (idx - 1 + KIOSK_TABS.length) % KIOSK_TABS.length;
-        switchTab(KIOSK_TABS[prevIdx]);
-        _kioskCountdown = _kioskCycleInterval;
-        updateKioskOverlay();
-        return;
-      }
-
-      // Escape x3 quickly = Exit kiosk mode
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        _kioskEscapeCount++;
-        clearTimeout(_kioskEscapeTimer);
-        _kioskEscapeTimer = setTimeout(() => { _kioskEscapeCount = 0; }, 1500);
-
-        if (_kioskEscapeCount >= 3) {
-          _kioskEscapeCount = 0;
-          exitKioskMode();
-          return;
-        }
-
-        // Show hint
-        showKioskExitHint(_kioskEscapeCount);
-        return;
-      }
-    });
-  })();
-
-  function showKioskExitHint(count) {
-    var hint = document.getElementById('kioskExitHint');
-    if (!hint) return;
-    hint.textContent = 'Press Escape ' + (3 - count) + ' more time' + (3 - count > 1 ? 's' : '') + ' to exit';
-    hint.classList.add('show');
-    setTimeout(() => hint.classList.remove('show'), 1200);
-  }
-
-  // ==================== KIOSK URL PARAM AUTO-START ====================
-  (function checkKioskUrlParam() {
-    var params = new URLSearchParams(window.location.search);
-    if (params.get('kiosk') === 'true') {
-      // Set custom interval if provided
-      var interval = parseInt(params.get('interval'));
-      if (interval && interval >= 5 && interval <= 300) {
-        _kioskCycleInterval = interval;
-      }
-
-      // Auto-start kiosk mode after login
-      var _origShowApp = showApp;
-      showApp = function() {
-        _origShowApp.call(this);
-        // Small delay to let app render first
-        setTimeout(() => enterKioskMode(), 500);
-      };
-    }
-  })();
-
-  // ==================== KIOSK: Override switchTab to update overlay ====================
-  (function patchSwitchTabForKiosk() {
-    var _origSwitchTab = switchTab;
-    switchTab = function(tabName, event) {
-      _origSwitchTab(tabName, event);
-      if (_kioskMode) {
-        updateKioskOverlay();
-      }
-    };
-  })();
-
   // ==================== LIVE ACTIVITY TICKER BAR ====================
   const TICKER_EVENTS = [
     { time: '8:00 AM', msg: 'System initialized — All modules online', type: 'info' },
@@ -1947,32 +1693,52 @@ function closeNodeModal(event) {
   }
 </script>
 
-<!-- Kiosk Mode Overlay Bar -->
-<div class="kiosk-overlay" id="kioskOverlay">
-  <div class="kiosk-left">
-    <span class="kiosk-clock" id="kioskClock">00:00:00</span>
-  </div>
-  <div class="kiosk-center">
-    <span class="kiosk-tab-name" id="kioskTabName">NAP OUTAGES REPORT</span>
-  </div>
-  <div class="kiosk-right">
-    <div class="kiosk-countdown">
-      <div class="kiosk-countdown-bar"><div class="kiosk-countdown-fill" id="kioskCountdownFill"></div></div>
-      <span id="kioskCountdownText">15s</span>
+<!-- ==================== KIOSK MODE / NOC WALL DISPLAY ====================
+     Own presentation layer: hidden unless body.kiosk-mode is set. All content
+     inside the slides is rendered from the live dataCache by kiosk-module.js.
+     Nothing here is shared with the admin/default dashboard views. -->
+<div class="kiosk-root" id="kioskRoot" aria-hidden="true">
+  <header class="kiosk-topbar">
+    <div class="kiosk-brand">
+      <div class="kiosk-brand-name">GALLOPVISION <span>| CONVERGE</span></div>
+      <div class="kiosk-brand-sub">NOC Wall Display</div>
     </div>
-    <button class="kiosk-btn kiosk-btn-pause" id="kioskPauseBtn" onclick="toggleKioskPause()">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-      PAUSE
-    </button>
-    <button class="kiosk-btn kiosk-btn-exit" onclick="exitKioskMode()">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      EXIT
-    </button>
-  </div>
+    <div class="kiosk-topbar-right">
+      <div class="kiosk-pill" id="kioskPill">
+        <span class="kiosk-pill-dot"></span>
+        <span id="kioskPillText">Connecting to live data…</span>
+      </div>
+      <div class="kiosk-clock-block">
+        <div class="kiosk-clock" id="kioskClock">--:--:-- --</div>
+        <div class="kiosk-clock-date" id="kioskDate">-- --- ----</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="kiosk-stage" id="kioskStage">
+    <section class="kiosk-slide" data-kiosk-slide="nap"></section>
+    <section class="kiosk-slide" data-kiosk-slide="lcp"></section>
+    <section class="kiosk-slide" data-kiosk-slide="olt"></section>
+    <section class="kiosk-slide" data-kiosk-slide="node"></section>
+    <section class="kiosk-slide" data-kiosk-slide="backbone"></section>
+  </main>
+
+  <footer class="kiosk-footer">
+    <div class="kiosk-ticker"><div class="kiosk-ticker-track" id="kioskTickerTrack"></div></div>
+    <div class="kiosk-nav">
+      <button class="kiosk-nav-btn" id="kioskPrevBtn" type="button" title="Previous slide" aria-label="Previous slide">&#8249;</button>
+      <button class="kiosk-nav-btn" id="kioskPlayBtn" type="button" title="Pause rotation" aria-label="Pause rotation">&#10074;&#10074;</button>
+      <div class="kiosk-dots" id="kioskDots"></div>
+      <button class="kiosk-nav-btn" id="kioskNextBtn" type="button" title="Next slide" aria-label="Next slide">&#8250;</button>
+    </div>
+  </footer>
 </div>
 
-<!-- Kiosk Exit Hint -->
+<!-- Kiosk Exit Hint (Escape x3) -->
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
+
+<!-- Kiosk controller: presentation layer only, loaded after the app globals -->
+<script src="kiosk-module.js?v=3.9.0"></script>
 
 </body>
 </html>
