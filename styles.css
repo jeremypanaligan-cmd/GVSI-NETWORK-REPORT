@@ -169,10 +169,19 @@ body.dark-mode .tab-btn.active {
   border-bottom-color: #14b8a6;
 }
 
-/* ── FROSTED GLASS: Bottom Nav ── */
+/* ── FROSTED GLASS: Bottom Nav ──
+   Paint only. Do NOT add `position` or `z-index` here.
+
+   This rule is `body.dark-mode .bottom-nav` — specificity (0,2,1) — and the bar is
+   only ever DISPLAYED inside `@media (max-width: 768px)`, where `.bottom-nav` is
+   (0,1,0). So anything this rule declares for layout beats the media query, and
+   only on the one device where it matters. It used to carry
+   `position: relative; z-index: 2` (copied from the modal rule below), which
+   replaced the bar's `position: fixed` with normal flow and dropped its z-index
+   from 100 to 2 — so on mobile the bar was a plain flex item with a z-index
+   beneath every overlay instead of a pinned bar. Kept as paint-only, and
+   tests/shell-dom.test.js fails if position or z-index reappears here. */
 body.dark-mode .bottom-nav {
-  position: relative;
-  z-index: 2;
   background: rgba(7, 10, 15, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);

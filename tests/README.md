@@ -1,6 +1,6 @@
 # Test suites
 
-Seven suites, all browser-free and network-free:
+Eight suites, all browser-free and network-free:
 
 - **Backend** — `code.gs` (routing + the caching layers) and `admin.gs` executed
   for real in a Node `vm` context against fake Google service globals.
@@ -20,6 +20,14 @@ Seven suites, all browser-free and network-free:
   `localStorage` and a clock we advance by hand) to prove a failed fetch degrades to the last
   known payload, that nothing is invented when there is none, and that NODE and BACKBONE can
   no longer render their all-clear cards on a failed load.
+- **The shell's DOM and the mobile bar** — nothing may replace `document.body`'s HTML: that is
+  how the update prompt destroyed the bottom nav in **v3.8.1**, and the maintenance screen was
+  still the one place doing it (it now appends an overlay, like the prompt does). And nothing
+  outside the mobile media query may set `position`/`z-index` on `.bottom-nav`, where the
+  frosted-glass rule — specificity (0,2,1) against the media query's (0,1,0) — had silently
+  un-pinned the bar and dropped it below every overlay. Both full-screen states are *executed*
+  against a fake document holding the real shell, because "it appends" is the property under
+  test.
 
 ## Running
 
@@ -32,6 +40,7 @@ node --test tests/boot-parallel.test.js  # boot graph only
 node --test tests/api-stall.test.js      # stall handling only
 node --test tests/proxy.test.js          # edge proxy only
 node --test tests/last-good.test.js      # last known good only
+node --test tests/shell-dom.test.js       # the shell's DOM + the mobile bar only
 node --test --test-name-pattern="TTL"    # filter by test name
 ```
 
@@ -55,6 +64,7 @@ only protects the app if `node --test` is run before a commit that touches a
 | `proxy.test.js` | 21 tests — the injected origin failures, request forwarding, the proxy's surface (no cache, CORS, method, liveness), the guards that `window.NETPULSE_PROXY` and `API_PROXY_HOST` in `sw.js` never drift apart, and that **every parameter the backend reads survives the hop** (a dropped `password` broke sign-in for everyone with no error anywhere) |
 | `boot-parallel.test.js` | 8 tests — the boot-graph gate, reproductions of both ways the boot went serial, the snapshot's completeness rule, the trend audit, and the guard that stops a past day being overwritten |
 | `api-stall.test.js` | 8 tests — the stall-handling gate, the three old shapes (fixed backoff, per-caller gate, boot-tick heartbeat) re-introduced, and the real `retryDelayMs()` executed against the real bounds |
+| `shell-dom.test.js` | 7 tests — the body-replacement gate over every loaded script, both full-screen states executed against a fake document (the shell survives, the overlay is idempotent), and the bottom-nav pin: no rule outside the mobile media query may set `position`/`z-index` on `.bottom-nav` |
 | `last-good.test.js` | 25 tests — the fallback store and its clock, the never-invent-data rule, the banner in both shells, the five modules' fresh/degrade wiring, the guard against NODE/BACKBONE showing all-clear on a failed fetch, and the load-order + precache guards for the new file |
 
 ## Usage

@@ -326,8 +326,25 @@ async function toggleMaintenance(enable) {
 
 // ====================== MAINTENANCE PAGE (shown to locked-out users) ======================
 
+/* Appended to the body — never assigned to document.body.innerHTML.
+
+   Replacing the body's HTML deletes the whole shell: the header, the bottom
+   navigation, the kiosk root and every element the still-running script holds a
+   reference to. Nothing puts any of it back until the app itself is restarted,
+   which on a phone looks like "the bottom nav disappeared, I had to close and
+   reopen the app". That is not a theory: the update prompt used to do exactly
+   this and was fixed the same way (see the comment in showReinstallPrompt():
+   "Use overlay instead of replacing body.innerHTML to preserve DOM structure").
+   The maintenance screen was the one place left that still replaced it.
+
+   Idempotent: checkMaintenanceAndLogin() can call it, and so can anything that
+   re-checks settings later, without stacking a second copy. */
 function showMaintenancePage() {
-  document.body.innerHTML = `
+  if (document.getElementById('maintenanceOverlay')) return;
+
+  var overlay = document.createElement('div');
+  overlay.id = 'maintenanceOverlay';
+  overlay.innerHTML = `
     <div style="
       position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); 
@@ -356,6 +373,7 @@ function showMaintenancePage() {
       </div>
     </div>
   `;
+  document.body.appendChild(overlay);
 
   // Auto-check every 60 seconds if maintenance is off
   setInterval(async () => {
