@@ -6,12 +6,25 @@ audit narrative — several of its HIGH findings are already fixed, so treat
 this file as the source of truth for outstanding work.
 
 Legend: ⬜ todo · 🔄 in progress · ✅ done · ⏸ blocked
-Last updated: 2026-09-13 · Version: 3.9.0 · Backend suite: 94/94, script-order suite: 18/18,
-OLT payload suite: 9/9 (121 total)
-Buong app-weight batch (icons, kiosk storm, stale shell, NODE escaping, **OLT payload**): **tapos**,
-hindi pa naka-commit at hindi pa naka-push. `code.gs` ay may pagbabago → **kailangan ng redeploy**
-para gumana ang `shape=2`; hanggang doon, legacy payload pa rin ang natatanggap at walang
-nagbabago sa paggana.
+Last updated: 2026-09-13 · Version: 3.9.0 · Backend suite: 98/98, script-order suite: 18/18,
+OLT payload suite: 9/9, boot-graph suite: 8/8, stall-handling suite: 8/8 (**141 total**)
+Ang tatlong batch na ito ay **naka-commit at naka-push na**, at **walang backend change kaya
+walang redeploy**:
+
+1. **stall handling** — ang backoff ay sumusunod na sa tagal ng stall na nasukat, isang shared
+   gate para sa buong app, naantalang first heartbeat (8 s), at tinanggal ang dead keep-alive.
+   Sinukat bago ito: **20% (3/15)** ng mga tawag sa live endpoint ay 404, at lahat ng 404 ay
+   **8–33 s** ang tagal — stall signature iyon, hindi nawawalang route (ContentService ay
+   laging 200).
+2. **parallel boot** — limang module sa isang tick; ang boot wall clock ay ang pinakamabagal
+   na module, hindi ang suma.
+3. **trend snapshot repair** — hindi na naisusulat ang module na bigong mag-load, kasama ang
+   `auditTrendHistory()` / `rebuildTrendDay()` / `dropTrendDay()`.
+
+Ang naunang batch (icons, kiosk storm, stale shell, NODE escaping, **OLT payload**) ay
+naka-commit at naka-push na rin. `code.gs` ay may pagbabago → **kailangan ng redeploy** para
+gumana ang `shape=2`; hanggang doon, legacy payload pa rin ang natatanggap at walang nagbabago
+sa paggana.
 
 ---
 
@@ -156,6 +169,15 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   (`prefetchOtherTabsInBackground()` at ang analytics cold-start) — lumalabag sa throttle at
   hindi na-de-dupe; pareho nang dumadaan sa module fetcher. Bagong suite:
   `tests/olt-payload.test.js` (9 tests). **Kailangan ng redeploy.**
+  **KORREKSYON (sinukat muli):** ang "decoded/parse + CPU sa mahinong TV" na dahilan ay
+  **hindi rin umuubra**. Ang `JSON.parse` ng 26 KB ay **0.50 ms** at ang `decodeOltPayload` ay
+  **0.23 ms** para sa lahat ng 461 row — **0.73 ms** lahat-lahat. At sa wire, ang compact shape
+  ay **4,242 bytes gzipped** laban sa legacy na **4,116** — **126 bytes na MAS MALAKI**, at
+  **45%** ng gzipped total ng limang module, hindi 96.9%. Kaya: **walang nabawas sa bandwidth
+  at walang nabawas sa CPU.** Ang tunay na nakuha ay estruktura (ang shape ay sakay ng payload),
+  at ang paunang kailangan para sa **option (b)** sa itaas — ang aggregate ng 452 UP row, na
+  gzip lang sa **~468 bytes** laban sa **4,242**. Iyon ang pagbabagong may totoong bandwidth
+  na panalo, at hindi pa tapos.
 
 - ✅ **3. Itigil ang kiosk re-fetch storm** — ang `fetchOltData()` ay cache-first **pero laging
   nagpapaputok ng background revalidation** (`olt-module.js:3-12`), at tinatawag ito ng kiosk sa
@@ -188,6 +210,55 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   *bawat* load habang hinihintay ang "App Update Available" click — kung magre-reload din tayo
   doon, **mag-loop** ito. Kaya nilalaktawan ang reload kapag nakabukas ang overlay, at kapag
   first install (walang dating worker na pinapalitan).
+
+- ✅ **6. Simulan ang limang module nang sabay sa boot ("parallel boot")** — ang
+  `loadInitialData()` ay nagpapaputok ng **NAP lang**, at ang apat pa (`lcp`, `olt`, `node`,
+  `backbone`) ay inilulunsad mula sa **loob ng NAP success branch**
+  (`nap-module.js` → `prefetchOtherTabsInBackground()`). Kaya ang bawat load ay nagbabayad ng
+  buong NAP round trip **bago pa MAGSIMULA** ang apat.
+  **Sinukat sa live API:** NAP mag-isa **1,058 ms**, tapos ang apat na sabay **1,121 ms** =
+  **2,179 ms** na boot. Ang limang sabay ay **1,157 ms** wall laban sa **1,074 ms** para sa isa —
+  mga **83 ms** lang ang apat na dagdag, dahil bawat `/exec` ay may sariling Apps Script instance
+  at nagsasapawan. Ang **pagkakasunod** ang buong gastos, hindi ang bilang ng request.
+  **RESULTA:** limang fetcher na sabay mula `loadInitialData()`; nagsisimula lahat sa loob ng
+  **1–4 ms** ng isa't isa. Ang boot wall ay **2,709 ms = ang pinakamabagal na module** (olt
+  2,706 ms) laban sa **9,522 ms** na suma. Naiwan ang loader sa NAP (kaparehong oras na
+  nagiging usable ang UI). **TINANGGIHAN ang combined `?type=all`**: single-threaded ang Apps
+  Script at blocking ang `getValues()`, kaya ang isang execution ay magse-serialize ng limang
+  payload build — sumukat ng **5,324 ms** ang limang sequential. Bagong suite:
+  `tests/boot-parallel.test.js` (6 tests). **Walang backend change.**
+  **Nahuli habang vine-verify (2 bagong bagay):**
+  1. **Totoong TDZ hazard** — ang pagsabay ng lima ay nagpalawak ng *synchronous* na daan
+     (`checkMaintenanceAndLogin()` → `showApp()` → `loadInitialData()` → fetcher → render →
+     `getAlertClass()`) na nagbabasa ng `const ALERT_THRESHOLDS` na nakadeklara sa **ibang
+     linya sa ibaba** ng parehong script. Inilipat ang deklarasyon sa itaas ng lahat ng
+     maaaring umabot dito. **Nahuli ng `inline-order` suite**, hindi ng kamay.
+  2. **Ang daily snapshot ay nagtatala ng zero** — blind `setTimeout(…, 1000)` ito mula sa
+     prefetch, at ang OLT/NODE/BACKBONE ay tumatakbo pa noon (~2.4/2.3/2.0 s). Dahil unang
+     snapshot ng araw ang nananatili, zero ang naitatala buong araw. **Kumpirmado sa totoong
+     IndexedDB:** ang record ng **2026-09-13** ay `olt.total: 0` laban sa **461 totoong OLT**
+     at `backbone.tickets: 0` laban sa **7**. Ngayon ay naghihintay sa pagka-settle ng lima,
+     **at tumatanggi magsulat** maliban kung napunan na ang lahat ng limang cache — dahil ang
+     isang **bigong** fetch ay nagse-settle rin nang walang laman ang cache. Napatunayan sa
+     browser: `Snapshot skipped — not loaded yet: olt, backbone`.
+  3. **Dalawang beses na nagsusulat kada araw** — ang date check ay read-then-write, kaya
+     dalawang boot sa isang session ay parehong makakakita ng "wala pang record". Nakita sa
+     console: dalawang `Snapshot saved for 2026-09-13`. May isang write na kada session ngayon.
+  4. **Bagong tool para sa lumang sira na kasaysayan** — hindi na maaayos ang isang record
+     sa kinaroroonan nito (unang record ng araw = record ng araw). Bagong
+     `netpulseCache.auditTrendHistory()` (aling mga araw ang mukhang kulang),
+     `rebuildTrendDay()` (burahin ang **ngayon** at isulat muli mula sa loaded data), at
+     `dropTrendDay("YYYY-MM-DD")` (tanggalin ang isang lumang araw — tapat na gap kaysa
+     huwad na zero). **Tumatanggi ang `rebuildTrendDay()` sa anumang petsang hindi ngayon**,
+     dahil ang snapshot ay mula sa live caches: ang "pag-aayos" ng lumang araw ay bubura
+     nito at isusulat ang numero ngayon. Sinadya itong mas makitid kaysa sa
+     `clearIndexedDB()`, na bumubura ng buong 90 araw para sa isang sirang record.
+     **Sakop ng sira:** ang buong kasaysayan — ang once-per-day guard ay kasabay ng `db.js`
+     sa v3.1.0 (**2026-08-23**) kasabay ng 1.5 s na blind timer, at ang timer ay pinaliit
+     sa **1.0 s** noong **2026-08-27**. Kaya lahat ng naka-imbak na araw hanggang
+     **2026-09-12** ay galing sa path na iyon. **Asahan ang maraming flagged na araw, hindi isa.**
+     Sinuri't inayos sa totoong IndexedDB: ang `2026-09-13` ay `olt 0 → 461` (452 up, 8 down,
+     1 low power, 555 clientsDown) at `backbone 0 → 7`.
 
 - ✅ **5. (bagong nahanap na butas) NODE ay nagre-render ng limang sheet value bilang raw HTML** —
   `province`, `impact`, `DT cause`, `downtime`, `aging` ay direktang pumapasok sa `innerHTML`

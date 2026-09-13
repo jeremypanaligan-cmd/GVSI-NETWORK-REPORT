@@ -17,7 +17,11 @@ Google Sheet
        │    └─ Service Worker    shell cache           SWR per asset; navigations
        │                                               network-first; API never cached
        │         └─ HTTP cache   browser, per-URL      bypassed with cache:'no-store'
-       │              └─ fetchWithRetry()              in-flight de-dupe, backoff
+       │              └─ fetchWithRetry()              in-flight de-dupe; the backoff is
+       │                                               scaled by the stall the attempt
+       │                                               measured, behind one shared gate
+       │                                               (not a cache — see the Reliability
+       │                                               entry in changelogs.md)
        │                   └─ dataCache                in memory, per session, never auto-expires
        │                        └─ renderers           admin tables + kiosk slides
        └─ IndexedDB              netpulse-db/snapshots one row per day, 90-day retention
@@ -32,7 +36,7 @@ Google Sheet
 | **Service worker shell cache** | `sw.js`, cache name `gvsi-shell-v*` | until revalidated | SWR per asset (refreshed on every load); **navigations network-first** |
 | **HTTP cache** | browser | server-dependent | bypassed by `cache: 'no-store'` / `'no-cache'` |
 | **`dataCache`** | `index.html` (`const dataCache`) | the tab's lifetime | only when a fetcher writes it |
-| **IndexedDB** | `db.js`, DB `netpulse-db`, store `snapshots` | 90 days | daily cleanup on save, or `clearIndexedDB()` |
+| **IndexedDB** | `db.js`, DB `netpulse-db`, store `snapshots` | 90 days | daily cleanup on save, `clearIndexedDB()` for the whole DB, or `rebuildTrendDay()` / `dropTrendDay(date)` for one record (note 8) |
 | *(`localStorage`)* | — | until cleared | prefs only, **not** a data cache |
 
 ---
@@ -177,6 +181,22 @@ What each layer answers to:
 
 8. **IndexedDB is a history store, not a read cache.** Clearing it loses trend charts and
    snapshots, not live data. Nothing on the live path reads from it.
+
+   Because of that, `clearIndexedDB()` is the wrong tool for one bad record — it costs all 90
+   days to fix a single day. Use the narrow one instead:
+
+   ```js
+   await netpulseCache.auditTrendHistory()        // which days look incomplete, and why
+   await netpulseCache.rebuildTrendDay()          // TODAY only: drop and rewrite from the caches
+   await netpulseCache.dropTrendDay('2026-08-25') // a past day: remove it, leaving an honest gap
+   ```
+
+   **A record can never be repaired in place.** `saveDailySnapshot()` keeps the FIRST record of
+   each day, so a day written from an incomplete load stays wrong until its record is removed.
+   That is also why `rebuildTrendDay()` refuses any date that is not today: a snapshot is built
+   from the live module caches, which hold *now*, so rewriting an old date would delete that day
+   and write today's numbers over it. For a past day the only honest choices are to leave it or
+   to drop it — a gap reads as "no data" where a false zero reads as "the network was fine".
 
 9. **Precache-only assets have no SWR path, so they need `STATIC_CACHE` bumped.** The icons and
    `manifest.json` are warmed by the `install` handler; the page never requests them, so

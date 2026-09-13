@@ -12,12 +12,118 @@ Versions follow the app's own numbering. Newest first.
 
 ## [Unreleased]
 
-### Performance
-- **The OLT payload is half the size on the wire, same 461 rows.** `?type=olt` was
-  **96.9% of every API byte the app moved** — 461 rows x 9 fields, **50,179 bytes**, of
-  which the repeated field names alone were **14,291 (28%)** and the province and
-  municipality columns another ~8,000. Measured on the live sheet: **50,179 → 26,304
-  bytes (52%)**.
+### Reliability
+- **The retry no longer lands inside the stall that caused the failure.** A hard refresh was
+  flooding the console with `script.googleusercontent.com/macros/echo` **404s** and making
+  the app feel slow. Measured with `curl` — no cookies, no JS, no service worker —
+  **3 of 15 calls returned 404 (20%), and every 404 took 8–33 s**, while every fast call
+  (**1.1–1.3 s**) returned 200. A single cold call took **45.3 s**. Through node's `fetch`,
+  while the endpoint was answering fast, **32 calls 404'd 0 times**.
+  - So the 404 is **not a missing route and not this app's code**. It lands on the **redirect
+    hop** (`/exec` answers `302`, then the echo URL fails), and the app's own script cannot
+    produce a 404 at all because `ContentService` always answers **200**. It is a **stall
+    signature**, which is why it correlates with duration and never with the URL.
+  - What *was* ours is the reaction to it: a fixed **500 ms** backoff from **six callers at
+    once** — the five modules plus the heartbeat, all started in the same tick by `showApp()`
+    — turned one bad second into **~18 invocations, all inside the stall**. A retry 500 ms
+    into an 8 s stall is a retry guaranteed to fail.
+  - The wait now scales with the stall the attempt **actually observed** (`retryDelayMs()`,
+    clamped **1.5 s–20 s**, so a stall is waited out at roughly 1.5× its own duration), and it
+    is **shared**: one gate for the whole app, so the callers come back as a single trickle
+    instead of six overlapping storms. A stalled attempt beats the old backoff at every
+    attempt number — 500/1000/2000 ms are gone.
+  - The heartbeat's first beat is **deferred 8 s** rather than firing in the boot tick. It is
+    the least urgent of the six calls (the sheet drops a user only after 5 min idle), so the
+    boot now opens **five** concurrent invocations instead of six. `startHeartbeat()` also
+    refuses a second start, so re-showing the app cannot double the beat rate.
+  - **Removed: the "Apps Script keep-alive" ping.** It never ran once — its
+    `if (!window.APP_URL) return;` guard sits ~180 lines **above** the statement that assigns
+    `window.APP_URL`. It would not have helped even wired up, because it fires in the same tick
+    as the maintenance check and both requests land on the same cold instance; only a
+    **periodic** ping could remove the cold start, and that spends backend budget.
+  - A healthy boot never touches the gate, so the five modules still start together in one
+    tick (kept honest by `tests/boot-parallel.test.js`), and `tests/api-stall.test.js` runs the
+    real `retryDelayMs()` to prove a stalled attempt waits longer than the stall it saw.
+- **The dashboard boots all five modules at once instead of one at a time.** It used to
+  fire only NAP from `loadInitialData()` and launch the other four from inside NAP's own
+  success branch, so **every load paid NAP's entire round trip before the other four had
+  even started**. Measured live: NAP alone **1,058 ms**, then the four in parallel
+  **1,121 ms** — a **2,179 ms** boot.
+  - Five requests fired together measure **1,157 ms** wall while a single one measures
+    **1,074 ms**, so the extra four cost about **83 ms**: each `/exec` runs on its own Apps
+    Script instance and they overlap. **The ordering was the whole cost, not the number of
+    requests.**
+  - Measured after the change: the boot lands in **2,709 ms**, which is exactly the
+    **slowest** module (OLT, 2,706 ms) — against a **9,522 ms** sum of the five individual
+    times. The wall clock is the maximum, not the total. All five were observed starting
+    within **1–4 ms** of each other.
+  - A single combined `?type=all` endpoint was measured and **rejected**. Apps Script is
+    single-threaded and `getValues()` blocks, so one execution would build the five
+    payloads back to back: five sequential requests measure **5,324 ms**. The win comes
+    from overlapping instances, not from reducing round trips.
+  - The loader still hides when NAP lands — not when all five do — so the moment the UI
+    becomes usable is unchanged.
+- **Fixed: the daily trend snapshot was recording modules as zero.** It was written by a
+  blind `setTimeout(…, 1000)` started alongside the four prefetches; by then OLT (~2.4 s),
+  NODE (~2.3 s) and BACKBONE (~2.0 s) were still in flight, and `db.js` keeps only the
+  **first** snapshot of each day — so the zero stood for the rest of it.
+  - It now runs once all five **settle**, and additionally refuses to write at all unless
+    every module cache has been filled. Settlement alone is not enough: a fetch that
+    **fails** settles too, and no module writes its cache on its error path.
+  - Observed live: two Apps Script `/exec` 404s (its documented transient stall, retried)
+    produced a **2026-09-13** record reading `olt.total: 0` against **461 real OLTs** and
+    `backbone.tickets: 0` against **7**. A snapshot is now skipped —
+    `Snapshot skipped — not loaded yet: olt, backbone` — and the day stays open for the
+    next complete load.
+  - The same day's record can also be written twice: the date check is a read followed by
+    a much later write, so two boots in one session could both see "no record yet" —
+    which the console showed as two `Snapshot saved for 2026-09-13` lines. Now one write
+    per session.
+- **New: the trend history can be audited and a bad day repaired.** A record can never be
+  fixed in place, because the first record of a day is the record for that day — so the
+  data already stored was wrong for good until its record was removed.
+  - `netpulseCache.auditTrendHistory()` lists the days that look incomplete, with the
+    numbers that contradict them. `netpulseCache.rebuildTrendDay()` drops **today's** record
+    and writes it again from the loaded data; `netpulseCache.dropTrendDay("YYYY-MM-DD")`
+    removes a past day, leaving an honest gap rather than a false zero.
+  - `rebuildTrendDay()` **refuses any date that is not today**, on purpose. The snapshot is
+    built from the live module caches, so "repairing" an old date would delete that day and
+    then write today's numbers over it — losing the real day and gaining nothing.
+  - This is deliberately narrower than the existing `netpulseCache.clearIndexedDB()`, which
+    drops the whole database: the wrong tool for one bad record, at a cost of all 90 days.
+  - **The affected window is the whole history.** The once-per-day guard arrived with `db.js`
+    in v3.1.0 (2026-08-23) at the same time as the 1.5 s blind timer, and the timer was
+    tightened to **1.0 s** on 2026-08-27 — so every stored day up to 2026-09-12 was written
+    by that path. Expect many flagged days, not one.
+- **Fixed: `ALERT_THRESHOLDS` could be read inside its own dead zone.** Starting all five
+  at once widened a *synchronous* path — `checkMaintenanceAndLogin()` (top-level call,
+  early in the script) → `showApp()` → `loadInitialData()` → a module fetcher → a render →
+  `getAlertClass()` — that reads a `const` declared further down the same script. The
+  declaration now sits with the other application variables, above every statement that can
+  reach it. Caught by `tests/inline-order.test.js` at the moment the boot changed, not by
+  hand.
+
+### Corrected
+- **The OLT payload shrink was measured decoded, not on the wire — and it bought no
+  bandwidth.** `?type=olt` was **96.9% of the decoded** bytes the app moved (461 rows x 9
+  fields, **50,179 bytes**, of which the repeated field names alone were **14,291 (28%)**),
+  and compaction took it to **26,208 decoded — a real 52%**.
+  - But Apps Script already sends `Content-Encoding: gzip`, and the legacy shape's repeated
+    keys compress extremely well. On the wire the compact shape is **4,242 bytes** against
+    the legacy **4,116** — **126 bytes larger** — and OLT is **45%** of the five-module
+    gzipped total, not 96.9%.
+  - The work item that ordered this change *did* note the gzip (`3,534 bytes sa wire`) and
+    justified the rest as **decoded/parse cost and TV CPU**. That measurement does not hold
+    either: `JSON.parse` of the 26 KB payload is **0.50 ms** and `decodeOltPayload` is
+    **0.23 ms** for all 461 rows. Neither the wire nor the CPU was the win.
+  - What the compaction did buy: a payload whose shape travels with it, a decode that is
+    trivially cheap, and the precondition for aggregating the 452 UP rows (~96.9% of the
+    payload) away later — which is the change that would actually cut bandwidth, since a
+    province-count aggregate gzips to **~468 bytes** against **4,242**.
+  - **Lesson for the next measurement:** read the **transferred** column, not the decoded
+    size, and time the parse before assuming it matters. A 52% cut in decoded bytes, a
+    3% *increase* on the wire, and a 0.73 ms total CPU cost all look identical from the
+    JSON string.
   - `?type=olt&shape=2` returns a compact envelope: `{ v, f, p, m, r }` — province and
     municipality as indices into two dictionaries, each row a positional array, and the
     field order carried in `f` so the two sides cannot drift apart.
