@@ -110,7 +110,7 @@ function renderNodeReport(data) {
     };
     const causeColor = getNodeCauseColor(downtimeCause);
     const causeDisplay = downtimeCause && downtimeCause !== '-'
-      ? `<span style="display: inline-block; color: ${causeColor.color}; background: ${causeColor.bg}; padding: 4px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 700; letter-spacing: 0.3px; border-left: 3px solid ${causeColor.color};">${downtimeCause}</span>`
+      ? `<span style="display: inline-block; color: ${causeColor.color}; background: ${causeColor.bg}; padding: 4px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 700; letter-spacing: 0.3px; border-left: 3px solid ${causeColor.color};">${sanitizeHTML(downtimeCause)}</span>`
       : `<span style="color: var(--text-muted);">–</span>`;
     const downtime = item.D || '-';
     const aging = item.AG || '-';
@@ -125,7 +125,7 @@ function renderNodeReport(data) {
     const nodeBadges = rawNodes.split(',')
       .map(node => node.trim())
       .filter(node => node !== '')
-      .map(node => `<span class="node-chip">${typeof sanitizeHTML === 'function' ? sanitizeHTML(node) : node}</span>`)
+      .map(node => `<span class="node-chip">${sanitizeHTML(node)}</span>`)
       .join('');
 
     // Ligtas na pag-escape para sa String parameters sa onclick event
@@ -136,17 +136,17 @@ function renderNodeReport(data) {
 
     tableHtml += `
       <tr class="clickable-row" onclick="openNodeModal('${safeProvince}', '${safeTicket}', '${safeBadges}', '${safeRemarks}')">
-        <td data-label="Province"><strong>${province}</strong></td>
+        <td data-label="Province"><strong>${sanitizeHTML(province)}</strong></td>
         <td data-label="Affected Nodes">
           <div class="node-chip-container">
             ${nodeBadges || '-'}
           </div>
         </td>
         <td data-label="Count" style="text-align: center;"><span class="badge badge-purple">${count}</span></td>
-        <td data-label="Impact" style="text-align: center;"><span class="badge badge-red">${impact}</span></td>
+        <td data-label="Impact" style="text-align: center;"><span class="badge badge-red">${sanitizeHTML(impact)}</span></td>
         <td data-label="DT Cause" style="text-align: center;">${causeDisplay}</td>
-        <td data-label="Downtime" style="text-align: center;">${downtime}</td>
-        <td data-label="Aging" style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${aging}</td>
+        <td data-label="Downtime" style="text-align: center;">${sanitizeHTML(downtime)}</td>
+        <td data-label="Aging" style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${sanitizeHTML(aging)}</td>
       </tr>
     `;
   });
