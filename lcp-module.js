@@ -3,9 +3,12 @@
 async function fetchLcpData(forceRefresh = false) {
   if (!forceRefresh && dataCache.lcp) {
     renderLcpReport(dataCache.lcp.lcpAging, dataCache.lcp.lcpImpact);
-    fetchWithRetry(BASE_API_URL + "?type=lcp")
-      .then(data => { if (data && data.lcpAging) { dataCache.lcp = data; renderLcpReport(data.lcpAging, data.lcpImpact || []); } })
-      .catch(() => {});
+    // Throttled per module — see shouldRevalidate() in cache-control.js.
+    if (shouldRevalidate('lcp')) {
+      fetchWithRetry(BASE_API_URL + "?type=lcp")
+        .then(data => { if (data && data.lcpAging) { dataCache.lcp = data; renderLcpReport(data.lcpAging, data.lcpImpact || []); } })
+        .catch(() => {});
+    }
     return;
   }
 

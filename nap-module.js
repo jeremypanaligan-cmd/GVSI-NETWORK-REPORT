@@ -4,10 +4,13 @@ async function fetchNapData(forceRefresh = false) {
   // Show cached data instantly (no skeleton)
   if (!forceRefresh && dataCache.nap) {
     renderNapReport(dataCache.nap);
-    // Still fetch fresh data in background
-    fetchWithRetry(BASE_API_URL + "?type=nap")
-      .then(data => { if (data) { dataCache.nap = data; renderNapReport(data); } })
-      .catch(() => {});
+    // Still fetch fresh data in background, but at most once a minute — the kiosk
+    // calls this on every rotation. See shouldRevalidate() in cache-control.js.
+    if (shouldRevalidate('nap')) {
+      fetchWithRetry(BASE_API_URL + "?type=nap")
+        .then(data => { if (data) { dataCache.nap = data; renderNapReport(data); } })
+        .catch(() => {});
+    }
     return;
   }
 

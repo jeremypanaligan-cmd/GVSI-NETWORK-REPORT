@@ -15,12 +15,15 @@ async function fetchBackboneData(forceRefresh = false) {
     } else {
       renderBackboneEmptyState();
     }
-    fetchWithRetry(BASE_API_URL + "?type=backbone")
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
-        else { dataCache.backbone = []; renderBackboneEmptyState(); }
-      })
-      .catch(() => {});
+    // Throttled per module — see shouldRevalidate() in cache-control.js.
+    if (shouldRevalidate('backbone')) {
+      fetchWithRetry(BASE_API_URL + "?type=backbone")
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
+          else { dataCache.backbone = []; renderBackboneEmptyState(); }
+        })
+        .catch(() => {});
+    }
     return;
   }
 

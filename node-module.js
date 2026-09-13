@@ -7,12 +7,15 @@ async function fetchNodeData(forceRefresh = false) {
     } else {
       renderNodeEmptyState();
     }
-    fetchWithRetry(BASE_API_URL + "?type=node")
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
-        else { dataCache.node = []; renderNodeEmptyState(); }
-      })
-      .catch(() => {});
+    // Throttled per module — see shouldRevalidate() in cache-control.js.
+    if (shouldRevalidate('node')) {
+      fetchWithRetry(BASE_API_URL + "?type=node")
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
+          else { dataCache.node = []; renderNodeEmptyState(); }
+        })
+        .catch(() => {});
+    }
     return;
   }
 

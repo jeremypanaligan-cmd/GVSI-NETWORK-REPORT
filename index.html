@@ -1174,6 +1174,10 @@ function closeNodeModal(event) {
   // Global background refresh function (used by visibilitychange listener)
   function backgroundRefresh(type) {
     if (typeof dataCache !== 'undefined' && dataCache[type] !== undefined) dataCache[type] = null;
+    // A forced fetch bypasses the per-module throttle in cache-control.js, so it has
+    // to start the window itself — otherwise a cache hit moments later would pull
+    // the same payload down a second time.
+    markRevalidated(type);
     if (type === 'nap') fetchNapData(true);
     else if (type === 'lcp') fetchLcpData(true);
     else if (type === 'olt') fetchOltData(true);

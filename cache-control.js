@@ -9,6 +9,7 @@
 
    Console usage:
      await netpulseCache.status()                  // what is held where
+     netpulseCache.revalidateState()               // why a module is (not) re-fetching
      await netpulseCache.invalidateAll()           // safe clear (keeps user data)
      await netpulseCache.invalidateAll({ indexedDB: true, storage: true })
                                                    // full nuke, see warnings below
@@ -65,6 +66,50 @@
       }
     });
     return cleared.length ? 'cleared: ' + cleared.join(', ') : 'already empty';
+  }
+
+  /* ---------------- revalidation throttle ---------------- */
+
+  // Every module's cache-hit path paints from memory and then fires a background
+  // fetch, so a visible tab is always being refreshed. The kiosk rotates through
+  // all five modules every 9s and drives those same fetchers, which turned that
+  // habit into a request storm on a display that never sleeps: measured 4 x 50 KB
+  // `?type=olt` payloads per minute (~199 KB/min decoded, ~22 MB/day) against a
+  // backend whose own poll intervals are 10-60 minutes.
+  //
+  // One rule replaces per-caller guesswork: a module is revalidated at most once a
+  // minute, however many UI events ask for it. The kiosk's own 60s refresh still
+  // lands, a tab click inside the window re-renders from memory instead, and the
+  // module timers in loadInitialData() are unaffected because they pass
+  // forceRefresh — which skips the cache-hit path entirely and calls
+  // markRevalidated() so a cache hit right after them does not fetch again.
+  var REVALIDATE_MIN_MS = 60000;
+  var _revalidatedAt = {};
+
+  /** True at most once per module per REVALIDATE_MIN_MS; marks the moment when it is. */
+  function shouldRevalidate(type) {
+    var now = Date.now();
+    var last = _revalidatedAt[type];
+    if (last !== undefined && now - last < REVALIDATE_MIN_MS) return false;
+    _revalidatedAt[type] = now;
+    return true;
+  }
+
+  /** Record a fetch that bypassed the throttle (a forced refresh), so the window
+      starts there instead of letting a cache hit fire once more straight after. */
+  function markRevalidated(type) {
+    _revalidatedAt[type] = Date.now();
+  }
+
+  /** Per-module countdown, for the console and for the admin panel. */
+  function revalidateState() {
+    var now = Date.now();
+    var out = {};
+    Object.keys(_revalidatedAt).forEach(function (type) {
+      var age = now - _revalidatedAt[type];
+      out[type] = { msSinceLastRevalidation: age, msUntilNextAllowed: Math.max(0, REVALIDATE_MIN_MS - age) };
+    });
+    return out;
   }
 
   /* ---------------- payload size headroom ---------------- */
@@ -299,9 +344,18 @@
       });
   }
 
+  // The modules are plain classic scripts and call these two directly; they are on
+  // window for that reason, not as a public API.
+  window.shouldRevalidate = shouldRevalidate;
+  window.markRevalidated = markRevalidated;
+
   window.netpulseCache = {
     // One call. Safe by default; add the destructive layers explicitly.
     invalidateAll: invalidateAll,
+    // Why a fetch did or did not happen: per-module throttling countdown.
+    revalidateState: revalidateState,
+    shouldRevalidate: shouldRevalidate,
+    markRevalidated: markRevalidated,
     // Nothing held anywhere.
     clearEverything: function () {
       return invalidateAll({ serviceWorker: true, indexedDB: true, storage: true, reload: true });
