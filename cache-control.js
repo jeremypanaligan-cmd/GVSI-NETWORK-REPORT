@@ -249,6 +249,86 @@
     return Promise.resolve('db.js not loaded');
   }
 
+  /* ---------------- 2b. Individual trend records (targeted, not destructive) ---- */
+
+  // clearIndexedDB() above is the wrong tool for one bad day: it costs all 90 days
+  // to fix one. These two work on single records, and they earn their place because
+  // a snapshot can never be repaired in place — saveDailySnapshot() keeps the FIRST
+  // record of each day, so a day written from an incomplete pass stays wrong until
+  // its record is removed. See auditSnapshots() in db.js for what "incomplete" means.
+
+  function auditTrendHistory() {
+    if (typeof getSnapshots !== 'function' || typeof auditSnapshots !== 'function') {
+      return Promise.resolve('db.js not loaded');
+    }
+    return getSnapshots(9999)
+      .then(function (rows) {
+        var all = auditSnapshots(rows);
+        if (!all.length) return 'no snapshots';
+
+        var bad = all.filter(function (r) { return r.suspect; });
+        if (!bad.length) return all.length + ' snapshots, none look incomplete';
+
+        return bad.length + ' of ' + all.length + ' look incomplete:\n' +
+          bad.map(function (r) {
+            return '  ' + r.date + ' — olt ' + r.oltTotal + ' against nap ' + r.napTotal +
+                   ' (lcp ' + r.lcpTotal + ', backbone ' + r.bbTickets + ')';
+          }).join('\n') +
+          '\nRepair one with: netpulseCache.rebuildTrendDay("YYYY-MM-DD")';
+      })
+      .catch(function () { return 'unreadable'; });
+  }
+
+  // Rewrites TODAY's record from whatever is loaded right now, so only useful on a
+  // boot that completed — otherwise the completeness guard skips it and the day is
+  // left empty on purpose.
+  function rebuildTrendDay(date) {
+    if (typeof rebuildSnapshot !== 'function') return Promise.resolve('db.js not loaded');
+
+    var today = new Date().toISOString().slice(0, 10);
+    var target = date || today;
+
+    return rebuildSnapshot(target)
+      .then(function (r) {
+        if (r.reason === 'past-day') {
+          return r.date + ' is not today (' + today + '). A past day cannot be rebuilt: the\n' +
+                 'snapshot is built from the live caches, which hold now, so rewriting it would\n' +
+                 'replace that day with today\'s numbers. Either leave it, or drop it with\n' +
+                 'netpulseCache.dropTrendDay("' + r.date + '") — a gap is more honest than a false zero.';
+        }
+        // All four combinations are spelled out, because "nothing to repair" and
+        // "nothing was rewritten" are very different outcomes and a message that
+        // conflates them reads as success when the day is still wrong.
+        if (r.rewritten) {
+          return r.deleted
+            ? r.date + ': removed ' + r.deleted + ' and rewrote it from the loaded data'
+            : r.date + ': no record was stored (nothing to remove); wrote one from the loaded data';
+        }
+        if (r.deleted) {
+          return r.date + ': removed ' + r.deleted + ', but NOT rewritten — a module is still\n' +
+                 'not loaded, so the guard skipped it and the day is now an honest gap.\n' +
+                 'Reload, wait for all five modules, and run it again.';
+        }
+        return r.date + ': nothing removed and nothing written — a module is still not loaded';
+      })
+      .catch(function (e) { return 'failed: ' + e.message; });
+  }
+
+  // Remove a record without pretending to replace it. This is the ONLY thing that can
+  // honestly be done to a past day, and the result is a gap in the trend line — which
+  // is strictly better than a zero that reads as "the network was fine".
+  function dropTrendDay(date) {
+    if (typeof deleteSnapshots !== 'function') return Promise.resolve('db.js not loaded');
+    if (!date) return Promise.resolve('pass a date: netpulseCache.dropTrendDay("2026-08-25")');
+
+    return deleteSnapshots(date)
+      .then(function (n) {
+        if (!n) return date + ': no record stored';
+        return date + ': removed ' + n + ' — the trend line now has a gap there instead of a zero';
+      })
+      .catch(function (e) { return 'failed: ' + e.message; });
+  }
+
   /* ---------------- 4. local / session storage (DESTRUCTIVE) ---------------- */
 
   function clearStorage(preserve) {
@@ -368,6 +448,10 @@
     clearMemory: clearMemory,
     clearShellCache: clearCacheStorage,
     clearIndexedDB: clearIndexedDB,
+    // Individual trend records: audit first, then repair today or drop a past day.
+    auditTrendHistory: auditTrendHistory,
+    rebuildTrendDay: rebuildTrendDay,
+    dropTrendDay: dropTrendDay,
     // Release the app's live IDB connection without deleting anything.
     closeIndexedDB: function () {
       return (typeof closeDB === 'function') ? closeDB() : Promise.resolve('db.js not loaded');
