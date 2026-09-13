@@ -24,7 +24,9 @@ async function fetchNapData(forceRefresh = false) {
     if (Array.isArray(data) && data.length > 0) {
       dataCache.nap = data;
       renderNapReport(data);
-      prefetchOtherTabsInBackground();
+      // The other four modules are started by loadInitialData(), in parallel with
+      // this very call. They used to be launched from right here, which meant they
+      // could not begin until this response had already arrived.
     } else {
       document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;">No data found.</td></tr>';
     }
@@ -34,9 +36,11 @@ async function fetchNapData(forceRefresh = false) {
   } finally {
     // No-op once a render has written real content, so this covers the empty and
     // failed paths without touching the success path.
+    //
+    // hideLoader() used to be here as well. It now belongs to loadInitialData(),
+    // which is the only thing that starts the loader and the only place that knows
+    // when the boot is finished — see the comment there.
     clearModuleSkeleton('nap');
-    hideLoader();
-    _isInitialLoad = false;
   }
 }
 

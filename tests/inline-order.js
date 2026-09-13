@@ -745,6 +745,10 @@ module.exports = {
   collectFunctions,
   ownBody,
   calleesIn,
+  // Exported for the boot-graph guard, which needs to slice a call's argument
+  // list out of masked source ("is saveDailySnapshot inside a setTimeout?").
+  matchingParen,
+  matchingBrace,
   readOffsets,
   asyncRegions,
   findTdzViolations

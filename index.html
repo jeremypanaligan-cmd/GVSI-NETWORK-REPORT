@@ -791,9 +791,25 @@
   let currentTab = 'nap';
   let rawOltData = [];
   let currentOltFilter = 'DOWN';
-  let _isInitialLoad = true;
 
   const dataCache = { nap: null, lcp: null, olt: null, node: null, backbone: null };
+
+  // --- ALERT THRESHOLDS ---
+  // Declared here, with the other application variables, and NOT next to its only
+  // reader further down the file. getAlertClass() is reached SYNCHRONOUSLY from the
+  // top-level checkMaintenanceAndLogin() call: that call can run showApp() ->
+  // loadInitialData() -> a module fetcher -> a render -> getAlertClass(), all before
+  // the script has finished evaluating. A `const` read before its own statement
+  // throws in that window, and this class of bug has already shipped twice in other
+  // forms. tests/inline-order.test.js is the gate that keeps it out.
+  const ALERT_THRESHOLDS = {
+    oltDown: 5,        // >5 OLTs down = HIGH alert
+    oltLowPower: 3,    // >3 low power = MEDIUM
+    nodeTickets: 3,    // >3 node tickets = MEDIUM
+    bbTickets: 2,      // >2 backbone tickets = MEDIUM
+    napCritical: 5,    // >5 NAP >3days = HIGH
+    clientsDown: 100   // >100 clients affected = HIGH
+  };
 
   // --- LOADER CONTROL (centralized) ---
   function showLoader() {
@@ -1019,34 +1035,6 @@ function refreshCurrentTab() {
   }, 500);
 }
 
-  // 1. NAP Data Fetcher
-
-  function prefetchOtherTabsInBackground() {
-  // Parallel prefetch: All modules fetch simultaneously after NAP loads
-  // Best for small teams (4 users) — no API quota concerns, fastest UX
-  // Through each module's own fetcher, not a raw fetchWithRetry. A raw fetch here
-  // bypassed the payload shape (OLT needs its decoder — see oltRequestUrl() in
-  // olt-module.js) and the revalidation throttle, and it built a DIFFERENT URL for OLT,
-  // so the in-flight de-dupe could not collapse it against the module's own request.
-  // Same path the kiosk warm-up uses.
-  const allModules = [
-    ['lcp', fetchLcpData],
-    ['olt', fetchOltData],
-    ['node', fetchNodeData],
-    ['backbone', fetchBackboneData]
-  ];
-
-  allModules.forEach(([type, fetcher]) => {
-    if (!dataCache[type]) {
-      try { fetcher(); } catch (e) { /* non-fatal: the tab can still load on demand */ }
-    }
-  });
-
-  // Save daily snapshot after initial data is loaded
-  setTimeout(() => {
-    if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
-  }, 1000); // 1s buffer for all parallel fetches
-}
       
 
 
@@ -1194,10 +1182,54 @@ function closeNodeModal(event) {
   }
 
   // ==================== AUTH CHECK ====================
+  // ==================== BOOT ====================
+  // All five modules start together. Before this, only NAP was fired here and the
+  // other four were launched from NAP's own success branch (nap-module.js), so the
+  // wall display paid NAP's entire round trip — ~1.07s warm, up to ~37s on a cold
+  // start — before the other four had even STARTED.
+  //
+  // Measured against the live API: five modules fetched in parallel take 1,157ms
+  // wall, while a single one takes 1,074ms. The extra four cost ~83ms, because each
+  // /exec runs on its own Apps Script instance and they overlap. The ordering was
+  // the whole cost, not the number of requests.
+  //
+  // A single combined ?type=all endpoint was considered and measured out. Apps Script
+  // is single-threaded and getValues() blocks, so one execution would run the five
+  // payload builds sequentially: ~1,275ms warm and ~2,400ms on a cold cache, against
+  // the 1,157ms of five parallel requests. Do not reintroduce the chaining or the
+  // combining — tests/boot-parallel.test.js guards both.
   function loadInitialData() {
     window._dataLoaded = true;
     showLoader();
-    fetchNapData();
+
+    var boot = [
+      fetchNapData(),
+      fetchLcpData(),
+      fetchOltData(),
+      fetchNodeData(),
+      fetchBackboneData()
+    ];
+
+    // NAP is the default tab, so the loader still waits on NAP and on nothing else —
+    // the same moment it became usable when NAP was the anchor. Waiting for all five
+    // instead would hold the loader over a dashboard that already shows four loaded
+    // modules. Counted by hand rather than with .finally(), which this codebase does
+    // not use anywhere else.
+    var loaderDone = function () { hideLoader(); };
+    boot[0].then(loaderDone, loaderDone);
+
+    // saveDailySnapshot() reads every module cache, so it has to run once they have
+    // ALL settled. It used to be a blind 1s timer started alongside the four
+    // prefetches — by which point OLT (~2.4s), NODE (~2.3s) and BACKBONE (~2.0s) were
+    // still in flight, and db.js keeps only the FIRST snapshot of each day, so those
+    // modules were recorded as zero for the rest of that day.
+    var pending = boot.length;
+    var onSettle = function () {
+      if (--pending > 0) return;
+      if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
+    };
+    boot.forEach(function (p) { p.then(onSettle, onSettle); });
+
     // I-refresh ang BAWAT tab sa sarili nitong interval
     setInterval(() => backgroundRefresh('nap'),  60 * 60 * 1000);
     setInterval(() => backgroundRefresh('lcp'),  30 * 60 * 1000);
@@ -1483,15 +1515,9 @@ function closeNodeModal(event) {
     return `<span class="copyable-ticket ${extraClass || ''}" onclick="event.stopPropagation(); copyToClipboard('${safe}')" title="Click to copy">${ticketNo}</span>`;
   }
 
-  // ==================== ALERT THRESHOLDS ====================
-  const ALERT_THRESHOLDS = {
-    oltDown: 5,        // >5 OLTs down = HIGH alert
-    oltLowPower: 3,    // >3 low power = MEDIUM
-    nodeTickets: 3,    // >3 node tickets = MEDIUM
-    bbTickets: 2,      // >2 backbone tickets = MEDIUM
-    napCritical: 5,    // >5 NAP >3days = HIGH
-    clientsDown: 100   // >100 clients affected = HIGH
-  };
+  // ==================== ALERT BADGES ====================
+  // ALERT_THRESHOLDS lives with the application variables at the top of this script;
+  // see the comment there for why it cannot sit next to the function that reads it.
 
   function getAlertClass(module, value) {
     switch(module) {
