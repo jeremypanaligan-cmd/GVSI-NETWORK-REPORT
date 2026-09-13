@@ -72,6 +72,30 @@ Versions follow the app's own numbering. Newest first.
     which was the module timer, not the rotation. Live updates are unaffected: the kiosk's own
     60 s refresh still lands, and each module is still revalidated at least once a minute.
 
+### Performance
+- **One signed-in client was using 84% of the backend's daily property quota just to stay logged in.**
+  The session gate ran the expired-session sweep on **every** request that presented a valid token,
+  and three routes then read the same token a **second** time through `sessionFromRequest()`. The
+  sweep is O(stored sessions) — `getKeys()` plus one read per `session_*` key — so a heartbeat cost
+  **N + 3** Properties operations, not one.
+  - Apps Script meters *Properties read/write* at **50,000/day** on a consumer account, and
+    heartbeat alone is **1,440 requests/day per signed-in client**. At 26 stored sessions that was
+    **41,760 operations/day from a single user — 84% of the quota** — and roughly **8× over** with
+    ten. The failure mode is not slowness: the script throws *"Service invoked too many times"* and
+    the app stops updating.
+  - The sweep now runs **at login** (`issueSessionToken`), where it is naturally rare, and
+    `readSessionToken()` still deletes a stale token the moment one is presented — so the store
+    cannot fill up with abandoned entries.
+  - `resolveSession()` replaces the gate-then-`sessionFromRequest()` pair, resolving the session
+    and the decision in **one** pass. `requireSession()` is now a thin wrapper over it, and
+    `sessionFromRequest()` is gone rather than left as a second way to do the same read.
+  - Measured before/after with the same harness and the same input: a gated request went from
+    **N + 3** property reads to a flat **1** (−92% at 10 stored sessions, −97% at 26). Per client
+    per day: **41,760 → 1,440** operations. Locked in by the new `session lookup cost` suite.
+  - This is also what makes gating the data routes affordable at all: `?type=` reads are **still
+    open**, but each one would now cost **1** property read instead of **2 + N**.
+  - **Backend change → needs a redeploy of `admin.gs`.**
+
 ### Fixed
 - **The wall display could boot a build that had already been replaced.** Caught on the running
   display: the page had the build with the boot crash while the cache **already held the fix**.
@@ -288,7 +312,8 @@ Versions follow the app's own numbering. Newest first.
   cached shell keeps working, while a *present-but-invalid* token is always refused — the
   backend can therefore be deployed before every client has the new shell. Login is throttled
   (5 failures → 5-minute lockout, checked before any sheet read), tokens are pruned on every
-  gated request, and the prune is prefix-scoped so it can never touch `cache_v2_*`. Data routes
+  gated request *(superseded 2026-09-13 — the sweep now runs at login only; see Unreleased)*, and
+  the prune is prefix-scoped so it can never touch `cache_v2_*`. Data routes
   (`?type=`) are untouched, so no stale token can blank the kiosk. 26 new tests cover minting,
   expiry, revocation, pruning, role rejection, forged-username rejection and the throttle;
   mutation-tested (disabling the role check, the `UpdatedBy` override, the expiry check, the

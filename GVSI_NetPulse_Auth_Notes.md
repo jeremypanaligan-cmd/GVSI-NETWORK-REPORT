@@ -18,9 +18,11 @@ login  ──► handleLogin()  ──► issueSessionToken(u, name, role)
                                │
                                └─ PropertiesService: session_<token> = {u, name, role, exp}
                                           │
-every gated call ──► requireSession(e, role) ──► readSessionToken(?token=)
-                                                    ├─ missing / expired / corrupt → delete, reject
-                                                    └─ valid → proceed, identity = the TOKEN
+every gated call ──► resolveSession(e, role) ──► readSessionToken(?token=)
+                       │                            ├─ missing / expired / corrupt → delete, reject
+                       │                            └─ valid → proceed, identity = the TOKEN
+                       └─ { session, error } — resolved ONCE per request;
+                          requireSession() wraps it for gates that need only the verdict
 ```
 
 - **Identity comes from the token, never the URL.** `UpdatedBy` is `session.u`;
@@ -34,6 +36,11 @@ every gated call ──► requireSession(e, role) ──► readSessionToken(?t
   together.
 - **No rotation, no refresh.** The token is valid for its full TTL or until
   logout. A sliding refresh on heartbeat is the natural Phase 2 addition.
+- **One token read per request, and no sweep.** `resolveSession()` returns the
+  session *and* the gate verdict together, so a route that needs the identity does
+  not read the token a second time. The expired-session sweep is O(stored
+  sessions) and runs at **login** only — see trap 2 for why that is a quota
+  requirement and not a nicety.
 
 ## 2. The one asymmetry that matters — and its history
 
@@ -94,8 +101,14 @@ guessing loop is to stop accepting guesses.
    property store with the oversized-payload cache (`cache_v2_*`).
    `pruneExpiredTokens()` filters on the prefix for exactly this reason; an
    unfiltered delete loop would silently destroy a module's cache.
-2. **Anything new in `PropertiesService` needs a prune rule.** Tokens accumulate
-   otherwise — the same class of bug as the never-expiring payload cache.
+2. **Anything new in `PropertiesService` needs a prune rule — on a RARE path.**
+   Tokens accumulate otherwise — the same class of bug as the never-expiring
+   payload cache. The sweep itself is O(stored sessions), and it used to run
+   inside the session gate, i.e. on every authenticated request: at 26 stored
+   sessions one client burned **41,760 Properties operations/day out of a
+   50,000/day quota** (heartbeat alone is 1,440 requests/day per client), which
+   fails as `Service invoked too many times`, **not** as slowness. It now runs at
+   **login**; the request path must cost **O(1)**.
 3. **A token rejected on read is deleted, not retried.** Same discipline as "a
    missing stamp counts as expired" in the caching notes: a bad entry must not
    be able to resurrect itself.

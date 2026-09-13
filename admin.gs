@@ -74,10 +74,9 @@ function readSessionToken(token) {
   return session;
 }
 
-function sessionFromRequest(e) {
-  var token = (e && e.parameter && e.parameter.token) ? String(e.parameter.token) : "";
-  return readSessionToken(token);
-}
+// There is deliberately no bare sessionFromRequest() helper any more: resolving
+// the session is the SAME act as gating the route, and doing them separately is
+// what read the token twice. resolveSession() below is the single entry point.
 
 function revokeSessionToken(token) {
   if (!token) return false;
@@ -102,26 +101,49 @@ function pruneExpiredTokens(props) {
 }
 
 /**
- * Gate a route. Returns null when the caller may proceed, or an unauthorized
- * response body when it may not.
+ * Resolve the caller's session AND the gate decision in one pass.
+ *
+ * Returns { session, error }: `error` is the unauthorized body to send back, or
+ * null to proceed; `session` is the verified session, null only in the phase-1
+ * case where no token was offered and the switch tolerates it.
+ *
+ * Split out of requireSession() because three routes need both halves — they gate
+ * first and then need the identity, and doing that as two calls read the same
+ * property twice on routes that run constantly.
  */
-function requireSession(e, role) {
+function resolveSession(e, role) {
   var token = (e && e.parameter && e.parameter.token) ? String(e.parameter.token) : "";
   var session = readSessionToken(token);
 
   if (!session) {
     // A token was offered and rejected — never let that slide, even in phase 1.
-    if (token) return unauthorizedResponse("Session expired — please sign in again");
-    if (REQUIRE_SESSION) return unauthorizedResponse("Sign-in required");
-    return null; // phase 1: tolerate an untokened caller (old cached shell)
+    if (token) return { session: null, error: unauthorizedResponse("Session expired — please sign in again") };
+    if (REQUIRE_SESSION) return { session: null, error: unauthorizedResponse("Sign-in required") };
+    return { session: null, error: null }; // phase 1: tolerate an untokened caller (old cached shell)
   }
 
-  pruneExpiredTokens();
+  // The expiry sweep deliberately does NOT run here. It is O(stored sessions):
+  // getKeys() plus one read per session_* key. It used to run on every request
+  // bearing a valid token, which put it on the busiest path in the app against a
+  // METERED daily quota (Properties read/write, 50,000/day on a consumer
+  // account) — a heartbeat alone is 1,440 requests/day per signed-in client, and
+  // the sweep made each one cost 2 + N operations instead of 1. It now runs at
+  // login (issueSessionToken), and readSessionToken still deletes a stale token
+  // the moment one is presented, so abandoned entries do not accumulate.
 
   if (role && String(session.role || "").trim() !== role) {
-    return unauthorizedResponse("Your role does not allow this action");
+    return { session: null, error: unauthorizedResponse("Your role does not allow this action") };
   }
-  return null;
+  return { session: session, error: null };
+}
+
+/**
+ * Gate a route. Returns null when the caller may proceed, or an unauthorized
+ * response body when it may not. A route that also needs the session should call
+ * resolveSession() instead, so the token is read once.
+ */
+function requireSession(e, role) {
+  return resolveSession(e, role).error;
 }
 
 // ====================== LOGIN THROTTLING ======================
@@ -267,17 +289,17 @@ function handleGetSettings(e) {
 }
 
 function handleSetMaintenance(e) {
-  var gate = requireSession(e, ADMIN_ROLE);
-  if (gate) return gate;
+  var auth = resolveSession(e, ADMIN_ROLE);
+  if (auth.error) return auth.error;
 
   var enabled = (e.parameter.enabled === "true");
 
   // The actor comes from the token, and ONLY from the token. ?admin= used to be
   // stamped straight into the sheet, so any caller could forge the audit trail;
-  // the client no longer sends it and requireSession() above guarantees a session
-  // exists here, so there is no fallback and no second source of truth.
-  var session = sessionFromRequest(e);
-  var admin = session ? session.u : "unknown";
+  // the client no longer sends it and the gate above guarantees a session exists
+  // here, so there is no fallback and no second source of truth. The session is
+  // the one the gate already resolved — reading it again here was a second read.
+  var admin = auth.session ? auth.session.u : "unknown";
   
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("AppSettings");
@@ -355,12 +377,14 @@ function handleGetActiveUsers(e) {
 }
 
 function handleHeartbeat(e) {
-  var gate = requireSession(e);
-  if (gate) return gate;
+  var auth = resolveSession(e);
+  if (auth.error) return auth.error;
 
   // Identity comes from the token when one is present, so a valid session can no
-  // longer register somebody else as active.
-  var session = sessionFromRequest(e);
+  // longer register somebody else as active. The session comes from the gate
+  // itself: this route fires every 60s per signed-in client, so reading the token
+  // a second time here was a second Properties read on the busiest path in the app.
+  var session = auth.session;
   var username = session ? session.u : (e.parameter.username || "");
   var fullName = session ? session.name : (e.parameter.fullName || "");
   
@@ -397,10 +421,10 @@ function handleHeartbeat(e) {
 }
 
 function handleRemoveActiveUser(e) {
-  var gate = requireSession(e);
-  if (gate) return gate;
+  var auth = resolveSession(e);
+  if (auth.error) return auth.error;
 
-  var session = sessionFromRequest(e);
+  var session = auth.session;
   var requested = String(e.parameter.username || "").trim();
 
   // Removing yourself (the logout path) is always fine; removing somebody else

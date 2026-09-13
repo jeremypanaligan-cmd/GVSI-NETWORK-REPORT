@@ -976,9 +976,8 @@ test.describe('revocation, expiry and pruning', () => {
     assert.ok(!h.props.has('session_nostamp'));
   });
 
-  test('pruning drops expired sessions and leaves live ones and the payload cache alone', () => {
+  test('the login sweep drops expired sessions and leaves live ones and the payload cache alone', () => {
     seedUsers();
-    const live = login('admin', 'secret').token;
 
     const past = h.clock.now() - 1000;
     h.props.setProperty('session_old1', JSON.stringify({ u: 'a', role: 'viewer', exp: past }));
@@ -988,13 +987,90 @@ test.describe('revocation, expiry and pruning', () => {
     h.props.setProperty('cache_v2_olt', big(100000));
     h.props.setProperty('cache_v2_olt_cached_at', String(h.clock.now()));
 
-    assert.equal(gated({ action: 'getActiveUsers' }, live).unauthorized, undefined);
+    // Login is what sweeps, not a request — see the cost tests below for why.
+    const live = login('admin', 'secret').token;
 
     assert.ok(!h.props.has('session_old1'));
     assert.ok(!h.props.has('session_old2'));
     assert.ok(h.props.has('session_' + live), 'the live session must survive');
     assert.equal(h.props.getProperty('cache_v2_olt').length, 100000, 'payload cache untouched');
     assert.ok(h.props.has('cache_v2_olt_cached_at'), 'the payload stamp is untouched');
+  });
+});
+
+test.describe('session lookup cost', () => {
+  // Apps Script meters "Properties read/write" against a DAILY quota (50,000/day
+  // on a consumer account), and heartbeat fires every 60s per signed-in client —
+  // 1,440 requests/day each costing 2 + N operations is an outage risk, not a
+  // micro-optimisation. These tests pin the per-request cost to a constant: the
+  // O(N) expiry sweep belongs on the login path, never the request path.
+
+  const GATED_ROUTES = [
+    { action: 'heartbeat' },
+    { action: 'getActiveUsers' },
+    { action: 'setMaintenance', enabled: 'true' },
+    { action: 'removeActiveUser', username: 'admin' }
+  ];
+
+  test('a gated request reads the property store exactly once', () => {
+    seedUsers();
+    const { token } = login('admin', 'secret');
+
+    GATED_ROUTES.forEach((route) => {
+      h.props.reads = 0;
+      const res = gated(route, token);
+      assert.equal(res.unauthorized, undefined, route.action + ' should pass the gate');
+      assert.equal(h.props.reads, 1, route.action + ' must resolve the token once, not twice');
+    });
+  });
+
+  test('the per-request cost does not grow with the number of stored sessions', () => {
+    seedUsers();
+    const { token } = login('admin', 'secret');
+
+    h.props.reads = 0;
+    gated({ action: 'heartbeat' }, token);
+    const withOne = h.props.reads;
+
+    // 25 more live sessions in the store. The old sweep walked every session_*
+    // key on every request, so this used to inflate the number above.
+    for (let i = 0; i < 25; i++) login('admin', 'secret');
+    assert.equal(sessionKeys().length, 26, 'the store really does hold 26 sessions now');
+
+    h.props.reads = 0;
+    gated({ action: 'heartbeat' }, token);
+    assert.equal(h.props.reads, withOne, 'per-request reads must be flat in N');
+  });
+
+  test('a request never walks the session store; the login does', () => {
+    seedUsers();
+    const { token } = login('admin', 'secret');
+
+    const past = h.clock.now() - 1000;
+    h.props.setProperty('session_stale', JSON.stringify({ u: 'ghost', role: 'viewer', exp: past }));
+
+    h.props.deletes.length = 0;
+    gated({ action: 'heartbeat' }, token);
+    assert.deepEqual(h.props.deletes, [], 'a request must not sweep anything');
+    assert.ok(h.props.has('session_stale'), 'the stale entry is still there afterwards');
+
+    login('admin', 'secret');
+    assert.ok(!h.props.has('session_stale'), 'login is where it gets swept');
+  });
+
+  test('a stale token is still deleted the moment it is presented', () => {
+    // The store cannot fill up with abandoned entries just because the sweep moved:
+    // presenting an expired token reads it, finds it expired, and removes it.
+    seedUsers();
+    const { token } = login('admin', 'secret');
+
+    h.props.setProperty('session_presented',
+      JSON.stringify({ u: 'ghost', role: 'viewer', exp: h.clock.now() - 1000 }));
+
+    assert.equal(gated({ action: 'heartbeat' }, 'presented').unauthorized, true);
+    assert.ok(!h.props.has('session_presented'), 'the presented stale token is deleted');
+    assert.equal(gated({ action: 'heartbeat' }, token).unauthorized, undefined,
+      'and the live token is unaffected');
   });
 });
 

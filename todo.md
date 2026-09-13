@@ -78,6 +78,12 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   the shortest safe window
 - ⬜ Optional: an active-sessions view in the admin panel so a token can be
   revoked without waiting out its 24 h TTL
+- ⬜ Optional: gate the `?type=` data routes. **Now cheap** — a gated request
+  costs **1** property read instead of **2 + N** since the sweep moved to login
+  (see Done), so the quota objection no longer applies. The blocker is **token
+  lifetime**: the kiosk is a 24/7 display with nobody to re-sign-in, and
+  `SESSION_TOKEN_TTL_MS` is 24 h, so gating without a sliding refresh (or a
+  long-lived display token) blanks the wall once a day. Do that first.
 
 > **Confirmed deployed** the same day: a tokenless heartbeat answers `"Sign-in required"`, which
 > only exists in the enforced version.
@@ -213,6 +219,29 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
 
 ## ✅ Done
 
+### 2026-09-13 — Session lookup is O(1) per request, not O(stored sessions)
+- **The sweep moved off the request path.** `requireSession()` called `pruneExpiredTokens()`
+  on every authenticated request, and three routes then read the same token a second time
+  through `sessionFromRequest()`. A gated request cost **N + 3** Properties operations
+  (**N** = stored `session_*` keys), and Properties read/write is metered at **50,000/day**
+  (consumer) while heartbeat alone is **1,440 requests/day per client**. Measured for one
+  client at N=26: **41,760 ops/day, 84% of the quota** — and ~8× over with ten clients.
+  The symptom would not be slowness but `Service invoked too many times` and a dead app.
+- `resolveSession()` now resolves the session **and** the gate decision in one pass;
+  `requireSession()` wraps it, and `sessionFromRequest()` is deleted rather than left as a
+  second way to do the same read. The sweep runs at login only, and `readSessionToken()`
+  still deletes a stale token the moment one is presented, so nothing accumulates.
+- **Measured before/after, same harness and same input** (the committed `admin.gs` vs the
+  working tree): a gated request went from **N + 3 → a flat 1** read — **−92%** at N=10,
+  **−97%** at N=26. Per client per day: **41,760 → 1,440** properties operations
+  (**84% → 2.9%** of a 50,000/day quota; ten clients go from ~8× over to 29%).
+- `tests/gs-harness.js` now **counts** property reads/writes, and the new `session lookup
+  cost` suite pins the constant, proves it does not move from N=1 to N=26, and proves a
+  request no longer sweeps while a login does. **98 backend tests, 125 total.**
+- **Backend change → needs a redeploy of `admin.gs`.** Also makes the `?type=` gating
+  decision cheap instead of expensive — the remaining blocker there is token lifetime, not
+  cost (see the optional item in P1 Phase 2).
+
 ### 2026-09-13 — Script-order guard, and the kiosk NODE alert state
 - **A test for the TDZ class, because it had shipped twice.** `tests/inline-order.js` walks
   every script `index.html` loads in load order, follows the call graph from each top-level
@@ -298,6 +327,12 @@ heartbeat each fail the suite). **Backend change: needs a redeploy.** Docs:
   the query string (Apps Script only exposes `e.parameter`, and a JSON POST body
   triggers a CORS preflight the deployment does not answer), so it can surface
   in browser history / `Referer`.
+  **Verified live 2026-09-13:** a tokenless `?action=heartbeat` answers
+  `"Sign-in required"`, while **tokenless `?type=olt&shape=2` returns the whole
+   461-row payload**. The Pages site is public and `BASE_API_URL` ships in the
+  client, so the URL is not a secret — this is readable by anyone who loads the
+  page. `code.gs` contains no reference to `token` at all; the gate lives in
+  `admin.gs` and covers only the four `action=` routes.
 - **A top-level `const` in the big inline script of `index.html` is a live trap**
   — now guarded by `tests/inline-order.test.js` (see Done), but worth
   understanding before adding one. The boot path runs from a statement *further
@@ -315,7 +350,15 @@ heartbeat each fail the suite). **Backend change: needs a redeploy.** Docs:
   evaluated yet. It does **not** cover computed keys or a name mentioned only in
   an arrow that is never called.
 - **Anything new that lands in `PropertiesService` needs a prefix and a prune
-  rule**, or it accumulates the way the oversized-payload cache once did.
+  rule**, or it accumulates the way the oversized-payload cache once did — **and
+  the prune has to sit somewhere rare.** It ran inside the session gate, i.e. on
+  every authenticated request, which put an O(stored sessions) sweep on the
+  busiest path in the app against a **metered daily quota** (`Properties
+  read/write`, 50,000/day consumer). A heartbeat alone is 1,440 requests/day per
+  client, so at 26 stored sessions one client burned **41,760 operations/day —
+  84% of the quota** — and ten clients would be ~8× over. The symptom is not
+  slowness, it is `Service invoked too many times` and a dead app. **Rule: a
+  prune belongs on a rare path (login), and the request path should cost O(1).**
 - **A `controllerchange` reload and the version guard fight each other.** The guard clears every
   worker and cache on each load while it waits for the user to press *Refresh & Sync*, then
   re-registers — so a new worker claims the page on *every* load in that state. A reload hooked

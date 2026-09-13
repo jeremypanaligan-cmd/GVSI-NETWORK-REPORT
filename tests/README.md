@@ -33,7 +33,7 @@ only protects the app if `node --test` is run before a commit that touches a
 | File | Purpose |
 |---|---|
 | `gs-harness.js` | The fake Apps Script runtime (`createHarness`) |
-| `code.gs.test.js` | The suite — 94 tests across routing, caching, data shapes, the compact OLT payload, admin, session tokens, and harness fidelity |
+| `code.gs.test.js` | The suite — 98 tests across routing, caching, data shapes, the compact OLT payload, admin, session tokens, session-lookup cost, and harness fidelity |
 | `inline-order.js` | The script-order analyser (no tests of its own; used by the file below) |
 | `inline-order.test.js` | 18 tests — the app-clean gate, reproductions of both historical bugs, and the rule cases |
 | `olt-payload.test.js` | 9 tests — the encoder/decoder round trip and the decoder's own edges |
@@ -90,7 +90,10 @@ createHarness({
 - **`CacheService`** entries really expire, and every `put` records its TTL, so
   the per-type TTLs (60s / 180s) are asserted rather than assumed.
 - **`PropertiesService`** has no TTL — matching Google — so the app's
-  hand-rolled timestamp expiry is genuinely the thing under test.
+  hand-rolled timestamp expiry is genuinely the thing under test. It also **counts**
+  its calls (`h.props.reads` / `h.props.writes`), because Apps Script meters
+  *Properties read/write* against a **daily quota** — a session lookup whose cost
+  grows with the number of stored sessions is an outage risk, not a style nit.
 - **`Utilities.computeDigest`** returns **signed** bytes (`-128..127`). That is
   the quirk `admin.gs`'s `sha256()` compensates for; returning unsigned bytes
   would hide a real hashing bug, so the harness reproduces it.
@@ -108,7 +111,7 @@ createHarness({
 
 ## Session-token coverage (P1)
 
-Four suites cover the auth layer, and they are meant to be read alongside
+Five suites cover the auth layer, and they are meant to be read alongside
 `GVSI_NetPulse_Auth_Notes.md`:
 
 - **`session tokens`** — minting, server-side storage (`u`/`name`/`role`/`exp`),
@@ -126,7 +129,19 @@ Four suites cover the auth layer, and they are meant to be read alongside
   the route but **never** revives the forgeable `?admin=` name.
 - **`revocation, expiry and pruning`** — logout revoking and a replay failing,
   expiry at the boundary, corrupt and stamp-less payloads treated as expired, and
-  a prune that removes dead sessions without touching `cache_v2_*`.
+  a **login** sweep that removes dead sessions without touching `cache_v2_*`.
+- **`session lookup cost`** — the suite that keeps the auth layer affordable, and
+  the reason to run it before adding a gate to a new route. Apps Script meters
+  *Properties read/write* at **50,000/day** on a consumer account, and heartbeat
+  alone is **1,440 requests/day per signed-in client**. The expiry sweep is
+  O(stored sessions) — `getKeys()` plus one read per `session_*` key — so it must
+  not sit on the request path. These tests pin a gated request to **exactly one**
+  property read, prove the number does **not** move when the store goes from 1 to
+  26 sessions, prove a request sweeps nothing while a login does, and prove a
+  stale token presented on its own is still deleted immediately. Measured
+  before/after with this harness and the same input: a heartbeat went from
+  **N + 3** reads to a flat **1** (−92% at 10 stored sessions, −97% at 26) —
+  **41,760 → 1,440** property operations per client per day.
 - **`login throttling`** — 5 failures locking the username out (the *correct*
   password is refused too, and no sheet is read), the window lapsing, the counter
   resetting, and the recorded sleeps growing then stopping at the cap.

@@ -360,13 +360,21 @@ class FakeScriptProperties {
     this.map = new Map();
     this.sets = [];
     this.deletes = [];
+    // Counters, not just logs. Apps Script meters "Properties read/write" against
+    // a DAILY quota (50,000 on a consumer account), so a session lookup whose cost
+    // grows with the number of stored sessions is an outage risk, not a style nit.
+    // Read = getProperty + getKeys; write = setProperty + deleteProperty.
+    this.reads = 0;
+    this.writes = 0;
   }
 
   getProperty(key) {
+    this.reads++;
     return this.map.has(key) ? this.map.get(key) : null;
   }
 
   setProperty(key, value) {
+    this.writes++;
     this.sets.push(String(key));
     this.map.set(String(key), String(value));
     return this;
@@ -378,16 +386,20 @@ class FakeScriptProperties {
   }
 
   deleteProperty(key) {
+    this.writes++;
     this.deletes.push(String(key));
     this.map.delete(String(key));
     return this;
   }
 
-  getKeys() { return Array.from(this.map.keys()); }
+  getKeys() {
+    this.reads++;
+    return Array.from(this.map.keys());
+  }
 
   has(key) { return this.map.has(key); }
 
-  clear() { this.map.clear(); this.sets = []; this.deletes = []; }
+  clear() { this.map.clear(); this.sets = []; this.deletes = []; this.reads = 0; this.writes = 0; }
 }
 
 /* ============================ Utilities / ContentService ============================ */
