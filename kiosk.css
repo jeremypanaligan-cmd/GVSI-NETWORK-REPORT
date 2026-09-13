@@ -1531,6 +1531,82 @@ body.kiosk-mode .kiosk-root {
 /* ------------------------------------------------------------------ *
    13. Reduced motion
  * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ *
+   Stale-data banner + "no live data" slide state  (v3.9.1)
+   Both are driven by last-good.js: the banner whenever a module is showing old
+   numbers, the slide state when a module was never loaded at all. A wall display
+   must say which of those it is rather than look normally calm.
+ * ------------------------------------------------------------------ */
+.kiosk-root .kiosk-stale-banner {
+  display: none;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 2.6vw;
+  background: var(--k-red-dim);
+  border-bottom: 1px solid var(--k-red);
+  color: #f2a5b0;
+  font-family: var(--k-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.kiosk-root .kiosk-stale-banner.is-visible {
+  display: flex;
+}
+
+.kiosk-root .kiosk-stale-banner .stale-banner-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--k-red);
+  flex: 0 0 auto;
+  animation: kioskPulse 2.2s infinite;
+}
+
+.kiosk-root .kiosk-stale-banner .stale-banner-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kiosk-unreachable {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4vh;
+  text-align: center;
+}
+
+.kiosk-unreachable-tag {
+  font-family: var(--k-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--k-red);
+  background: rgba(240, 71, 95, 0.1);
+  border: 1px solid var(--k-red);
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+}
+
+.kiosk-unreachable-headline {
+  font-size: clamp(1.6rem, 3vw, 2.6rem);
+  font-weight: 700;
+  color: var(--k-text);
+}
+
+.kiosk-unreachable-sub {
+  font-size: 0.95rem;
+  color: var(--k-text-dim);
+  max-width: 52ch;
+  line-height: 1.55;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kiosk-ticker-track {
     animation: none;
@@ -1558,5 +1634,9 @@ body.kiosk-mode .kiosk-root {
     animation: none;
     width: 100%;
     background: var(--k-line);
+  }
+
+  .kiosk-root .kiosk-stale-banner .stale-banner-dot {
+    animation: none;
   }
 }

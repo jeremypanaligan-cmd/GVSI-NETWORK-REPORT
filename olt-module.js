@@ -47,10 +47,14 @@ async function fetchOltData(forceRefresh = false) {
       fetchWithRetry(oltRequestUrl())
         .then(raw => {
           const data = decodeOltPayload(raw);
-          if (Array.isArray(data) && data.length > 0) { dataCache.olt = data; rawOltData = data; processAndRenderOlt(); }
-          else if (data === null) console.warn('OLT payload shape not understood — left the current data on screen');
+          if (Array.isArray(data) && data.length > 0) {
+            dataCache.olt = data;
+            rawOltData = data;
+            processAndRenderOlt();
+            noteModuleFresh('olt', data);
+          } else if (data === null) console.warn('OLT payload shape not understood — left the current data on screen');
         })
-        .catch(() => {});
+        .catch(() => noteModuleFailed('olt'));
     }
     return;
   }
@@ -67,11 +71,23 @@ async function fetchOltData(forceRefresh = false) {
       dataCache.olt = data;
       rawOltData = data;
       processAndRenderOlt();
+      noteModuleFresh('olt', data);
     } else if (data === null) {
       console.warn('OLT payload shape not understood — left the current data on screen');
     }
   } catch (error) {
     console.error('Error fetching OLT data:', error);
+    // processAndRenderOlt() over an empty array reports 461 total and 0 down, which
+    // reads as a clean network. Degrade to the last known rows instead, or show an
+    // explicit unavailable state — never a zeroed status board.
+    const stale = degradeModuleToLastGood('olt', dataCache.olt);
+    if (Array.isArray(stale.payload) && stale.payload.length > 0) {
+      dataCache.olt = stale.payload;
+      rawOltData = stale.payload;
+      processAndRenderOlt();
+    } else {
+      renderOltUnavailable();
+    }
   } finally {
     // This catch has no UI of its own, so without the clear a failed OLT fetch
     // would leave the tables shimmering as if they were still loading.
@@ -114,6 +130,22 @@ function processAndRenderOlt() {
 
   renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
   renderOltTable();
+}
+
+// A failed first load: keep the real table headers, dash the counters rather than
+// printing zeros, and leave the donut out of it entirely.
+function renderOltUnavailable() {
+  const tbody = document.getElementById('oltTableBody');
+  if (tbody) tbody.innerHTML = unavailableRowHtml(7);
+
+  ['oltCardTotal', 'oltCardUp', 'oltCardDown', 'oltCardLowPower', 'oltCardUplinkDown',
+   'oltCardDegradation', 'oltCardClientsDown', 'oltDonutTotalLabel'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '\u2014';
+  });
+
+  const legend = document.getElementById('oltDonutLegend');
+  if (legend) legend.innerHTML = '';
 }
 
 function renderOltDonut(up, down, lowPower, uplinkDown, degradation, total) {

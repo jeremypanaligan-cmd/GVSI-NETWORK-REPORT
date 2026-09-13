@@ -2,14 +2,15 @@
    GVSI NetPulse — cache control
    ONE entry point for inspecting and clearing the caching layers.
 
-   Five layers sit between the Google Sheet and the screen. Clearing them by
-   hand used to mean five separate ad-hoc steps scattered across the code; this
+   Six layers sit between the Google Sheet and the screen. Clearing them by
+   hand used to mean six separate ad-hoc steps scattered across the code; this
    file is the single documented way to do it. See
    GVSI_NetPulse_Caching_Notes.md for what each layer is and why.
 
    Console usage:
      await netpulseCache.status()                  // what is held where
      netpulseCache.revalidateState()               // why a module is (not) re-fetching
+     netpulseCache.lastGood()                      // what a failure would fall back to
      await netpulseCache.invalidateAll()           // safe clear (keeps user data)
      await netpulseCache.invalidateAll({ indexedDB: true, storage: true })
                                                    // full nuke, see warnings below
@@ -23,6 +24,9 @@
      3. Service worker shell      — clearable.
      4. HTTP cache                — bypassed by the SW; not directly purgeable.
      5. dataCache (in memory)     — clearable, and the cheapest place to look.
+     6. Last known good           — clearable, and safe to clear: it holds one
+                                    payload per module, kept only so a screen can
+                                    show something honest while the API is down.
  * ------------------------------------------------------------------ */
 
 (function () {
@@ -173,6 +177,36 @@
       cacheServiceLimit: CACHE_SERVICE_LIMIT,
       propertiesServiceLimit: PROPERTIES_LIMIT,
       modules: modules
+    };
+  }
+
+  /* ---------------- 6. last known good (localStorage) ---------------- */
+
+  // NOT a cache of live data: one payload per module, written only so a failed fetch
+  // can show the last known numbers with a banner saying how old they are (see
+  // last-good.js). Safe to clear — the only cost is that a failure straight after has
+  // nothing to fall back to, and the module will say so instead of inventing calm.
+  function lastGood() {
+    if (!window.netpulseLastGood) return 'last-good.js not loaded';
+    return window.netpulseLastGood.report();
+  }
+
+  function clearLastGood() {
+    if (!window.netpulseLastGood) return 'last-good.js not loaded';
+    return window.netpulseLastGood.clearAll();
+  }
+
+  function lastGoodSummary() {
+    if (!window.netpulseLastGood) return 'last-good.js not loaded';
+    var reps = window.netpulseLastGood.report();
+    var kept = [], stale = [];
+    Object.keys(reps).forEach(function (type) {
+      if (reps[type].remembered) kept.push(type);
+      if (reps[type].showing === 'stale') stale.push(type);
+    });
+    return {
+      remembering: kept.length ? kept.join(', ') : 'nothing yet',
+      showingStale: stale.length ? stale.join(', ') : 'none'
     };
   }
 
@@ -388,7 +422,8 @@
             '3. Service worker': swInfo,
             '3. Shell cache': shellInfo,
             '4. HTTP cache': 'bypassed by the SW (cache: no-cache on revalidate)',
-            '5. dataCache': memory
+            '5. dataCache': memory,
+            '6. Last known good': lastGoodSummary()
           };
         });
       });
@@ -405,6 +440,10 @@
     // should happen just because someone asked for "a cache clear".
     var report = {};
     report['5. dataCache'] = clearMemory();
+    // Not destructive: a fallback payload is not user data. Cleared here so that
+    // "invalidate everything" really does leave the next failure with nothing stale
+    // to show — the version guard relies on that after a release.
+    report['6. Last known good'] = clearLastGood();
 
     return (opts.serviceWorker ? unregisterServiceWorkers() : Promise.resolve('skipped (pass serviceWorker: true)'))
       .then(function (r) { report['3. service worker'] = r; return clearCacheStorage(); })
@@ -442,6 +481,9 @@
     },
     // What is cached, where. Use this to find the stale layer before clearing.
     status: status,
+    // What each module would fall back to if the API went away right now.
+    lastGood: lastGood,
+    clearLastGood: clearLastGood,
     // How close each module's payload is to the caching thresholds.
     payloadHeadroom: payloadHeadroom,
     // Individual layers, for when you only want one.

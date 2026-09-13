@@ -19,10 +19,14 @@ async function fetchBackboneData(forceRefresh = false) {
     if (shouldRevalidate('backbone')) {
       fetchWithRetry(BASE_API_URL + "?type=backbone")
         .then(data => {
-          if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
-          else { dataCache.backbone = []; renderBackboneEmptyState(); }
+          // An empty array IS an answer from the API — the honest all-clear — so it is
+          // remembered as one. Only a failure means "we do not know".
+          const rows = Array.isArray(data) ? data : [];
+          dataCache.backbone = rows;
+          if (rows.length > 0) renderBackboneReport(rows); else renderBackboneEmptyState();
+          noteModuleFresh('backbone', rows);
         })
-        .catch(() => {});
+        .catch(() => noteModuleFailed('backbone'));
     }
     return;
   }
@@ -37,13 +41,29 @@ async function fetchBackboneData(forceRefresh = false) {
     if (Array.isArray(data) && data.length > 0) {
       dataCache.backbone = data;
       renderBackboneReport(data);
+      noteModuleFresh('backbone', data);
     } else {
       dataCache.backbone = [];
       renderBackboneEmptyState();
+      noteModuleFresh('backbone', []);
     }
   } catch (error) {
     console.error('Error fetching BACKBONE data:', error);
-    renderBackboneEmptyState();
+    // This used to render the all-clear card, so a failed fetch looked exactly like a
+    // healthy network. Degrade to the last known link list, or say plainly that we
+    // could not check — anything but "All Backbone Links Operational".
+    const stale = degradeModuleToLastGood('backbone', dataCache.backbone);
+    if (Array.isArray(stale.payload) && stale.payload.length > 0) {
+      dataCache.backbone = stale.payload;
+      renderBackboneReport(stale.payload);
+    } else if (stale.from === 'stored') {
+      // A remembered, genuine all-clear: still the last thing the API said, and the
+      // banner carries its timestamp.
+      dataCache.backbone = [];
+      renderBackboneEmptyState();
+    } else {
+      renderBackboneUnavailable();
+    }
   }
 }
 
@@ -349,6 +369,17 @@ function renderBackboneEmptyState() {
       </div>
     </div>
   `;
+}
+
+// A failed first load, with nothing remembered. The five stat cards keep their labels
+// but carry a dash, because a printed 0 would say "no links affected" about a feed we
+// could not read at all.
+function renderBackboneUnavailable() {
+  const bbTab = document.getElementById('tab-backbone');
+  if (!bbTab) return;
+  bbTab.innerHTML = backboneShellHtml({
+    total: '\u2014', dwdmLow: '\u2014', dwdmDown: '\u2014', mplsLow: '\u2014', mplsDown: '\u2014'
+  }) + unavailableRowHtml(7) + backboneTableCloseHtml();
 }
 
 // Modal: Open Backbone Link Details

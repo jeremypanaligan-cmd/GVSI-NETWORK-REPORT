@@ -11,10 +11,14 @@ async function fetchNodeData(forceRefresh = false) {
     if (shouldRevalidate('node')) {
       fetchWithRetry(BASE_API_URL + "?type=node")
         .then(data => {
-          if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
-          else { dataCache.node = []; renderNodeEmptyState(); }
+          // An empty array IS an answer from the API — the honest all-clear — so it is
+          // remembered as one. Only a failure means "we do not know".
+          const rows = Array.isArray(data) ? data : [];
+          dataCache.node = rows;
+          if (rows.length > 0) renderNodeReport(rows); else renderNodeEmptyState();
+          noteModuleFresh('node', rows);
         })
-        .catch(() => {});
+        .catch(() => noteModuleFailed('node'));
     }
     return;
   }
@@ -29,13 +33,29 @@ async function fetchNodeData(forceRefresh = false) {
     if (Array.isArray(data) && data.length > 0) {
       dataCache.node = data;
       renderNodeReport(data);
+      noteModuleFresh('node', data);
     } else {
       dataCache.node = [];
       renderNodeEmptyState();
+      noteModuleFresh('node', []);
     }
   } catch (error) {
     console.error('Error fetching NODE data:', error);
-    renderNodeEmptyState();
+    // This used to render the all-clear card, which made a failed fetch look exactly
+    // like a healthy network. Degrade to the last known incident list, or say plainly
+    // that we could not check — anything but "All Node Systems Operational".
+    const stale = degradeModuleToLastGood('node', dataCache.node);
+    if (Array.isArray(stale.payload) && stale.payload.length > 0) {
+      dataCache.node = stale.payload;
+      renderNodeReport(stale.payload);
+    } else if (stale.from === 'stored') {
+      // A remembered, genuine all-clear: still the last thing the API said, and the
+      // banner carries its timestamp.
+      dataCache.node = [];
+      renderNodeEmptyState();
+    } else {
+      renderNodeUnavailable();
+    }
   }
 }
 
@@ -75,6 +95,15 @@ function renderNodeSkeleton() {
   if (!nodeTab) return;
   nodeTab.innerHTML = nodeTableShellHtml() + nodeTableCloseHtml();
   renderSkeletonRows('nodeTableBody');
+}
+
+// A failed first load, with nothing remembered. Same shell and columns as the real
+// table so the shape of the screen does not change, but one honest row instead of an
+// all-clear card that was never earned.
+function renderNodeUnavailable() {
+  const nodeTab = document.getElementById('tab-node');
+  if (!nodeTab) return;
+  nodeTab.innerHTML = nodeTableShellHtml() + unavailableRowHtml(7) + nodeTableCloseHtml();
 }
 
 function renderNodeReport(data) {

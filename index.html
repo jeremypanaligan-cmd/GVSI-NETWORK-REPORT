@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.0">
+  <link rel="stylesheet" href="styles.css?v=3.9.1">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.9.0">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.1">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -69,7 +69,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.9.0</div>
+    <div class="login-footer">GVSI NetPulse v3.9.1</div>
   </div>
 </div>
 
@@ -102,6 +102,14 @@
     <button class="refresh-btn" onclick="refreshCurrentTab()">REFRESH</button>
   </div>
 </header>
+
+<!-- Stale-data banner. Empty and hidden until last-good.js marks a module stale;
+     there are two of these (here and in the kiosk shell) and both are found by
+     class, never by id. See last-good.js. -->
+<div class="stale-banner" role="status" aria-live="polite">
+  <span class="stale-banner-dot" aria-hidden="true"></span>
+  <span class="stale-banner-text"></span>
+</div>
 
 <!-- Live Activity Ticker Bar -->
 <div class="ticker-bar" id="tickerBar">
@@ -379,6 +387,14 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.1 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Honest Failure States (New):</strong> When the API cannot be reached, each module now keeps showing the last known data instead of a blank table or an error row, and a banner across the top says <em>STALE</em> with the time the data is from. NODE and BACKBONE no longer show their &quot;all clear&quot; card on a failed load — a screen must never confuse &quot;nothing is wrong&quot; with &quot;we could not check&quot;.</li>
+                  <li><strong>Fast API Path (New):</strong> API calls now go through a small edge proxy instead of the two-hop Google redirect which intermittently returned 404s. The proxy retries an origin failure server-side, so a module sees a clean answer rather than a broken one.</li>
+                  <li><strong>Kiosk Shows Staleness Too:</strong> the wall display carries the same stale banner in its top bar, and a slide with no data at all says so instead of loading forever.</li>
+                </ul>
+
+                <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.0 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Kiosk Mode Redesign (New):</strong> The NOC/TV wall display is now its own presentation layer — severity band and hotspot provinces for NAP, client-impact hero for LCP, status donut with down-OLT alert cards for OLT, a calm all-clear state for NODE, and DWDM/MPLS link cards for BACKBONE. Admin tables, export buttons and sorting are unchanged.</li>
@@ -705,20 +721,22 @@
   </div>
 </div>
 
-<script src="db.js?v=3.9.0"></script>
-<script src="notifications.js?v=3.9.0"></script>
-<script src="cache-control.js?v=3.9.0"></script>
-<script src="nap-module.js?v=3.9.0"></script>
-<script src="lcp-module.js?v=3.9.0"></script>
-<script src="olt-module.js?v=3.9.0"></script>
-<script src="node-module.js?v=3.9.0"></script>
-<script src="backbone-module.js?v=3.9.0"></script>
-<script src="analytics-module.js?v=3.9.0"></script>
-<script src="admin-module.js?v=3.9.0"></script>
+<script src="db.js?v=3.9.1"></script>
+<script src="notifications.js?v=3.9.1"></script>
+<script src="cache-control.js?v=3.9.1"></script>
+<!-- Must come before the modules: they call into it on every fetch (see last-good.js). -->
+<script src="last-good.js?v=3.9.1"></script>
+<script src="nap-module.js?v=3.9.1"></script>
+<script src="lcp-module.js?v=3.9.1"></script>
+<script src="olt-module.js?v=3.9.1"></script>
+<script src="node-module.js?v=3.9.1"></script>
+<script src="backbone-module.js?v=3.9.1"></script>
+<script src="analytics-module.js?v=3.9.1"></script>
+<script src="admin-module.js?v=3.9.1"></script>
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.9.0"; 
+  const REQUIRED_APP_VERSION = "3.9.1"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
@@ -1421,7 +1439,7 @@ function closeNodeModal(event) {
     });
 
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.0').then(reg => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.1').then(reg => {
         // Force an update check on every load. Without this the browser only
         // re-checks sw.js on a navigation once every 24h, so a change to the
         // worker itself can sit dormant for a day even though app assets update
@@ -2169,6 +2187,13 @@ function closeNodeModal(event) {
     </div>
   </header>
 
+  <!-- Same stale-data banner as the dashboard, restyled for the dark shell. A wall
+       display must say it is showing old numbers, not just show them. -->
+  <div class="stale-banner kiosk-stale-banner" role="status" aria-live="polite">
+    <span class="stale-banner-dot" aria-hidden="true"></span>
+    <span class="stale-banner-text"></span>
+  </div>
+
   <main class="kiosk-stage" id="kioskStage">
     <section class="kiosk-slide" data-kiosk-slide="nap"></section>
     <section class="kiosk-slide" data-kiosk-slide="lcp"></section>
@@ -2192,7 +2217,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.9.0"></script>
+<script src="kiosk-module.js?v=3.9.1"></script>
 
 </body>
 </html>

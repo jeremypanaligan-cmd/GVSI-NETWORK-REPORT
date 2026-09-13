@@ -700,6 +700,28 @@ function kioskLoadingHtml(label) {
   return '<div class="kiosk-loading"><div class="kiosk-loading-bar"></div><div>' + kioskEsc(label) + '</div></div>';
 }
 
+/* A module the API could not be reached for, with nothing remembered. Without this
+   the slide sat on "Loading…" for the rest of the day, which reads as a stalled app
+   rather than as an outage — and an outage is something a NOC display must say out
+   loud. lastGoodStale() (last-good.js) is what tells the two apart. */
+function kioskUnreachableHtml(type) {
+  var meta = KIOSK_SLIDE_META[type];
+  return kioskSlideHead(type, 'Waiting for live data') +
+    '<div class="kiosk-unreachable">' +
+    '<div class="kiosk-unreachable-tag">No live data</div>' +
+    '<div class="kiosk-unreachable-headline">' + kioskEsc(meta.title) + ' unavailable</div>' +
+    '<div class="kiosk-unreachable-sub">The API could not be reached and no earlier ' +
+    'data was kept. This is not an all-clear.</div>' +
+    '</div>';
+}
+
+/* Still loading, or genuinely unreachable? Only last-good.js knows. */
+function kioskMissingHtml(type, label) {
+  return (typeof lastGoodStale === 'function' && lastGoodStale(type))
+    ? kioskUnreachableHtml(type)
+    : kioskLoadingHtml(label);
+}
+
 function kioskCalmHtml(subtitle, headline, sub, tiles) {
   var tilesHtml = '';
   if (tiles && tiles.length) {
@@ -731,7 +753,7 @@ function kioskRenderNap() {
 
   var rows = kioskSource('nap');
   if (rows === null) {
-    el.innerHTML = kioskLoadingHtml('Loading NAP data…');
+    el.innerHTML = kioskMissingHtml('nap', 'Loading NAP data…');
     return;
   }
 
@@ -834,7 +856,7 @@ function kioskRenderLcp() {
 
   var data = kioskSource('lcp');
   if (data === null) {
-    el.innerHTML = kioskLoadingHtml('Loading LCP data…');
+    el.innerHTML = kioskMissingHtml('lcp', 'Loading LCP data…');
     return;
   }
 
@@ -932,7 +954,7 @@ function kioskRenderOlt() {
 
   var rows = kioskSource('olt');
   if (rows === null) {
-    el.innerHTML = kioskLoadingHtml('Loading OLT data…');
+    el.innerHTML = kioskMissingHtml('olt', 'Loading OLT data…');
     return;
   }
 
@@ -1059,7 +1081,7 @@ function kioskRenderNode() {
 
   var rows = kioskSource('node');
   if (rows === null) {
-    el.innerHTML = kioskLoadingHtml('Loading NODE data…');
+    el.innerHTML = kioskMissingHtml('node', 'Loading NODE data…');
     return;
   }
 
@@ -1200,7 +1222,7 @@ function kioskRenderBackbone() {
 
   var rows = kioskSource('backbone');
   if (rows === null) {
-    el.innerHTML = kioskLoadingHtml('Loading Backbone data…');
+    el.innerHTML = kioskMissingHtml('backbone', 'Loading Backbone data…');
     return;
   }
 

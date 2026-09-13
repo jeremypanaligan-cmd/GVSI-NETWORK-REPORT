@@ -8,8 +8,8 @@ async function fetchNapData(forceRefresh = false) {
     // calls this on every rotation. See shouldRevalidate() in cache-control.js.
     if (shouldRevalidate('nap')) {
       fetchWithRetry(BASE_API_URL + "?type=nap")
-        .then(data => { if (data) { dataCache.nap = data; renderNapReport(data); } })
-        .catch(() => {});
+        .then(data => { if (data) { dataCache.nap = data; renderNapReport(data); noteModuleFresh('nap', data); } })
+        .catch(() => noteModuleFailed('nap'));
     }
     return;
   }
@@ -24,6 +24,7 @@ async function fetchNapData(forceRefresh = false) {
     if (Array.isArray(data) && data.length > 0) {
       dataCache.nap = data;
       renderNapReport(data);
+      noteModuleFresh('nap', data);
       // The other four modules are started by loadInitialData(), in parallel with
       // this very call. They used to be launched from right here, which meant they
       // could not begin until this response had already arrived.
@@ -32,7 +33,16 @@ async function fetchNapData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching NAP data:', error);
-    document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
+    // Show the last known outage list rather than a hole, and let the banner say how old
+    // it is. Only when nothing was ever loaded does the error text stand — a stale list
+    // is more useful than no list, as long as nobody mistakes it for live.
+    const stale = degradeModuleToLastGood('nap', dataCache.nap);
+    if (Array.isArray(stale.payload) && stale.payload.length > 0) {
+      dataCache.nap = stale.payload;
+      renderNapReport(stale.payload);
+    } else {
+      renderNapUnavailable();
+    }
   } finally {
     // No-op once a render has written real content, so this covers the empty and
     // failed paths without touching the success path.
@@ -42,6 +52,18 @@ async function fetchNapData(forceRefresh = false) {
     // when the boot is finished — see the comment there.
     clearModuleSkeleton('nap');
   }
+}
+
+// A failed first load, with nothing remembered. The four summary cards used to keep
+// printing 0, which reads as "no outages" — and the table beside them said "Error
+// loading data". They now agree that nothing is known.
+function renderNapUnavailable() {
+  const tbody = document.getElementById('napTableBody');
+  if (tbody) tbody.innerHTML = unavailableRowHtml(6);
+  ['card24', 'card13', 'card3', 'cardTotal'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '\u2014';
+  });
 }
 
 function renderNapReport(data) {
