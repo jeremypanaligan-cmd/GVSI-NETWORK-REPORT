@@ -6,7 +6,12 @@ audit narrative — several of its HIGH findings are already fixed, so treat
 this file as the source of truth for outstanding work.
 
 Legend: ⬜ todo · 🔄 in progress · ✅ done · ⏸ blocked
-Last updated: 2026-09-13 · Version: 3.9.0 · Backend suite: 87/87, script-order suite: 18/18 (105 total)
+Last updated: 2026-09-13 · Version: 3.9.0 · Backend suite: 94/94, script-order suite: 18/18,
+OLT payload suite: 9/9 (121 total)
+Buong app-weight batch (icons, kiosk storm, stale shell, NODE escaping, **OLT payload**): **tapos**,
+hindi pa naka-commit at hindi pa naka-push. `code.gs` ay may pagbabago → **kailangan ng redeploy**
+para gumana ang `shape=2`; hanggang doon, legacy payload pa rin ang natatanggap at walang
+nagbabago sa paggana.
 
 ---
 
@@ -87,7 +92,7 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
 
 ---
 
-## 📉 Next session — app weight (lahat sinukat 2026-09-13)
+## 📉 App weight (sinukat 2026-09-13 · **3 sa 4 tapos na** 2026-09-13)
 
 > **Baseline na sinukat** (huwag nang ulitin ang pagsukat, gamitin ito bilang "bago"):
 >
@@ -106,7 +111,7 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
 > Paalala: **hindi nagsi-gzip ang Live Server locally**, kaya ~2× na mas malala ang lokal na
 > numero kaysa sa isang gzip-capable na host.
 
-- ⬜ **1. Putulin ang bigat ng icons** — ang `icon-512.png` at `apple-touch-icon.png` ay
+- ✅ **1. Putulin ang bigat ng icons** — ang `icon-512.png` at `apple-touch-icon.png` ay
   **byte-for-byte identical** (parehong md5 `9a198d5e958426cce8e654e8a7cc7b32`, 86.9 KB bawat isa),
   at **kapwa nasa `sw.js` `UNVERSIONED_ASSETS`** — kaya **87 KB ay dina-download nang dalawang beses**
   sa bawat SW install. Ang icons ay **202 KB = 52% ng unang load**, mas malaki pa sa buong JS.
@@ -114,8 +119,14 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   **Gawin:** ihinto ang duplicate (isang 180×180 na `apple-touch-icon`), i-re-encode ang dalawa;
   isaalang-alang ang maskable/simpleng logo. Nasa precache → kailangang ma-revalidate.
   **Walang backend change.** **Tsek:** ang unang-load total ay bumababa, masukat sa parehong paraan.
+  **RESULTA:** precache **202.4 KB → 89.8 KB (−112.6 KB)**, unang bisita ~389 → ~277 KB.
+  `apple-touch-icon` ay 180×180 na (**86.9 → 16.1 KB**), `icon-512` 86.9 → **52.7 KB**,
+  `icon-192` 28.6 → **21.1 KB**. Bagong tool: `tools/optimize-icons.js` (median-cut 128 colours,
+  8-bit alpha, adaptive filtering, zlib 9) — **PSNR 46.9 / 44.1 / 46.2 dB**, MAE < 1/255.
+  Hindi PNG-8: isang transparent index lang ang kaya nito, at may anti-aliased na gilid ang icons
+  (187 distinct alpha). `STATIC_CACHE` → `v3.9.5` (precache-only asset, walang SWR path).
 
-- ⬜ **2. Paliitin ang OLT payload** — `?type=olt` ay **50,059 bytes decoded** (461 rows × 9 field)
+- ✅ **2. Paliitin ang OLT payload** — `?type=olt` ay **50,179 bytes decoded** (461 rows × 9 field)
   kumpara sa `nap` na 836 bytes lamang. Ito ang **96.9% ng lahat ng API bytes** (dashboard boot:
   50,059 sa 51,664). Ang mga field: `N` 33%, `P` 22%, `M` 22% ng chars — pero **16 distinct na
   province, 211 municipality, 3 status, 3 down-cause** lang, kaya sobrang redundant.
@@ -125,8 +136,22 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   pangunahin ang **decoded/parse** (~287 MB/araw sa kiosk) at ang CPU sa mahinang TV, hindi ang
   bytes sa wire. **Backend change → nangangailangan ng redeploy.**
   **Tsek:** `curl -L --compressed | wc -c` bago/kalaban, at dapat 461 row pa ring nagre-render.
+  **RESULTA:** **50,179 → 26,304 bytes (52%)**, parehong 461 row. `shape=2` ay
+  `{v, f, p, m, r}` — `P`/`M` bilang index sa dalawang dictionary, positional ang row, at ang
+  field order ay sakay ng payload (`f`) para hindi magkahiwalay ang dalawang panig. Ang pinaka-
+  malaking bahagi pala ay ang **paulit-ulit na pangalan ng field** (14,291 bytes = 28%): ang
+  dictionary lang ay 89% pa, ang positional rows ang nagdala sa 52%. Legacy shape pa rin ang
+  default, **sariling cache key** (`cache_v2_olt` vs `cache_v2_olt_c2`) dahil bago pa tiningnan
+  ang `shape` ay may cache hit na — iisang key = maling shape sa pangalawang tumawag. Ang client
+  (`decodeOltPayload`) ay sa fetch boundary lang nagde-decode, kaya walang ibang ginalaw, at
+  tumatanggap pa rin ng legacy payload kung hindi pa na-redeploy. **Sinukat sa live sheet:**
+  byte-for-byte identical ang round trip, at sa browser ay **kapareho** ang na-render na table.
+  Nakatuklas din ng **dalawang ibang `?type=olt` fetch path** na sariling URL ang ginagawa
+  (`prefetchOtherTabsInBackground()` at ang analytics cold-start) — lumalabag sa throttle at
+  hindi na-de-dupe; pareho nang dumadaan sa module fetcher. Bagong suite:
+  `tests/olt-payload.test.js` (9 tests). **Kailangan ng redeploy.**
 
-- ⬜ **3. Itigil ang kiosk re-fetch storm** — ang `fetchOltData()` ay cache-first **pero laging
+- ✅ **3. Itigil ang kiosk re-fetch storm** — ang `fetchOltData()` ay cache-first **pero laging
   nagpapaputok ng background revalidation** (`olt-module.js:3-12`), at tinatawag ito ng kiosk sa
   **bawat rotation papunta sa OLT slide** (`kiosk-module.js:188-200`). Sinukat: **4 na 50 KB kada
   minuto**; ang kiosk ay 11 requests / 198.7 KB kada minuto laban sa dashboard na naka-idle na
@@ -135,8 +160,13 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   hayaan ang kiosk rotation na mag-render mula sa cache nang hindi nagre-revalidate.
   **Tsek:** sa isang 60 s na window sa kiosk, bumaba sa ≤1 OLT fetch; hindi dapat masira ang live
   updates (hayaan ang `KIOSK_REFRESH_MS` na humawak ng refresh). **Walang backend change.**
+  **RESULTA:** `shouldRevalidate()` sa `cache-control.js` — **isang revalidation kada module kada
+  minuto**; `backgroundRefresh()` ay `forceRefresh` kaya hindi naaapektuhan ang module timers at
+  tumatawag ng `markRevalidated()`. **10 sunod-sunod na `fetchNapData()` → 1 request** (9 ms).
+  137 s na kiosk window na may 15 rotations: **11 requests**, OLT **3** (1 dito ay module timer).
+  Check na hinihingi (≤1 OLT fetch kada 60 s): **pumasa**. Tingnan ang note 3 ng caching notes.
 
-- ⬜ **4. Ayusin ang stale-shell boot** ("state-shell") — isang always-on display ay nag-boot sa
+- ✅ **4. Ayusin ang stale-shell boot** ("state-shell") — isang always-on display ay nag-boot sa
   **lumang code** na may TDZ bug habang ang SW cache ay may **naayos** nang kopya:
   `runningCodeHasBuggyConst: true` at `cachedIndexHasFix: true` sa parehong page load. Ang SWR ay
   naghahatid ng cached shell at iniimbak ang bago para sa *susunod* na load, kaya ang isang fix ay
@@ -145,12 +175,24 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   **kontroladong isahang reload kapag may bagong worker**, o gawing network-first ang shell na may
   cache fallback (laging online ang display). **Tsek:** pagkatapos i-edit ang `index.html`,
   **isang** reload lang ang magpapakita ng bagong code. **Walang backend change.**
+  **RESULTA:** ang **navigation (`index.html`) ay network-first** na, cache fallback kapag offline,
+  at **isang** kontroladong reload sa `controllerchange` kapag may bagong worker. Sinukat: isang
+  load lang at naka-live na ang binagong `index.html` (dating kailangan ng dalawa).
+  **Nahuli habang vine-verify:** ang version guard ay nag-clear at nag-re-register ng worker sa
+  *bawat* load habang hinihintay ang "App Update Available" click — kung magre-reload din tayo
+  doon, **mag-loop** ito. Kaya nilalaktawan ang reload kapag nakabukas ang overlay, at kapag
+  first install (walang dating worker na pinapalitan).
+
+- ✅ **5. (bagong nahanap na butas) NODE ay nagre-render ng limang sheet value bilang raw HTML** —
+  `province`, `impact`, `DT cause`, `downtime`, `aging` ay direktang pumapasok sa `innerHTML`
+  (`node-module.js:92,95,98,113,120`) habang ang node chips sa tabi nila ay sanitized. Reproduced:
+  ang `<img src=x onerror=…>` ay **buhay ang `onerror`** sa lumang path; tanggal na ngayon.
+  Hindi ginalaw ang raw value na pumapasok sa details modal, kaya raw text pa rin ang modal.
 
 > **Hindi dapat galawin:** ang API responses ay `Cache-Control: no-store` — tama iyon, at doon
 > nakasalalay ang in-memory `dataCache`. Huwag itong baguhin bilang "optimization".
 
 ---
-
 ## 🟢 Later
 
 - ⬜ **P2** remove the plaintext password from `netpulse_remember`
@@ -274,3 +316,14 @@ heartbeat each fail the suite). **Backend change: needs a redeploy.** Docs:
   an arrow that is never called.
 - **Anything new that lands in `PropertiesService` needs a prefix and a prune
   rule**, or it accumulates the way the oversized-payload cache once did.
+- **A `controllerchange` reload and the version guard fight each other.** The guard clears every
+  worker and cache on each load while it waits for the user to press *Refresh & Sync*, then
+  re-registers — so a new worker claims the page on *every* load in that state. A reload hooked
+  to `controllerchange` therefore loops. The handler now skips when `#updateOverlay` is present
+  and when no worker controlled the page at load. **Any future reload-on-update logic has to
+  account for that guard.**
+- **Refresh cadence has two separate clocks.** The `loadInitialData()` timers (NAP 60m … NODE 10m)
+  are forced refreshes; `shouldRevalidate()` in `cache-control.js` is a 60s floor on everything
+  the UI triggers (tab clicks, kiosk rotations). A cache hit inside the floor renders and returns
+  **without** a network call — expected, not a bug, and `netpulseCache.revalidateState()` shows
+  the countdown before you go hunting.

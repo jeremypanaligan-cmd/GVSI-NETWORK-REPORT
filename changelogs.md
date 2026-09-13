@@ -12,7 +12,85 @@ Versions follow the app's own numbering. Newest first.
 
 ## [Unreleased]
 
+### Performance
+- **The OLT payload is half the size on the wire, same 461 rows.** `?type=olt` was
+  **96.9% of every API byte the app moved** — 461 rows x 9 fields, **50,179 bytes**, of
+  which the repeated field names alone were **14,291 (28%)** and the province and
+  municipality columns another ~8,000. Measured on the live sheet: **50,179 → 26,304
+  bytes (52%)**.
+  - `?type=olt&shape=2` returns a compact envelope: `{ v, f, p, m, r }` — province and
+    municipality as indices into two dictionaries, each row a positional array, and the
+    field order carried in `f` so the two sides cannot drift apart.
+  - **The row count is unchanged** — this is re-encoding, not aggregation. Nothing is
+    summed away, and the kiosk and admin still see every OLT.
+  - The legacy shape stays the **default** and gets its **own cache entry**
+    (`cache_v2_olt` vs `cache_v2_olt_c2`), because a cache hit is returned before
+    anything looks at `shape` — sharing one key would serve the wrong shape to whoever
+    asked second. Old clients are untouched, and the new client falls back to the legacy
+    payload if it gets one, so the frontend and backend can be deployed in either order.
+  - Decoding happens once, at the fetch boundary (`decodeOltPayload` in `olt-module.js`),
+    so the admin table, the details modal, the kiosk slide and analytics all keep reading
+    the same rows they always have. A payload shape this build does not understand is
+    refused with a warning rather than rendered.
+  - **Measured on the live sheet**, not on a fixture: the real encoder in `code.gs` and
+    the real decoder in `olt-module.js` round-trip 461 live rows **byte-for-byte** — and
+    in the browser the compact path renders a table *identical* to the legacy one.
+  - The `?type=olt` request still leaves immediately after boot, but now there is exactly
+    **one** per boot: two other code paths built their own URL for the same module
+    (`prefetchOtherTabsInBackground()` in `index.html` and the analytics cold-start
+    fetch), which bypassed both the payload shape and the 60s revalidation throttle —
+    and, because they used a different URL, the in-flight de-dupe could not collapse them
+    either. Both now go through the module's own fetcher.
+  - **Backend change → needs a redeploy.** Until then the endpoint ignores `shape`, the
+    client receives the legacy array, and everything works exactly as before.
+- **The PWA icons were 52% of the first load. Now 23%.** They shipped straight out of a design
+  tool and one of them was a **byte-for-byte duplicate** — `icon-512.png` and
+  `apple-touch-icon.png` shared one md5 and were both in the precache, so 87 KB was downloaded
+  twice for an icon iOS draws at 180px. Measured on a cold install: **202.4 KB → 89.8 KB
+  (−112.6 KB)**, against a total first visit that was ~389 KB.
+  - `apple-touch-icon.png` is now an actual **180×180** (86.9 KB → **16.1 KB**), `icon-512.png`
+    86.9 → **52.7 KB**, `icon-192.png` 28.6 → **21.1 KB**.
+  - Re-encoded with a new dependency-free tool, `tools/optimize-icons.js` (the machine has no
+    ImageMagick/pngquant/sharp and this project has no build step): median-cut to **128 colours**
+    with 8-bit alpha kept, per-row adaptive filtering, zlib level 9. Quality measured against
+    the originals: **PSNR 46.9 / 44.1 / 46.2 dB**, MAE under **1/255** — under 0.5% of pixels
+    are off by more than 8/255. Palette (PNG-8) was rejected on purpose: it can express only ONE
+    transparent index and these icons have anti-aliased edges with 187 distinct alpha values.
+  - Icons are precache-only, so `STATIC_CACHE` moved to `v3.9.5` — see note 9 of
+    `GVSI_NetPulse_Caching_Notes.md`.
+- **The kiosk made up to 4 × 50 KB OLT requests a minute.** Every module's cache-hit path
+  re-renders from memory and then re-fetches, which is right for a tab click and wrong for a
+  9-second rotation. Measured on the running display: **11 requests / 198.7 KB per minute**, of
+  which `?type=olt` (50,059 B decoded, **96.9% of all API bytes**) was pulled **4×/min** —
+  ~22 MB/day decoded on a TV stick that never sleeps.
+  - `shouldRevalidate()` in `cache-control.js` now caps revalidation at **once per module per
+    minute**, whatever asks for it. `backgroundRefresh()` passes `forceRefresh`, so the module
+    timers are untouched; it calls `markRevalidated()` so the window restarts from its fetch
+    instead of letting a cache hit fire straight after.
+  - Measured after: **10 consecutive `fetchNapData()` calls → exactly 1 network request** (9 ms),
+    and a 137 s kiosk window with 15 rotations made **11 requests** total, OLT **3** — one of
+    which was the module timer, not the rotation. Live updates are unaffected: the kiosk's own
+    60 s refresh still lands, and each module is still revalidated at least once a minute.
+
 ### Fixed
+- **The wall display could boot a build that had already been replaced.** Caught on the running
+  display: the page had the build with the boot crash while the cache **already held the fix**.
+  Stale-while-revalidate is right for assets but wrong for the one file with no `?v=` token, on a
+  screen that may go days without a second load — it serves the old shell and only *stores* the
+  new one.
+  - **Navigations are now network-first**, with the cached shell as the offline fallback. Verified:
+    a change to `index.html` is live on the **first** load — the one-load-late behaviour this was
+    filed for no longer reproduces.
+  - A **new worker** now triggers **one** reload via `controllerchange` (the worker takes charge
+    of a page that already loaded its JS, so nothing else would ever pick the new code up). It is
+    skipped on a first install, and skipped while the version-guard overlay is up — that guard
+    clears and re-registers the worker on every load while it waits for a click, so reloading
+    there too would have looped. Found by hitting it during verification.
+- **NODE rendered five sheet values as raw HTML.** `province`, `impact`, `DT cause`, `downtime`
+  and `aging` were interpolated straight into `innerHTML` while the node chips beside them went
+  through the sanitizer. Reproduced: a value like `<img src=x onerror=…>` kept its **live
+  `onerror` handler** verbatim on the old path; it is stripped now. Values used for the details
+  modal are untouched, so the modal still shows raw text rather than entities.
 - **Kiosk NODE slide with an active node-down incident.** With data present the slide led
   straight into the incident list, so a single incident drew one card across the top and left
   most of a wall display blank — it read as a broken layout rather than an alert. The slide now
