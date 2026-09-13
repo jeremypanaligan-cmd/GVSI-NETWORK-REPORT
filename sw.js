@@ -5,15 +5,35 @@
      • Google Apps Script API  -> network only. Never cached here: the app owns
                                   its own data cache (dataCache + IndexedDB) and
                                   a stale API reply is worse than a slow one.
-     • App shell / static     -> stale-while-revalidate.
+     • Navigations (index.html) -> network first, cache as the offline fallback.
+     • Everything else static   -> stale-while-revalidate.
 
-   Why SWR: the cached copy paints instantly, the fresh copy is fetched and
-   stored in the background, and the NEXT load is current. That means an edit
-   reaches the browser on its own — no need to bump STATIC_CACHE (or a ?v=
-   token) every time a file changes.
+   Why SWR for the assets: the cached copy paints instantly, the fresh copy is
+   fetched and stored in the background, and the NEXT load is current. That means
+   an edit reaches the browser on its own — no need to bump STATIC_CACHE (or a
+   ?v= token) every time a file changes.
+
+   Why NOT SWR for the shell itself: the shell is the one file with no ?v= token
+   to key a version on, and a 24/7 wall display may not load twice for days. SWR
+   would serve it the old build and only STORE the new one — measured on the
+   display, the running page had the build with the boot crash while the cache
+   already held the fix. A display that is always online should just take the new
+   bytes; offline still falls back to the cached shell.
+
+   The versioned assets (?v=<ASSET_VERSION>) keep SWR on purpose: their name
+   carries a token, so a release that changes them is expected to bump it.
  * ------------------------------------------------------------------ */
 
-const STATIC_CACHE = 'gvsi-shell-v3.9.4';
+/* Bump this when a PRECACHE-ONLY asset changes. Icons and the manifest are never
+   requested by the page, so stale-while-revalidate never touches them — they only
+   refresh when a worker installs, and an install only happens when this file's own
+   bytes change. Everything the page does request lands through SWR on its own, so
+   this needs bumping for the icons, not for a CSS or module edit.
+
+   Raising it costs nothing extra: `install` re-adds every entry above regardless,
+   so the same bytes are fetched either way — a new name just makes the generation
+   explicit and lets `activate` drop the old copy in one step. */
+const STATIC_CACHE = 'gvsi-shell-v3.9.5';
 
 /* Must match the ?v= token on the <script>/<link> tags in index.html.
 
