@@ -61,10 +61,10 @@ function oltTicketRow({ ticket, cause = 'Power', aging = '1d', clients = '0', ol
 }
 
 /** A 12-wide OLT report row (B..M), positioned by index. */
-function oltRow({ name, down = false, lowPower = false, uplinkDown = false, degradation = false, ticket = '' }) {
+function oltRow({ name, province = 'PROVINCE', municipality = 'Municipality', down = false, lowPower = false, uplinkDown = false, degradation = false, ticket = '' }) {
   const row = new Array(12).fill('');
-  row[0] = 'PROVINCE';
-  row[1] = 'Municipality';
+  row[0] = province;
+  row[1] = municipality;
   row[2] = name;                 // D
   row[4] = down;                 // F
   row[5] = lowPower;             // G
@@ -1078,5 +1078,103 @@ test.describe('tokens do not touch the data routes', () => {
     const bogus = h.doGet({ type: 'nap', token: 'bogus' });
     assert.equal(bogus.json[0].A, 'AREA1', 'data routes must never gate on a token');
     assert.equal(bogus.json.unauthorized, undefined);
+  });
+});
+
+/* ============ 8. COMPACT OLT PAYLOAD (shape=2) ============ */
+
+/*
+  OLT was 96.9% of every API byte the app moved: 461 rows x 9 fields. `shape=2` sends
+  province and municipality as indices into two dictionaries and each row as a
+  positional array whose field order travels in `f`.
+
+  These pin the wire shape and the isolation between the two shapes. The invariant
+  that actually protects the data — that decoding the compact payload reproduces the
+  legacy rows exactly — is checked against the real client decoder in
+  ./olt-payload.test.js.
+*/
+
+test.describe('compact OLT payload (shape=2)', () => {
+  // The legacy object order, so a decoded row is identical to a legacy row key-for-key.
+  const OLT_FIELDS = ['P', 'M', 'N', 'S', 'T', 'AG', 'RM', 'DC', 'CA'];
+
+  function seedProvinces() {
+    seedOltRows([
+      oltRow({ name: 'OLT-A', province: 'BENGUET', municipality: 'KABAYAN', down: true, ticket: 'TT-1' }),
+      oltRow({ name: 'OLT-B', province: 'BENGUET', municipality: 'BAGUIO', lowPower: true, ticket: 'TT-2' }),
+      oltRow({ name: 'OLT-C', province: 'ISABELA', municipality: 'AURORA' })
+    ]);
+  }
+
+  test.beforeEach(() => {
+    h.reset();
+    seedProvinces();
+  });
+
+  test('answers with the compact envelope and the same row count', () => {
+    const compact = h.doGet({ type: 'olt', shape: '2' }).json;
+
+    assert.equal(compact.v, 2);
+    assert.deepEqual(compact.f, OLT_FIELDS, 'the field order must travel with the payload');
+    assert.equal(compact.r.length, 3, 'one row per OLT — nothing aggregated away');
+    compact.r.forEach((row) => assert.equal(row.length, OLT_FIELDS.length));
+  });
+
+  test('province and municipality become indices into first-seen dictionaries', () => {
+    const compact = h.doGet({ type: 'olt', shape: '2' }).json;
+    const at = (field) => OLT_FIELDS.indexOf(field);
+
+    assert.deepEqual(compact.p, ['BENGUET', 'ISABELA'], 'each distinct value once, in order');
+    assert.deepEqual(compact.m, ['KABAYAN', 'BAGUIO', 'AURORA']);
+    assert.deepEqual(compact.r.map((row) => row[at('P')]), [0, 0, 1]);
+    assert.deepEqual(compact.r.map((row) => row[at('M')]), [0, 1, 2]);
+    assert.equal(compact.r[0][at('N')], 'OLT-A', 'everything else stays literal');
+    assert.equal(compact.r[0].length, compact.f.length);
+    assert.equal(compact.r[0][at('S')], 'DOWN');
+  });
+
+  test('the same sheet is smaller on the wire than the legacy payload', () => {
+    const legacy = h.doGet({ type: 'olt' });
+    h.reset();
+    seedProvinces();
+    const compact = h.doGet({ type: 'olt', shape: '2' });
+
+    assert.ok(compact.text.length < legacy.text.length,
+      `compact ${compact.text.length} should beat legacy ${legacy.text.length}`);
+  });
+
+  test('the two shapes never share a cache entry', () => {
+    h.doGet({ type: 'olt', shape: '2' });
+    assert.ok(h.cache.has('cache_v2_olt_c2'), 'the compact payload caches under its own key');
+    assert.equal(h.cache.has('cache_v2_olt'), false, 'and must not fill the legacy key');
+
+    h.reset();
+    seedProvinces();
+    h.doGet({ type: 'olt' });
+    assert.ok(h.cache.has('cache_v2_olt'));
+    assert.equal(h.cache.has('cache_v2_olt_c2'), false);
+  });
+
+  test('a cached compact payload is re-served byte-for-byte', () => {
+    const first = h.doGet({ type: 'olt', shape: '2' });
+    seedOltRows([oltRow({ name: 'OLT-Z', province: 'ZAMBALES', municipality: 'IBA' })]);
+
+    assert.equal(h.doGet({ type: 'olt', shape: '2' }).text, first.text);
+  });
+
+  test('the legacy shape is unchanged and stays the default', () => {
+    const legacy = h.doGet({ type: 'olt' }).json;
+
+    assert.ok(Array.isArray(legacy), 'no shape param must keep returning the array');
+    assert.equal(legacy.length, 3);
+    assert.equal(legacy[0].P, 'BENGUET');
+    assert.equal(h.cache.ttlFor('cache_v2_olt'), 60);
+  });
+
+  test('a shape this build does not know falls back to the legacy payload', () => {
+    const res = h.doGet({ type: 'olt', shape: '99' });
+
+    assert.ok(Array.isArray(res.json), 'an unknown shape must not be half-honoured');
+    assert.equal(res.json[0].N, 'OLT-A');
   });
 });

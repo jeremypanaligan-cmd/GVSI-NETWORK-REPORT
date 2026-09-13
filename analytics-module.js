@@ -75,14 +75,16 @@ async function fetchAnalyticsData(forceRefresh = false) {
   const hasAnyData = (napData.length > 0) || (oltData.length > 0) || (nodeData.length > 0) || (bbData.length > 0) || (lcpData.lcpAging && lcpData.lcpAging.length > 0);
 
   if (!hasAnyData && !forceRefresh) {
-    // Fetch all data then re-render
+    // Fetch all data then re-render. Through the modules' own fetchers, so this is one
+    // fetch path per module: each one owns its payload shape (OLT needs its decoder)
+    // and its revalidation throttle, and both are bypassed by a raw fetchWithRetry here.
     try {
       await Promise.all([
-        fetchWithRetry(BASE_API_URL + "?type=nap").then(d => { if (d) dataCache.nap = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=lcp").then(d => { if (d) dataCache.lcp = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=olt").then(d => { if (d) dataCache.olt = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=node").then(d => { if (d) dataCache.node = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=backbone").then(d => { if (d) dataCache.backbone = d; }).catch(() => {})
+        fetchNapData(),
+        fetchLcpData(),
+        fetchOltData(),
+        fetchNodeData(),
+        fetchBackboneData()
       ]);
       // Re-render with fresh data
       return renderAnalyticsDashboard();

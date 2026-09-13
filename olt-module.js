@@ -1,12 +1,57 @@
 // ====================== OLT MODULE ======================
 
+// shape=2 is the compact OLT payload: province and municipality arrive as indices into
+// two dictionaries, rows are positional, and the field order travels in `f` (see
+// compactOltRows() in code.gs). Asking for it explicitly means an un-reloaded client
+// keeps getting the legacy shape, and this build keeps working against a backend that
+// has not been redeployed yet.
+function oltRequestUrl() {
+  return BASE_API_URL + "?type=olt&shape=2";
+}
+
+/* Decode a compact OLT payload back into the row objects every consumer already
+   expects ({N, P, M, S, T, AG, RM, DC, CA}). Done here, at the fetch boundary, so the
+   admin table, the details modal, the kiosk slide and analytics need no changes at all.
+
+   Returns the payload untouched if it is already the legacy array, and null for a shape
+   this build does not know — refusing to guess beats rendering wrong numbers. */
+function decodeOltPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || payload.v !== 2 || !Array.isArray(payload.r) || !Array.isArray(payload.f)) return null;
+
+  const provinces = payload.p || [];
+  const municipalities = payload.m || [];
+  const fields = payload.f;
+
+  return payload.r.map(function (row) {
+    const out = {};
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i];
+      let value = row[i];
+      if (field === 'P') value = provinces[value];
+      else if (field === 'M') value = municipalities[value];
+      out[field] = value;
+    }
+    return out;
+  });
+}
+
 async function fetchOltData(forceRefresh = false) {
   if (!forceRefresh && dataCache.olt) {
     rawOltData = dataCache.olt;
     processAndRenderOlt();
-    fetchWithRetry(BASE_API_URL + "?type=olt")
-      .then(data => { if (Array.isArray(data) && data.length > 0) { dataCache.olt = data; rawOltData = data; processAndRenderOlt(); } })
-      .catch(() => {});
+    // Throttled per module — see shouldRevalidate() in cache-control.js. This is the
+    // one that mattered: ?type=olt is 50 KB and 96.9% of all API bytes, and the kiosk
+    // rotation used to pull it back down every 9 seconds.
+    if (shouldRevalidate('olt')) {
+      fetchWithRetry(oltRequestUrl())
+        .then(raw => {
+          const data = decodeOltPayload(raw);
+          if (Array.isArray(data) && data.length > 0) { dataCache.olt = data; rawOltData = data; processAndRenderOlt(); }
+          else if (data === null) console.warn('OLT payload shape not understood — left the current data on screen');
+        })
+        .catch(() => {});
+    }
     return;
   }
 
@@ -16,12 +61,14 @@ async function fetchOltData(forceRefresh = false) {
   if (!dataCache.olt) showModuleSkeleton('olt');
 
   try {
-    const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
+    const data = decodeOltPayload(await fetchWithRetry(oltRequestUrl()));
 
     if (Array.isArray(data) && data.length > 0) {
       dataCache.olt = data;
       rawOltData = data;
       processAndRenderOlt();
+    } else if (data === null) {
+      console.warn('OLT payload shape not understood — left the current data on screen');
     }
   } catch (error) {
     console.error('Error fetching OLT data:', error);

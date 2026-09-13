@@ -1,18 +1,22 @@
 # Test suites
 
-Two suites, both browser-free and network-free:
+Three suites, all browser-free and network-free:
 
 - **Backend** — `code.gs` (routing + the caching layers) and `admin.gs` executed
   for real in a Node `vm` context against fake Google service globals.
 - **Front-end script order** — a static check over the scripts `index.html`
   actually loads, for the temporal-dead-zone bug class that has shipped twice.
+- **OLT payload shape** — the real encoder in `code.gs` and the real decoder in
+  `olt-module.js`, run against each other, because nothing else would notice if the
+  two halves stopped agreeing.
 
 ## Running
 
 ```bash
-node --test            # from the repo root, runs tests/*.test.js (both suites)
+node --test            # from the repo root, runs tests/*.test.js (all three suites)
 node --test tests/code.gs.test.js        # backend only
 node --test tests/inline-order.test.js   # script order only
+node --test tests/olt-payload.test.js    # payload round trip only
 node --test --test-name-pattern="TTL"    # filter by test name
 ```
 
@@ -29,9 +33,10 @@ only protects the app if `node --test` is run before a commit that touches a
 | File | Purpose |
 |---|---|
 | `gs-harness.js` | The fake Apps Script runtime (`createHarness`) |
-| `code.gs.test.js` | The suite — 87 tests across routing, caching, data shapes, admin, session tokens, and harness fidelity |
+| `code.gs.test.js` | The suite — 94 tests across routing, caching, data shapes, the compact OLT payload, admin, session tokens, and harness fidelity |
 | `inline-order.js` | The script-order analyser (no tests of its own; used by the file below) |
 | `inline-order.test.js` | 18 tests — the app-clean gate, reproductions of both historical bugs, and the rule cases |
+| `olt-payload.test.js` | 9 tests — the encoder/decoder round trip and the decoder's own edges |
 
 ## Usage
 
@@ -176,16 +181,42 @@ call chain — and the suite fails if the checker stops seeing it. A checker tha
 cannot fail on the bug it exists to catch is worse than none, because it reads as
 coverage.
 
+## OLT payload shape — the two sides together
+
+OLT was 96.9% of every API byte the app moved: 461 rows x 9 fields, 50,179 bytes, of
+which the repeated field names alone were 14,291. `shape=2` sends province and
+municipality as indices into two dictionaries and each row as a positional array whose
+field order travels in the payload's own `f` array — 26,304 bytes, same 461 rows.
+
+That is a contract between two files in two languages of implementation, and until
+this file it was a contract nothing checked. `compactOltRows()` in `code.gs` and
+`decodeOltPayload()` in `olt-module.js` could stop agreeing without a single test
+turning red: a swapped field order or an off-by-one dictionary would not throw, it
+would quietly render the wrong province against every OLT.
+
+So `olt-payload.test.js` runs the **real encoder** through the harness, feeds its
+output to the **real decoder** loaded out of `olt-module.js`, and asserts the result is
+identical to the legacy payload for the same sheet — compared as serialised JSON, so
+it also pins the key order (a decoded row is indistinguishable from a legacy row, not
+merely equal to it). The seed includes what the live sheet has: repeated provinces, a
+down row, an up row, and dictionary values that differ per row.
+
+The remaining tests cover the decoder's own edges — a legacy array passing through
+untouched, an unknown `v` returning `null` rather than guessing, a missing `f`/`r`, a
+ragged dictionary index degrading to a blank cell, and the payload not being mutated.
+
 ## Limits — what this deliberately does not cover
 
 - **No real Google services.** Rate limits, quotas, cold starts, and Apps Script's
   own 100 KB `CacheService` ceiling are not modelled; the size thresholds are only
   exercised as they appear in `code.gs` (90 KB / 450 KB).
-- **Only the backend.** `index.html`, the `*-module.js` frontend files, the
-  service worker, and the deployed endpoint are out of scope. Nothing here proves
-  the live web app behaves as tested. The one exception is `inline-order.js`, and
-  it is **static analysis only** — it reads the scripts, it does not run them, so
-  it says nothing about runtime behaviour beyond declaration order.
+- **Only the backend, with two small exceptions.** `index.html`, the rest of the
+  `*-module.js` files, the service worker, and the deployed endpoint are out of scope,
+  and nothing here proves the live web app behaves as tested. The exceptions: `inline-order.js`
+  is **static analysis only** — it reads the scripts, it does not run them, so it says
+  nothing about runtime behaviour beyond declaration order — and `olt-payload.test.js`
+  *does* execute `olt-module.js`, but only `decodeOltPayload`, in a bare context with no
+  DOM, no `fetch` and no other app code. Everything else in that file is untested.
 - **Synchronous invocation.** `doGet` is called directly; trigger and
   installable-trigger behaviour (`triggers.gs`) and `LockService` are not modelled.
 - **Contract-level only.** These tests pin the behaviour of *this* code. If Google

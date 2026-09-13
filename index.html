@@ -1024,13 +1024,21 @@ function refreshCurrentTab() {
   function prefetchOtherTabsInBackground() {
   // Parallel prefetch: All modules fetch simultaneously after NAP loads
   // Best for small teams (4 users) — no API quota concerns, fastest UX
-  const allModules = ['lcp', 'olt', 'node', 'backbone'];
-  
-  allModules.forEach(type => {
+  // Through each module's own fetcher, not a raw fetchWithRetry. A raw fetch here
+  // bypassed the payload shape (OLT needs its decoder — see oltRequestUrl() in
+  // olt-module.js) and the revalidation throttle, and it built a DIFFERENT URL for OLT,
+  // so the in-flight de-dupe could not collapse it against the module's own request.
+  // Same path the kiosk warm-up uses.
+  const allModules = [
+    ['lcp', fetchLcpData],
+    ['olt', fetchOltData],
+    ['node', fetchNodeData],
+    ['backbone', fetchBackboneData]
+  ];
+
+  allModules.forEach(([type, fetcher]) => {
     if (!dataCache[type]) {
-      fetchWithRetry(BASE_API_URL + "?type=" + type)
-        .then(data => { if (data) dataCache[type] = data; })
-        .catch(() => {}); // Silent fail for prefetch — user can manually load later
+      try { fetcher(); } catch (e) { /* non-fatal: the tab can still load on demand */ }
     }
   });
 
