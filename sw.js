@@ -2,9 +2,10 @@
    GVSI NetPulse — service worker
 
    Strategy
-     • Google Apps Script API  -> network only. Never cached here: the app owns
-                                  its own data cache (dataCache + IndexedDB) and
-                                  a stale API reply is worse than a slow one.
+     • Apps Script API — direct, or through the edge proxy (window.NETPULSE_PROXY)
+                              -> network only. Never cached here: the app owns
+                                 its own data cache (dataCache + IndexedDB) and
+                                 a stale API reply is worse than a slow one.
      • Navigations (index.html) -> network first, cache as the offline fallback.
      • Everything else static   -> stale-while-revalidate.
 
@@ -42,6 +43,16 @@ const STATIC_CACHE = 'gvsi-shell-v3.9.5';
    copy nobody ever reads, and quietly leaves the offline shell depending
    entirely on stale-while-revalidate. Keep the two in step. */
 const ASSET_VERSION = '3.9.0';
+
+/* The API's host when the app calls it through the edge proxy (window.NETPULSE_PROXY in
+   index.html — see proxy/README.md).
+
+   This MUST be in the network-only API branch below. With the proxy in front, the API's
+   host is this one, and stale-while-revalidate here would hand a wall display a stale
+   outage — the one thing it must never do. Keep it in step with index.html: 
+   tests/proxy.test.js fails if the two disagree, in either direction, so a revert of
+   NETPULSE_PROXY has to blank this too. */
+const API_PROXY_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
 
 // Requested without a version token.
 const UNVERSIONED_ASSETS = [
@@ -179,7 +190,7 @@ self.addEventListener('fetch', (e) => {
   //    that has no CORS header) rejects here and surfaces in the console as an
   //    unhandled "Failed to fetch" that looks like a CORS misconfiguration.
   //    Converting it to a plain 503 lets fetchWithRetry classify and retry it.
-  if (url.includes('script.google.com')) {
+  if (url.includes('script.google.com') || (API_PROXY_HOST && url.includes(API_PROXY_HOST))) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' }).catch(() => new Response(
         JSON.stringify({ offline: true, message: 'Network unavailable' }),

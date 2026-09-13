@@ -785,7 +785,22 @@
   checkAppVersion();
 
   // --- MGA APPLICATION VARIABLES ---
-  window.BASE_API_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
+  // Where the API lives. ONE value decides it, here.
+  //
+  // NETPULSE_PROXY puts a Cloudflare Worker in front of Apps Script (see proxy/).
+  // The direct call is a TWO-hop Google redirect whose second hop — a
+  // script.googleusercontent.com/macros/echo page — is the one that intermittently
+  // answers 404. The browser pays the whole chain, sees the 404, and cannot retry it
+  // cheaply; behind the worker the chain is one request and a 404 is retried
+  // server-side before the caller ever hears about it. Measured 2026-09-13: 2 hops
+  // become 1, warm p50 1,096 -> 1,158 ms, and a 404 that used to reach a module (and
+  // strand it on "Error loading data." until its next poll) now cannot.
+  //
+  // Set NETPULSE_PROXY to "" to go straight to Apps Script again. If you change it,
+  // sw.js must change with it — tests/proxy.test.js fails if the two disagree.
+  window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
+  window.NETPULSE_PROXY = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev";
+  window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
   
   let currentTab = 'nap';
@@ -1192,7 +1207,9 @@ function closeNodeModal(event) {
   if (typeof initNotifications === 'function') initNotifications();
 
   // ==================== AUTH CONSTANTS ====================
-  window.APP_URL = 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
+  // The same deployment BASE_API_URL points at — auth actions and data routes are one
+  // endpoint — so the single value to flip is window.NETPULSE_PROXY above.
+  window.APP_URL = window.BASE_API_URL;
   var APP_URL = window.APP_URL;
   var SESSION_KEY = 'netpulse_session';
   var SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
