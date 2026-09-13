@@ -453,15 +453,38 @@ async function loadActiveUsers() {
 // ====================== HEARTBEAT ======================
 
 var _heartbeatInterval = null;
+var _heartbeatFirstBeat = null;
 var HEARTBEAT_MS = 60000;   // 60s (was 30s) — the sheet only drops a user after 5 min idle
+
+// The first beat is deliberately NOT immediate. showApp() calls startHeartbeat()
+// in the same tick as loadInitialData(), so an immediate beat made a hard refresh
+// open SIX concurrent /exec invocations at exactly the moment the deployment is
+// most likely to be stalled. The heartbeat is the least urgent of the six — the
+// sheet only drops a user after 5 minutes idle, so arriving seconds late costs
+// nothing — and measured on the live endpoint ~20% of calls 404 while stalled
+// (3/15, all of them taking 8-33 s), so one fewer concurrent draw is real.
+var HEARTBEAT_FIRST_DELAY_MS = 8000;
+
 var _heartbeatSkip = 0;     // cycles to sit out after the API refuses a beat
 
 function startHeartbeat() {
-  sendHeartbeat(); // Immediate
+  // One heartbeat per app, not one per showApp() call: a second interval would
+  // double the beat rate for the same user.
+  if (_heartbeatInterval || _heartbeatFirstBeat) return;
+  _heartbeatFirstBeat = setTimeout(function () {
+    _heartbeatFirstBeat = null;
+    sendHeartbeat();
+  }, HEARTBEAT_FIRST_DELAY_MS);
   _heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_MS);
 }
 
 function stopHeartbeat() {
+  // The pending first beat has to go with the interval, or a logout that lands in
+  // the first 8 seconds would still announce the user as active.
+  if (_heartbeatFirstBeat) {
+    clearTimeout(_heartbeatFirstBeat);
+    _heartbeatFirstBeat = null;
+  }
   if (_heartbeatInterval) {
     clearInterval(_heartbeatInterval);
     _heartbeatInterval = null;

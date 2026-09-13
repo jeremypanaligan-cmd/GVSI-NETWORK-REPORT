@@ -846,11 +846,70 @@
   //   2. only TRANSIENT failures are retried, with jittered backoff, so a busy
   //      server never gets retried into the ground.
   //
-  // Note on the 404: a real call to this deployment can stall ~15s and then
-  // come back 404 on script.googleusercontent.com while a sibling call
-  // succeeds, i.e. the 404 is a transient throttle — NOT a missing route. So it
-  // is retried, but only once. A 400/401/403 will not fix itself and is fatal.
+  // Note on the 404: measured over a 15-call sweep of this deployment, 3 came
+  // back 404 and EVERY one of them took 8-33 s, while every fast call (1.1-1.3 s)
+  // was 200. The 404 lands on the redirect hop (script.googleusercontent.com/
+  // macros/echo, reached after /exec answers 302) and this app's own script
+  // cannot return it at all — ContentService always answers 200. It is therefore
+  // a stall signature, NOT a missing route, and it is retried. A 400/401/403
+  // will not fix itself and is fatal.
   const _inflightFetches = new Map();
+
+  /* --- SHARED STALL GATE: why a retry no longer waits 500 ms ----------------
+     Retrying 500 ms into an 8 s stall cannot help — the retry lands inside the
+     same stall. And with six callers doing it at once (five modules plus the
+     heartbeat) one bad second turned into ~18 invocations, all inside the stall.
+     Two changes fix that:
+
+       1. the wait scales with the stall the attempt ACTUALLY observed, and
+       2. it is SHARED — one clock for the whole app, so the callers come back as
+          a single trickle instead of six overlapping storms.
+
+     A healthy boot never consults any of this: the gate is only touched after a
+     failure, so the five modules still start together in one tick.
+     ----------------------------------------------------------------------- */
+  var _stallGateUntil = 0;      // epoch ms; no further attempt starts before this
+
+  // Named so a test can read the real numbers out of the source and run
+  // retryDelayMs() against them rather than against a copy.
+  const RETRY_MIN_WAIT = 1500;  // nothing healthy answers faster than ~1.1 s, so a
+                                // shorter wait retries inside the same window
+  const RETRY_MAX_WAIT = 20000; // past this the module's own poll is the better retry
+
+  // Pure and deliberately readable: the old exponential stays in charge of a FAST
+  // failure (a 100 ms blip is still a blip), while a slow one is treated as a
+  // stall and waits about as long as it took to answer.
+  function retryDelayMs(stallMs, attempt, base) {
+    const stalled = Number(stallMs) || 0;
+    const step = Number(attempt) || 1;
+    const exponential = (Number(base) || 500) * Math.pow(2, Math.max(0, step - 1));
+    let wait = Math.max(exponential, Math.round(stalled * 1.5));
+    if (wait < RETRY_MIN_WAIT) wait = RETRY_MIN_WAIT;
+    if (wait > RETRY_MAX_WAIT) wait = RETRY_MAX_WAIT;
+    return wait;
+  }
+
+  // Every failing caller pushes the SAME gate out, and the console hears about a
+  // stall once per window instead of once per caller per attempt.
+  function noteStall(waitMs) {
+    const now = Date.now();
+    const windowWasOpen = _stallGateUntil <= now;
+    const until = now + waitMs;
+    if (until > _stallGateUntil) _stallGateUntil = until;
+    if (windowWasOpen) {
+      console.warn('[API] stalled — retries gated for ' + Math.round(waitMs) + 'ms');
+    }
+  }
+
+  // Loops rather than sleeping once: a sibling that fails while we wait pushes the
+  // gate out beneath us, and leaving early is how the storm starts again.
+  async function waitForStallGate() {
+    for (;;) {
+      const remaining = _stallGateUntil - Date.now();
+      if (remaining <= 0) return;
+      await new Promise(function (r) { setTimeout(r, remaining); });
+    }
+  }
 
   function fetchWithRetry(url, retries = 2, delay = 500) {
     // Attach the session token BEFORE the dedupe lookup, so a burst of identical
@@ -866,6 +925,11 @@
         let status = 0;                       // 0 = network/offline failure
         let rejectedSession = false;
         let finalHop = '';                    // see the failure message below
+
+        // How long this attempt really took. A 40 ms answer and a 20 s stall carry
+        // the same failure code and need opposite retry treatment, so the wait is
+        // derived from this rather than from the attempt number alone.
+        const attemptStart = Date.now();
 
         try {
           const res = await fetch(url, { cache: 'no-store' });
@@ -888,6 +952,8 @@
         } catch (err) {
           status = 0;
         }
+
+        const stallMs = Date.now() - attemptStart;
 
         // A rejected session is fatal and already reported: never retried, and
         // never mistaken for a network blip.
@@ -922,8 +988,11 @@
           throw new Error(status ? `HTTP ${status} for ${url}${hop}` : `Network request failed: ${url}`);
         }
 
-        // Exponential backoff with jitter so parallel callers don't sync up.
-        await new Promise(r => setTimeout(r, delay * Math.pow(2, attempt - 1) + Math.random() * 250));
+        // Stall-aware backoff, then wait out the shared gate. The jitter stays so
+        // the callers do not leave the gate in one synchronised line.
+        noteStall(retryDelayMs(stallMs, attempt, delay));
+        await waitForStallGate();
+        await new Promise(r => setTimeout(r, Math.random() * 250));
       }
     })();
 
@@ -936,17 +1005,19 @@
     return promise;
   }
 
-  // --- APPS SCRIPT KEEP-ALIVE ---
-  // Warm up the Google Apps Script server on page load to reduce cold start delay.
-  // Without this, the first API call (maintenance check or login) takes 2-3s.
-  // With this ping, the server stays warm and subsequent calls are ~500ms-1s.
-  (function appsScriptKeepAlive() {
-    if (!window.APP_URL) return;
-    // Fire-and-forget ping — don't await, don't block UI
-    fetch(window.APP_URL + '?action=keepalive', { cache: 'no-store' })
-      .then(function() { console.log('[KeepAlive] Apps Script warmed up'); })
-      .catch(function() { /* silent — non-critical */ });
-  })();
+  // --- APPS SCRIPT KEEP-ALIVE: REMOVED, and why ------------------------------
+  // A one-shot ping used to live here, behind `if (!window.APP_URL) return;`. It
+  // never ran once: window.APP_URL is assigned ~180 lines FURTHER DOWN this same
+  // script, so the guard always returned early — "[KeepAlive] Apps Script warmed
+  // up" has never appeared in any console.
+  //
+  // It would not have helped even when wired up. It fires in the same tick as the
+  // maintenance check, so both requests land on the same cold instance and the
+  // second one still pays the cold start. Measured: 45.3 s cold against 1.1-1.3 s
+  // warm. Only a PERIODIC ping (~every 3-4 min, while a display is open) can
+  // remove that, and it spends backend request budget this app has no reason to
+  // spend. Rebuild it as a timer if the cold start ever becomes the priority;
+  // never re-add it as a one-shot.
 
   let currentSortState = {
     napTableBody: { col: 0, asc: true, isNum: false },
