@@ -34,15 +34,15 @@
    Raising it costs nothing extra: `install` re-adds every entry above regardless,
    so the same bytes are fetched either way — a new name just makes the generation
    explicit and lets `activate` drop the old copy in one step. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.6';
+const STATIC_CACHE = 'gvsi-shell-v3.10.0';
 
 /* Must match the ?v= token on the <script>/<link> tags in index.html.
 
    The precache has to warm the SAME keys the page asks for. Caching
-   './nap-module.js' while the page requests './nap-module.js?v=3.9.1' stores a
+   './nap-module.js' while the page requests './nap-module.js?v=3.10.0' stores a
    copy nobody ever reads, and quietly leaves the offline shell depending
    entirely on stale-while-revalidate. Keep the two in step. */
-const ASSET_VERSION = '3.9.1';
+const ASSET_VERSION = '3.10.0';
 
 /* The API's host when the app calls it through the edge proxy (window.NETPULSE_PROXY in
    index.html — see proxy/README.md).

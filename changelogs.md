@@ -10,6 +10,51 @@ Versions follow the app's own numbering. Newest first.
 
 ---
 
+## [3.10.0]
+
+### Fixed — the mobile bottom nav could disappear, and only a restart brought it back
+
+Two separate defects, both of which present the same way: **the bar at the bottom of the app
+is gone, and closing and reopening the app is the only thing that brings it back.** Both are
+now impossible to reintroduce without `tests/shell-dom.test.js` turning red (7 tests; the suite
+was mutation-tested — restoring either defect fails 4 of them).
+
+- **The bar was never actually pinned on a phone.** `body.dark-mode .bottom-nav` — the
+  frosted-glass paint rule added with the v3.8.0 redesign — carried `position: relative;
+  z-index: 2`, copied over from the modal rule next to it. That selector is specificity
+  **(0,2,1)** and the bar is only ever *displayed* inside `@media (max-width: 768px)`, where
+  `.bottom-nav` is **(0,1,0)** — so on the one device that shows the bar, the paint rule won
+  both properties: `position: fixed` became normal flow, and the bar's `z-index` fell from
+  **100 to 2**, beneath every overlay. Removed; the rule is paint-only now and the media query
+  pins the bar as it always intended. Measured in the browser afterwards: **390 px → `flex`,
+  `fixed`, `z-index: 100`** with the frosted background and `blur(16px)` intact, **1200 px →
+  `display: none`** (unchanged — the bar is not rendered on desktop at all), the bar is what
+  `elementFromPoint()` returns at its own centre, and with the container scrolled to the bottom
+  the last table row still clears it.
+
+- **The maintenance screen still replaced `document.body.innerHTML`.** That is the exact line
+  that broke the bottom nav in **v3.8.1** ("Update prompt no longer destroys bottom nav on
+  mobile"), fixed there by switching the update prompt to an appended overlay — and the
+  maintenance screen was left as the only remaining place that throws the shell away. It deletes
+  the header, the bottom nav, the kiosk root and everything the running script still holds a
+  reference to, and nothing restores any of it until the app is relaunched. It is now an
+  appended `#maintenanceOverlay` (same markup, same full-screen `z-index: 999999`, same 60 s
+  auto-recheck), so the shell it is drawn over survives underneath — and it is idempotent, so a
+  second call does not stack a second copy.
+
+  Nothing in the app may replace the body's DOM now, and that is asserted rather than
+  remembered: the gate runs over **every script the page loads** and fails on
+  `document.body.innerHTML =`, `.replaceChildren(`, `.remove(`, `document.write(` and
+  `outerHTML =`. Reading `document.body` and describing the rule in a comment both stay legal.
+
+**Released as 3.10.0, and no backend change.** Both fixes would also have reached a device
+without a bump — the service worker's stale-while-revalidate (assets) and network-first (shell)
+strategies are exactly why the cache name is not bumped per edit — but the version is what
+tells a running PWA that a new build exists at all, so a fix to the shell's own layout is not
+left to arrive silently one load later. Nothing to re-paste: no Apps Script, no Worker.
+
+---
+
 ## [3.9.1]
 
 ### Fixed

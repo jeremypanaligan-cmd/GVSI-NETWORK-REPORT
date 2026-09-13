@@ -6,9 +6,9 @@ audit narrative — several of its HIGH findings are already fixed, so treat
 this file as the source of truth for outstanding work.
 
 Legend: ⬜ todo · 🔄 in progress · ✅ done · ⏸ blocked
-Last updated: 2026-09-13 · Version: 3.9.1 · Backend suite: 98/98, script-order suite: 18/18,
+Last updated: 2026-09-13 · Version: 3.10.0 · Backend suite: 98/98, script-order suite: 18/18,
 OLT payload suite: 9/9, boot-graph suite: 8/8, stall-handling suite: 8/8, edge-proxy suite:
-21/21, last-known-good suite: 25/25 (**187 total**)
+21/21, last-known-good suite: 25/25, shell-DOM suite: 7/7 (**194 total**)
 Ang tatlong batch na ito ay **naka-commit at naka-push na**, at **walang backend change kaya
 walang redeploy**:
 
