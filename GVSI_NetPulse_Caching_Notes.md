@@ -1,8 +1,9 @@
 # GVSI NetPulse — Caching Notes
 
-There are **five** places data can sit between the Google Sheet and the screen. When something
-looks stale (or refuses to update), it is almost always one of these. Read this before changing
-anything that fetches, stores, or serves data.
+There are **five** places data can sit between the Google Sheet and the screen, plus **one**
+that exists for the opposite reason — what to show when the API cannot be reached at all
+(*last known good*, note 12). When something looks stale (or refuses to update), it is almost
+always one of the five. Read this before changing anything that fetches, stores, or serves data.
 
 ---
 
@@ -23,7 +24,10 @@ Google Sheet
        │                                               (not a cache — see the Reliability
        │                                               entry in changelogs.md)
        │                   └─ dataCache                in memory, per session, never auto-expires
-       │                        └─ renderers           admin tables + kiosk slides
+       │                        │                       └─ renderers   admin tables + kiosk slides
+       │                        └─ last-known-good      localStorage, ONE payload per module,
+       │                           (last-good.js)       written only when it changes, shown
+       │                                               ONLY alongside the stale banner
        └─ IndexedDB              netpulse-db/snapshots one row per day, 90-day retention
 ```
 
@@ -36,6 +40,7 @@ Google Sheet
 | **Service worker shell cache** | `sw.js`, cache name `gvsi-shell-v*` | until revalidated | SWR per asset (refreshed on every load); **navigations network-first** |
 | **HTTP cache** | browser | server-dependent | bypassed by `cache: 'no-store'` / `'no-cache'` |
 | **`dataCache`** | `index.html` (`const dataCache`) | the tab's lifetime | only when a fetcher writes it |
+| **Last known good** | `last-good.js`, `localStorage` keys `netpulse_lastgood_<type>` / `_at` | until cleared | overwritten per module only when the payload changes; `netpulseCache.clearLastGood()`; the version guard's storage clear |
 | **IndexedDB** | `db.js`, DB `netpulse-db`, store `snapshots` | 90 days | daily cleanup on save, `clearIndexedDB()` for the whole DB, or `rebuildTrendDay()` / `dropTrendDay(date)` for one record (note 8) |
 | *(`localStorage`)* | — | until cleared | prefs only, **not** a data cache |
 
@@ -50,7 +55,8 @@ of clearing things by hand in five places:
 await netpulseCache.status()            // what is held where, layer by layer
 netpulseCache.revalidateState()         // why a module is (not) re-fetching right now
 await netpulseCache.payloadHeadroom()   // each module's size vs the 90 KB / 450 KB limits
-await netpulseCache.invalidateAll()     // SAFE clear: dataCache + shell cache
+netpulseCache.lastGood()                // what a failure would fall back to, per module
+await netpulseCache.invalidateAll()     // SAFE clear: dataCache + shell cache + last known good
 await netpulseCache.invalidateAll({ indexedDB: true, storage: true })  // + destructive layers
 await netpulseCache.clearEverything()   // all of the above + SW unregister + reload
 ```
@@ -79,10 +85,11 @@ What each layer answers to:
 | 3. Service worker / shell cache | Yes. The registration itself needs `serviceWorker: true`. |
 | 4. HTTP cache | Not directly — it is bypassed by the SW on revalidate. |
 | 5. `dataCache` | Yes, always (it is free and safe). |
+| 6. Last known good | Yes, always. Safe: it holds one payload per module, kept only so a failure has something honest to show. |
 
 ---
 
-## The eleven things that bite
+## The twelve things that bite
 
 1. **The service worker must never cache API responses.** `script.google.com` returns early in
    the `fetch` handler. **Do not move that branch below the static-asset branch** — the app
@@ -219,6 +226,26 @@ What each layer answers to:
    `shape` is, so one shared key would serve whichever payload was cached first to
    whoever asks next. Add a shape, add its own key.
 
+12. **Last known good is not a cache, and must never be shown without the banner.** It holds
+   **one payload per module**, written by `noteModuleFresh()` and read by
+   `degradeModuleToLastGood()` when a fetch fails; `last-good.js` then marks the module stale and
+   paints every `.stale-banner` in the document (there are two: the dashboard header and the
+   kiosk topbar). Three things to keep in step when a module or its payload changes:
+
+   - `TYPES` in `last-good.js` — a module missing from it is never marked stale, so its banner
+     never appears.
+   - the module's own three calls: `noteModuleFresh(type, payload)` on success,
+     `noteModuleFailed(type)` in a background revalidation's `catch`, and
+     `degradeModuleToLastGood(type, dataCache[type])` in the loading path's `catch`. Drop the
+     last one and the module goes back to showing a hole — or, for NODE and BACKBONE which used
+     to render their **all-clear cards** there, to claiming a healthy network while blind.
+   - `SHAPE` — bump it when the payload shape changes, so an older record on a device is
+     **refused** (`null`, plus a console warning) instead of rendered with the wrong fields.
+
+   The payload and its timestamp are deliberately two keys: the timestamp is a few bytes and is
+   written on every poll, while the ~50 KB payload is written only when it actually changes.
+   Rewriting it every minute would be ~26 GB/year of writes on a display that never sleeps.
+
 ---
 
 ## Debugging "why is it stale?"
@@ -232,6 +259,8 @@ What each layer answers to:
 | A versioned asset is a load behind | normal SWR | Expected — see note 6 (that is what `?v=` is for) |
 | An **icon** is old, everything else is fine | precache-only asset | `STATIC_CACHE` was not bumped — see note 9 |
 | A module stops refreshing as often as it used to | revalidation throttle | Expected, up to 1/min/module — see note 3 |
+| A module shows old data, or "Live data unavailable", plus a **STALE** banner | API unreachable | Expected — the banner says since when. Check `netpulseCache.lastGood()` |
+| A module says "Live data unavailable" but the API is fine | a failed **first** load, or nothing was ever remembered | Reload; if it persists, the fetch itself is failing — not this layer |
 | `deleteDatabase` never returns | a held IDB connection | Use `netpulseCache.clearIndexedDB()`; it releases the connection first (note 10) |
 
 `dataCache` is in-memory only, so **a hard reload always clears it** and is the fastest way to

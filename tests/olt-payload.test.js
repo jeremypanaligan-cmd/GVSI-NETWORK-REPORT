@@ -119,7 +119,7 @@ test.describe('OLT payload round trip (code.gs -> olt-module.js)', () => {
     assert.equal(down.CA, '280');
   });
 
-  test('the compact payload is materially smaller than the legacy one', () => {
+  test('the compact payload is smaller BEFORE gzip — on the wire it is not', () => {
     const h = createHarness();
     seedBothSheets(h);
 
@@ -129,7 +129,14 @@ test.describe('OLT payload round trip (code.gs -> olt-module.js)', () => {
     const compact = h.doGet({ type: 'olt', shape: '2' }).text.length;
 
     // The four-row fixture is too small to show the real ratio; on the live sheet
-    // (461 rows, 16 provinces, 211 municipalities) it is 50,179 -> 26,258 bytes.
+    // (461 rows, 16 provinces, 211 municipalities) it is 50,317 -> 26,244 decoded.
+    //
+    // Read this as a DECODED-size assertion only. Apps Script sends
+    // `Content-Encoding: gzip` and the legacy shape's repeated keys compress almost
+    // free, so measured with `curl -L --compressed` the two are 4,194 against 4,239
+    // bytes — the compact shape is the LARGER one on the wire, and in the browser the
+    // parse+decode of both costs under a millisecond. It is kept as a versioned
+    // envelope, not as a bandwidth win: see the OLT entry in changelogs.md.
     assert.ok(compact < legacy, `compact ${compact} should be smaller than legacy ${legacy}`);
   });
 });

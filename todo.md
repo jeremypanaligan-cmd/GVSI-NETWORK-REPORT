@@ -6,8 +6,9 @@ audit narrative — several of its HIGH findings are already fixed, so treat
 this file as the source of truth for outstanding work.
 
 Legend: ⬜ todo · 🔄 in progress · ✅ done · ⏸ blocked
-Last updated: 2026-09-13 · Version: 3.9.0 · Backend suite: 98/98, script-order suite: 18/18,
-OLT payload suite: 9/9, boot-graph suite: 8/8, stall-handling suite: 8/8 (**141 total**)
+Last updated: 2026-09-13 · Version: 3.9.1 · Backend suite: 98/98, script-order suite: 18/18,
+OLT payload suite: 9/9, boot-graph suite: 8/8, stall-handling suite: 8/8, edge-proxy suite:
+21/21, last-known-good suite: 25/25 (**187 total**)
 Ang tatlong batch na ito ay **naka-commit at naka-push na**, at **walang backend change kaya
 walang redeploy**:
 
@@ -25,6 +26,43 @@ Ang naunang batch (icons, kiosk storm, stale shell, NODE escaping, **OLT payload
 naka-commit at naka-push na rin. `code.gs` ay may pagbabago → **kailangan ng redeploy** para
 gumana ang `shape=2`; hanggang doon, legacy payload pa rin ang natatanggap at walang nagbabago
 sa paggana.
+
+**Naka-deploy na (2026-09-13): ang edge proxy.** Ang browser ay isang hop na lang ang
+binabayaran, at ang 404 ng redirect hop ay nire-retry **sa server-side**. Sinukat sa parehong
+instrumento: hops **2 → 1**, warm p50 **1,096 → 1,158 ms** (+62 ms), boot burst **1,156 →
+1,264/1,295 ms**, cold burst **3,235 → 2,858 ms**, failures **0/25** sa dalawang panig.
+**Hindi ito bilis — hugis ng failure ang binili**, at hindi nasukat ang pagbabago ng failure
+rate dahil malusog ang origin sa araw na iyon; ang patunay ay ang injected-failure suite.
+Isang value ang pag-revert: `window.NETPULSE_PROXY = ""` kasabay ang `API_PROXY_HOST` sa
+`sw.js` (pumupula ang test kapag hindi sila tugma). **Isang linya sa repo ay mas bago kaysa sa
+naka-deploy:** ang `Access-Control-Expose-Headers` — kailangang i-paste muli ang worker para
+mabasa ng app ang `x-netpulse-*` headers.
+
+**✅ Naka-implement na (2026-09-13): ang honest failure state.** Kapag hindi maabot ang API,
+hindi na blangko o error row ang lumalabas — ipinapakita ang **huling kilalang data** na may
+banner (`STALE — live data unavailable · showing last known: NAP 6:18 PM …`) sa dashboard **at**
+sa kiosk topbar (`last-good.js`, localStorage `netpulse_lastgood_*`). Ang tunay na bug na
+naayos dito: ang **NODE at BACKBONE** ay dating nagpapakita ng all-clear card sa bigong fetch —
+`All Node Systems Operational` habang bulag. Beripikado sa browser (stubbed API): walang
+all-clear kahit saan, at `—` ang KPI cards sa halip na `0`. Walang backend change → walang
+redeploy. Detalye: `GVSI_NetPulse_Caching_Notes.md` nota 12.
+
+**🔴 Kailangang i-paste muli ang worker (2026-09-13):** ang whitelist ng proxy ay **walang
+`password`**, kaya tinatanggal ito bago umabot sa Apps Script — **bigong lahat ng login** na
+"Invalid username or password" kahit tama ang credentials (at wala sanang error na lumabas,
+dahil 200-with-JSON ang sagot ng Apps Script sa lahat ng kaso). Nawawala rin ang `enabled`, kaya
+hindi mai-ON ang maintenance. Naidagdag na sa `proxy/netpulse-proxy.mjs`, at ang bagong test ay
+**hinahango ang tamang listahan mula sa `e.parameter.*` ng `code.gs`/`admin.gs`** — kapag
+ibinalik ang lumang listahan, **3 tests ang pumupula**. Kailangan lang i-paste muli ang worker;
+walang app-side na dapat baguhin.
+
+**⬜ Nakabinbing desisyon — sulit ba ang ~60 ms?** Ang metric ay ang `x-netpulse-attempts`
+(hindi ang failure rate): ang tawag na binigo ng origin sa unang subok ay eksaktong tawag na
+magiging browser-visible failure sa direktang landas. Patakbuhin ito **kapag mabagal o may
+error**, hindi lang sa magandang araw:
+`node tools/api-probe.js --url="https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev" --rounds=20 --bursts=4`
+Kung laging **~0%** kahit sa slow patch → **i-revert** (isang value). Unang sukat (2026-09-13):
+**40 tawag, 0 retry, 0 failure** — malusog na window, kaya wala pang napapatunayan.
 
 ---
 
@@ -178,6 +216,23 @@ keeps a *missing* token tolerated (so an old cached shell keeps working) while a
   at ang paunang kailangan para sa **option (b)** sa itaas — ang aggregate ng 452 UP row, na
   gzip lang sa **~468 bytes** laban sa **4,242**. Iyon ang pagbabagong may totoong bandwidth
   na panalo, at hindi pa tapos.
+  **DESISYON (sinukat sa totoong browser, 2026-09-13): itago — bilang envelope, hindi bilang
+  bandwidth win. Isara na ang payload-size work.** Tatlong round, halinhinan ang order, sa
+  loob ng app page: pareho ang **fingerprint ng 461 row** (`997973577`) at pareho rin ang key
+  order, kaya re-encoding lang ito at hindi pagbabago ng datos. Ang `JSON.parse` ay **0.3–0.5 ms
+  (legacy)** laban sa **0.1–0.2 ms (compact)**, at ang tunay na `decodeOltPayload` ay
+  **0.2–0.7 ms** — kabuuang **~0.4 ms**, laban sa **1,188–2,877 ms** na fetch. Sa wire, dalawang
+  pass: **4,194 laban sa 4,239 bytes** — mas malaki pa nga ang compact. Walang nasukat na
+  benepisyo, at wala ring nasukat na pinsala.
+  **Bakit itago:** ang `{v, f, p, m, r}` ay **versioned envelope** — sa susunod na pagbabago ng
+  hugis (hal. ang UP-row aggregate), may `v` at `f` nang magsisiguro na ang lumang client ay
+  tatanggi nang tahimik (`null`) sa halip na mag-render ng maling numero. Iyon ang tanging
+  binibili nito, at sapat na iyon. Hindi rin sulit ang pag-alis: redeploy at paggalaw sa
+  gumaganang code para sa ~15 linya.
+  **Bakit isasara na:** pagkatapos ng kiosk throttle, ang `?type=olt` ay hinihila nang **isa
+  kada 15 minuto** na lang, kaya kahit ang option (b) ay ilang KB kada oras na lang ang
+  natitipid — hindi na sulit ang bagong endpoint at isa pang code path. Ang natitirang timbang
+  ay ang **round trips at ang flaky Google redirect hop**, hindi ang bytes.
 
 - ✅ **3. Itigil ang kiosk re-fetch storm** — ang `fetchOltData()` ay cache-first **pero laging
   nagpapaputok ng background revalidation** (`olt-module.js:3-12`), at tinatawag ito ng kiosk sa

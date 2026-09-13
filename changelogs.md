@@ -10,9 +10,97 @@ Versions follow the app's own numbering. Newest first.
 
 ---
 
-## [Unreleased]
+## [3.9.1]
+
+### Fixed
+- **Sign-in was broken by the proxy's own parameter whitelist: `password` was not on it, so the
+  worker** ***stripped the password*** **before the origin ever saw it.** Every login then failed
+  with `Invalid username or password` while the credentials were correct — and nothing anywhere
+  reported an error, because Apps Script answers **200 with JSON** either way (`handleLogin` hashes
+  an empty string and compares it, and the refusal message is deliberately generic so usernames
+  cannot be probed). `enabled` was missing too, so `action=setMaintenance` could only ever turn
+  maintenance **off**: `e.parameter.enabled === "true"` was never true.
+
+  - The whitelist was meant to stop the worker being an open relay; the failure mode of getting it
+    wrong is not a security hole but a **silent, invisible** one. So the guard is now derived rather
+    than hand-kept: `tests/proxy.test.js` reads every `e.parameter.*` out of `code.gs` and
+    `admin.gs` and fails if `buildOriginUrl()` drops any of them — **the backend defines the
+    allowed set**. Three tests, three reds when the shipped list is restored.
+  - **Requires re-pasting `proxy/netpulse-proxy.mjs` into the Worker** — the fix lives at the edge,
+    so the app cannot be fixed around it. `?probe=1` still answers without touching the origin, so
+    it is easy to confirm the new version went live.
+
+### Reliability — the screen now admits what it does not know
+- **A failed fetch degrades to the last known data with a banner saying since when, instead of a
+  hole or an error row.** Each module's success path calls `noteModuleFresh(type, payload)`, its
+  background-revalidation failure calls `noteModuleFailed(type)`, and a failed first load calls
+  `degradeModuleToLastGood(type, dataCache[type])` — one payload per module is remembered in
+  `localStorage` (key prefix `netpulse_lastgood_`), and `last-good.js` paints every
+  `.stale-banner` in the document with `STALE — live data unavailable · showing last known: NAP
+  6:18 PM · LCP 6:18 PM · OLT 6:18 PM · +2 more`.
+
+  - **NODE and BACKBONE were the real bug, not the missing hole.** Both fell through to their
+    **all-clear** cards on a failed fetch, so a dead API rendered `All Node Systems Operational`
+    and `All Backbone Links Operational` — the most confident possible lie, on the screen most
+    likely to be watched by someone who is not looking for it. They now degrade to the last
+    known incident list, render a remembered *genuine* all-clear only when the API actually
+    answered with one, and otherwise show `Live data unavailable — the API could not be reached
+    and no earlier data was kept. This is not an all-clear.` Verified in the browser with the
+    API stubbed out: **no all-clear anywhere**, and the KPI cards read `—` rather than `0`.
+  - The payload and its timestamp are two keys on purpose: the timestamp is written on every
+    poll (it is what the banner reads) while the ~50 KB OLT payload is written only when it
+    changes — rewriting it every minute would be ~26 GB/year of writes on a display that never
+    sleeps. An unknown `SHAPE` or an oversized payload is **refused** (with a warning) instead of
+    rendered, because a wrong number on a NOC display is worse than a missing one.
+  - The kiosk carries the same banner in its top bar, and a slide whose module was never loaded
+    says `NO LIVE DATA · <module> unavailable` instead of sitting on `Loading…` forever.
+  - `netpulseCache.status()` now reports it as layer 6, `invalidateAll()` clears it, and
+    `lastGood()` shows what each module would fall back to. The version guard's one-off storage
+    clear wipes it too, which is correct: a new build must not fall back to an old shape.
+  - **25 new tests** (`tests/last-good.test.js`) run the real layer in a `vm` with a hand-advanced
+    clock. Three mutations were tried against it and all were caught: NODE rendering all-clear on
+    failure (2 red), the payload being rewritten on every poll (1 red), and LCP dropping
+    `noteModuleFresh` (1 red).
 
 ### Reliability
+- **The API moved behind an edge worker, so the flaky Google hop is now retried where waiting
+  costs a user nothing.** The browser used to pay a two-hop redirect on every call and absorb
+  every failure itself; it now makes **one** request to a Cloudflare Worker
+  (`proxy/netpulse-proxy.mjs`, deployed as `holy-cloud-1d7a`) which follows the chain and
+  retries it up to three times. Same instrument both ways (`tools/api-probe.js`), 25 calls each:
+
+  | | before (direct) | after (through the worker) |
+  |---|---|---|
+  | hops the client pays | **2** | **1** |
+  | `?type=nap`, warm, p50 | 1,096 ms | 1,158 ms |
+  | one boot burst, 5 concurrent | 1,156 ms | 1,264 / 1,295 ms |
+  | cold-ish first burst | 3,235 ms | 2,858 ms |
+  | failures | 0 / 25 | 0 / 25 |
+
+  - **It is not a speed win, and that is the honest reading:** warm calls cost about
+    **+62 ms (+5.7%)** and a boot burst **+110–140 ms** — the price of one extra hop. What it
+    changes is the *shape* of a failure: one request to one host, the hop that answers 404
+    retried **server-side**, and the caller gets **200 or a retryable 503, never a 404**.
+  - A module that received a 404 used to sit on *"Error loading data."* until its next poll —
+    up to an hour for NAP. That is the failure this removes, and it is the reason the hop is
+    worth ~60 ms.
+  - The live 404 is **intermittent** (**0/25** healthy, **3/15** stalled), so a clean after-run
+    proves nothing. The fix is therefore proven by **injected** failure: `tests/proxy.test.js`
+    feeds the worker a 404, a 500, a thrown connection and a 200-carrying-HTML, and asserts the
+    caller never sees a 404. Breaking the retry on purpose (`ATTEMPTS = 3 → 1`) turns **4** red.
+  - **No caching, on purpose.** A 24/7 wall display showing a stale outage is worse than one
+    that takes 1.2 s. Only `type`, `action`, `shape`, `token`, `username`, `fullName` and
+    `probe` are forwarded and the origin URL is fixed in the worker, so it cannot be used as
+    an open relay.
+  - `x-netpulse-attempts` and `x-netpulse-origin-ms` say whether a call was retried and how
+    long the origin took. They are listed in `Access-Control-Expose-Headers` — without that
+    line the browser **hides** them from the app: measured from the app,
+    `res.headers.keys()` returned neither while the same call from `curl` showed both.
+  - **One value flips it back:** `window.NETPULSE_PROXY = ""` in `index.html`, with
+    `API_PROXY_HOST` in `sw.js` blanked alongside it. `tests/proxy.test.js` now fails if the
+    two disagree *in either direction*, because a service worker that
+    stale-while-revalidates the API would hand the display a stale outage — verified live
+    that two fresh API calls through the app add **0** entries to the shell cache.
 - **The retry no longer lands inside the stall that caused the failure.** A hard refresh was
   flooding the console with `script.googleusercontent.com/macros/echo` **404s** and making
   the app feel slow. Measured with `curl` — no cookies, no JS, no service worker —
@@ -141,6 +229,23 @@ Versions follow the app's own numbering. Newest first.
   - **Measured on the live sheet**, not on a fixture: the real encoder in `code.gs` and
     the real decoder in `olt-module.js` round-trip 461 live rows **byte-for-byte** — and
     in the browser the compact path renders a table *identical* to the legacy one.
+  - **Re-measured inside a real browser (2026-09-13), and the verdict is: keep it, as an
+    envelope.** Both shapes were pulled three times each, in alternating order, from the app
+    page itself, running the real `decodeOltPayload` out of `olt-module.js`: both decode to
+    **461 rows with the same fingerprint and the same key order**, so this is re-encoding and
+    not a change of data. `JSON.parse` went **0.3–0.5 ms → 0.1–0.2 ms** and the decoder cost
+    **0.2–0.7 ms** for all 461 rows — about **0.4 ms** saved against **1,188–2,877 ms** of
+    fetch. Over gzip the compact shape was **4,239 bytes against 4,194** (two passes, identical
+    each time), i.e. the *larger* one. Neither the wire nor the CPU is a win, which confirms
+    the correction above with independent numbers.
+    - It is kept for the **versioned envelope** (`{v, f, p, m, r}`): the next change to this
+      payload's shape gets a version byte and a field list, so an old client refuses it with a
+      warning (`null`) instead of rendering wrong numbers. That is the whole return, and it is
+      enough to justify ~15 lines that are already deployed and tested.
+    - **The payload-size work item is now closed.** After the kiosk throttle, `?type=olt` is
+      pulled at most once per 15 minutes, so even the aggregate idea (~468 B against 4,194 B)
+      buys a few KB an hour — not worth a new endpoint and a second code path. What is left is
+      round trips and the flaky Google redirect hop, not bytes.
   - The `?type=olt` request still leaves immediately after boot, but now there is exactly
     **one** per boot: two other code paths built their own URL for the same module
     (`prefetchOtherTabsInBackground()` in `index.html` and the analytics cold-start

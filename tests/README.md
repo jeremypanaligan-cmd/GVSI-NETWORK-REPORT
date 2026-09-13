@@ -1,6 +1,6 @@
 # Test suites
 
-Five suites, all browser-free and network-free:
+Seven suites, all browser-free and network-free:
 
 - **Backend** — `code.gs` (routing + the caching layers) and `admin.gs` executed
   for real in a Node `vm` context against fake Google service globals.
@@ -13,16 +13,25 @@ Five suites, all browser-free and network-free:
   chained behind NAP's round trip without anyone meaning them to be.
 - **Stall handling** — the retry must outlast the stall it just saw, through one shared
   gate, and the heartbeat must stay out of the boot tick.
+- **Edge proxy** — the origin's intermittent 404 is injected rather than waited for, and
+  the caller must never see it. The live failure is 0/25 on a healthy afternoon and 3/15
+  during a stall, so only an injected failure can prove the fix.
+- **Last known good** — `last-good.js` is *run* in a `vm` (fake `window`, `document`,
+  `localStorage` and a clock we advance by hand) to prove a failed fetch degrades to the last
+  known payload, that nothing is invented when there is none, and that NODE and BACKBONE can
+  no longer render their all-clear cards on a failed load.
 
 ## Running
 
 ```bash
-node --test            # from the repo root, runs tests/*.test.js (all five suites)
+node --test            # from the repo root, runs tests/*.test.js (all seven suites)
 node --test tests/code.gs.test.js        # backend only
 node --test tests/inline-order.test.js   # script order only
 node --test tests/olt-payload.test.js    # payload round trip only
 node --test tests/boot-parallel.test.js  # boot graph only
 node --test tests/api-stall.test.js      # stall handling only
+node --test tests/proxy.test.js          # edge proxy only
+node --test tests/last-good.test.js      # last known good only
 node --test --test-name-pattern="TTL"    # filter by test name
 ```
 
@@ -43,8 +52,10 @@ only protects the app if `node --test` is run before a commit that touches a
 | `inline-order.js` | The script-order analyser (no tests of its own; used by the file below) |
 | `inline-order.test.js` | 18 tests — the app-clean gate, reproductions of both historical bugs, and the rule cases |
 | `olt-payload.test.js` | 9 tests — the encoder/decoder round trip and the decoder's own edges |
+| `proxy.test.js` | 21 tests — the injected origin failures, request forwarding, the proxy's surface (no cache, CORS, method, liveness), the guards that `window.NETPULSE_PROXY` and `API_PROXY_HOST` in `sw.js` never drift apart, and that **every parameter the backend reads survives the hop** (a dropped `password` broke sign-in for everyone with no error anywhere) |
 | `boot-parallel.test.js` | 8 tests — the boot-graph gate, reproductions of both ways the boot went serial, the snapshot's completeness rule, the trend audit, and the guard that stops a past day being overwritten |
 | `api-stall.test.js` | 8 tests — the stall-handling gate, the three old shapes (fixed backoff, per-caller gate, boot-tick heartbeat) re-introduced, and the real `retryDelayMs()` executed against the real bounds |
+| `last-good.test.js` | 25 tests — the fallback store and its clock, the never-invent-data rule, the banner in both shells, the five modules' fresh/degrade wiring, the guard against NODE/BACKBONE showing all-clear on a failed fetch, and the load-order + precache guards for the new file |
 
 ## Usage
 
