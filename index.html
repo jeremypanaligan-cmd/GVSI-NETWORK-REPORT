@@ -1267,6 +1267,31 @@ function closeNodeModal(event) {
   });
 
   if ('serviceWorker' in navigator) {
+    // One controlled reload when a NEW worker takes over.
+    // When a replacement worker takes charge (observed: it can wait until the next
+    // load before it does), this page keeps running the JS it already loaded — so
+    // without this it would sit on the previous build indefinitely. That is exactly
+    // how the wall display came to be running a build whose fix was already in the
+    // cache (runningCodeHasBuggyConst: true while cachedIndexHasFix: true).
+    // Only when a worker was ALREADY controlling the page: on a first install there
+    // is nothing older to replace, and reloading would just be noise.
+    const controlledAtLoad = !!navigator.serviceWorker.controller;
+    let _swReloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (_swReloading || !controlledAtLoad) return;
+      // Leave the out-of-date case to the version guard entirely. That guard clears
+      // every worker and cache on each load while it waits for the user to press
+      // "Refresh & Sync", then re-registers — so a worker takes control on EVERY
+      // load in that state, and reloading here as well would loop the display.
+      // Its state is read from localStorage rather than the overlay element: the
+      // guard has not necessarily painted the overlay yet (observed — the clear had
+      // run, the prompt had not) and that window is exactly when the loop would
+      // start. It only writes app_version when the user completes the sync.
+      if (localStorage.getItem('app_version') !== REQUIRED_APP_VERSION) return;
+      _swReloading = true;
+      window.location.reload();
+    });
+
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js?v=3.9.0').then(reg => {
         // Force an update check on every load. Without this the browser only

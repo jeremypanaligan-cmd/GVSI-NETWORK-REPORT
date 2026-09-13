@@ -196,8 +196,30 @@ self.addEventListener('fetch', (e) => {
   // Only GET is cacheable.
   if (e.request.method !== 'GET') return;
 
-  // 2. App shell / static assets -> STALE-WHILE-REVALIDATE.
   const cachePromise = caches.open(STATIC_CACHE);
+
+  // 2. Navigations -> NETWORK FIRST, cache fallback. See the header for why the
+  //    shell is the one thing that must not be a load behind.
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      cachePromise.then((cache) => fetch(e.request, { cache: 'no-cache' })
+        .then((res) => {
+          if (isCacheable(res)) {
+            cache.put(e.request, res.clone()).catch(() => {});
+            return res;
+          }
+          // An error page or a 404: a known-good cached shell beats serving it.
+          return cache.match(e.request).then((cached) => cached || res);
+        })
+        .catch(() => cache.match(e.request).then(
+          (cached) => cached || new Response('', { status: 504, statusText: 'Offline' })
+        ))
+      )
+    );
+    return;
+  }
+
+  // 3. App shell / static assets -> STALE-WHILE-REVALIDATE.
 
   // Start the network request straight away so the refresh overlaps the paint.
   // 'no-cache' forces revalidation — that is what makes an edit actually land
