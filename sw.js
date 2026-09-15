@@ -1,10 +1,16 @@
-/* Bumped for the admin session-token fix. This worker is CACHE-FIRST for everything
-   that is not the API, and its precache list holds the UNVERSIONED names the page
-   actually requests (`admin-module.js`, not `admin-module.js?v=...`), so a stale
-   `admin-module.js` would be served forever without a new cache generation: `install`
-   re-fetches every entry, `activate` deletes the old cache. Raising this name is
-   therefore the whole delivery mechanism for a fix to any of these files. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.2';
+/* Bumped for the v3.9.1 release — the proxy removal, the kiosk work and the loading
+   state. The name follows the app version (3.10.0 → gvsi-shell-v3.10.0) rather than
+   counting up on its own, so it can sit below a generation an unversioned kiosk publish
+   left behind (v3.9.2); that is harmless: nothing compares names, `activate` just drops
+   every cache that is not this one. What matters is that the name is NEW.
+
+   It has to be new, because this worker is CACHE-FIRST for everything that is not the
+   API, and its precache list holds the UNVERSIONED names the page actually requests
+   (`admin-module.js`, not `admin-module.js?v=...`), so a stale `admin-module.js` would be
+   served forever without a new generation: `install` re-fetches every entry, `activate`
+   deletes the old cache. A new name is therefore the whole delivery mechanism for a fix
+   to any of these files. */
+const STATIC_CACHE = 'gvsi-shell-v3.9.1';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
@@ -95,8 +101,12 @@ self.addEventListener('notificationclick', (e) => {
    cache-first branch would hand a wall display a STALE OUTAGE, the one thing it must
    never show. It is the same reasoning that put this file's API branch first in the
    newer tree; here it is two values that have to be changed together, so: the pair is
-   `NETPULSE_PROXY` in index.html and this constant. */
-const API_PROXY_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
+   `NETPULSE_PROXY` in index.html and this constant.
+
+   BLANK while the proxy is off (2026-09-15): the app calls `script.google.com` directly
+   again and that rule above already covers it. Set this back in the same step that
+   `NETPULSE_PROXY` in index.html is restored — never one without the other. */
+const API_PROXY_HOST = '';
 
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;

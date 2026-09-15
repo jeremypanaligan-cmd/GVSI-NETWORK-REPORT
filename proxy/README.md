@@ -3,7 +3,19 @@
 `netpulse-proxy.mjs` is a Cloudflare Worker that sits between the PWA and the Apps Script
 deployment, so the browser pays **one** request instead of a redirect chain.
 
-**Status: deployed and wired up, 2026-09-13.**
+**Status: TURNED OFF in the app, 2026-09-15 — the code below is kept, the app does not use it.**
+
+`window.NETPULSE_PROXY` in `index.html` is blank, so every route (data *and* auth) calls
+Apps Script directly, and `API_PROXY_HOST` in `sw.js` is blank to match. The reason:
+`ATTEMPT_TIMEOUT_MS = 20000` with `ATTEMPTS = 3` is shorter than the deployment's OLT
+branch needs to build its payload, so `?type=olt` was answered **503 by this worker while
+the deployment was healthy** — the direct `/exec?type=olt` URL returns the JSON, just
+slowly, and retrying a heavy call only repeats the heavy computation. Raising the ceiling
+or dropping to one attempt buys headroom without fixing that, so the proxy is off until
+the OLT branch is fast enough for any timeout to be the right answer. Everything below
+still describes how to turn it back on; the rollback is the two values named above.
+
+**Former status: deployed and wired up, 2026-09-13.**
 
 | | |
 |---|---|

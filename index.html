@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.0">
+  <link rel="stylesheet" href="styles.css?v=3.9.1">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.9.0">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.1">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -72,7 +72,7 @@
       </button>
       <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.9.0</div>
+    <div class="login-footer">GVSI NetPulse v3.9.1</div>
   </div>
 </div>
 
@@ -372,6 +372,17 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.1 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Kiosk OLT DT Cause Breakdown (New):</strong> The OLT kiosk slide now aggregates every DOWN record by DT Cause and shows it as colour-coded badges with live counts — Power, Fiber, Equipment, TBD and Fiber and Power — so the outage driver is readable from across the NOC.</li>
+                  <li><strong>Kiosk NODE Hierarchy (New):</strong> Affected NPE names are now the primary highlight, the province second and DT Cause third. The North Luzon map was dropped in favour of the names an operator actually acts on. A compact strip above the cards carries total affected nodes, DOWN incidents, provinces and latest sync.</li>
+                  <li><strong>Kiosk Change Indicators (New):</strong> Metrics flash ▲ +N or ▼ −N when they move against the previous refresh, so a change is seen without reading every card.</li>
+                  <li><strong>Gathering Live Feed (New):</strong> Each module now covers its own content with a &quot;Gathering data…&quot; state until real data arrives, instead of an empty or false all-clear dashboard.</li>
+                  <li><strong>Signing-in Progress (New):</strong> The login button reports a signing-in state and locks while the session is being established.</li>
+                  <li><strong>Data Path Simplified:</strong> The Cloudflare edge proxy was removed and the app calls the Apps Script deployment directly again for data, auth and admin. The proxy's 20-second per-attempt ceiling was shorter than the OLT payload takes to build, so it answered 503 on a healthy origin.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.0 — What's New:</strong></p>
@@ -712,8 +723,9 @@
 
 <script>
 // 1. Version Guard Logic
-  /* Deliberately NOT the build's own version, and deliberately unchanged at "3.10.0"
-     while this tree is the v3.9.0 kiosk build.
+  /* Deliberately NOT the build's own version (3.9.1 in the footer, manifest and
+     `?v=` tokens), and deliberately unchanged at "3.10.0" while this tree is the
+     v3.9.x kiosk build.
 
      This constant is the guard's match key, not a version label: a device whose stored
      `app_version` differs is taken to the update overlay — and on THIS build that
@@ -723,7 +735,12 @@
      used) would block every dashboard AND every NOC wall display on a prompt nobody is
      there to answer, for a rollback that does not need it: delivery is the service
      worker's new cache generation (sw.js), and this build carries the same session and
-     token keys through a wipe anyway. */
+     token keys through a wipe anyway.
+
+     The same reasoning holds for a forward release on this tree: the 3.9.1 bump moves
+     the labels, the `?v=` tokens, the manifest and the cache generation, and leaves this
+     guard alone — a wall display must never be held behind a button, and the new shell
+     still reaches every device because `activate` drops the old cache in one step. */
   const REQUIRED_APP_VERSION = "3.10.0"; 
 
   async function checkAppVersion() {
@@ -784,27 +801,22 @@
   // --- MGA APPLICATION VARIABLES ---
   /* WHERE THE DATA PATH POINTS
 
-     APPS_SCRIPT_URL is the deployment itself. NETPULSE_PROXY is the Cloudflare worker
-     in front of it (see proxy/README.md), which retries the flaky Google redirect hop
-     server-side so the browser never pays for it.
+     APPS_SCRIPT_URL is the deployment itself. NETPULSE_PROXY was the Cloudflare worker
+     in front of it (see proxy/README.md), which retried the flaky Google redirect hop
+     server-side so the browser never paid for it.
 
-     Measured 2026-09-15, with the origin stalling badly:
-       direct   ?type=nap   200, 200, 404 after 27.7 s, 200 after 96.3 s, 200
-       worker   ?type=nap   200 in 1.1-1.4 s, on its FIRST attempt, three times running
-     A worker that is up while the redirect hop is not is a bad trade to make on every
-     module fetch, so the data path uses it.
+     TURNED OFF on 2026-09-15. Its per-attempt ceiling (20 s, 3 attempts) was shorter
+     than the OLT branch of the deployment takes to build its payload, so every OLT
+     request came back as a 503 from the worker while the deployment itself was healthy:
+     the direct Apps Script OLT URL answers, just slowly. Retrying a heavy call only
+     repeats the heavy computation, so the proxy was the wrong shape for that module and
+     the whole data path now goes straight to Apps Script.
 
-     AUTH DOES NOT: window.APP_URL below stays pointed at Apps Script directly. The
-     worker forwards only a whitelist of parameters, and the one time that whitelist was
-     missing `password` every sign-in in the app failed silently with "Invalid username
-     or password". Data and admin calls carry no credentials, so they go through the
-     worker; the sign-in call does not.
-
-     To go back to calling Apps Script directly: blank NETPULSE_PROXY here AND blank
-     API_PROXY_HOST in sw.js. Both, or the service worker starts caching API responses
+     One value to turn it back on: set NETPULSE_PROXY below and set API_PROXY_HOST in
+     sw.js in the same step. Both, or the service worker starts caching API responses
      (it is cache-first for everything that is not a known API host). */
   window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec";
-  window.NETPULSE_PROXY = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev";
+  window.NETPULSE_PROXY = "";
   window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
   
@@ -1079,10 +1091,9 @@ function closeNodeModal(event) {
   if (typeof initNotifications === 'function') initNotifications();
 
   // ==================== AUTH CONSTANTS ====================
-  // Use the same retrying proxy for auth and maintenance when configured. The Worker
-  // forwards the whitelisted login parameters over HTTPS and shields the browser from
-  // the Apps Script redirect hop that intermittently returns 404/timeout responses.
-  // Direct Apps Script remains the fallback when NETPULSE_PROXY is blank.
+  // Same host as the data path — Apps Script directly now that NETPULSE_PROXY is blank
+  // (see the application-variables block). When the worker is switched back on, auth
+  // follows it automatically because both derive from BASE_API_URL.
   window.APP_URL = window.BASE_API_URL || window.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec';
   var APP_URL = window.APP_URL;
   var SESSION_KEY = 'netpulse_session';
@@ -1186,7 +1197,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.8.2').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.1').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1880,7 +1891,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.9.0"></script>
+<script src="kiosk-module.js?v=3.9.1"></script>
 
 </body>
 </html>
