@@ -45,7 +45,6 @@
   <div class="login-card">
     <div class="login-brand">
       <span class="brand-gallop" style="font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 22px; letter-spacing: 3px; color: var(--dark-charcoal);">GALLOPVISION</span>
-      <span class="brand-converge" style="font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 1.8px; color: var(--primary-teal);">CONVERGE</span>
     </div>
     <div class="login-subtitle">Network Operations Dashboard</div>
     <form class="login-form" id="loginForm" onsubmit="return handleLogin(event)">
@@ -326,9 +325,9 @@
             <thead>
               <tr>
                 <th class="sortable" onclick="sortTable('oltTableBody', 0, this)">PROVINCE</th>
-                <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY / MUNICIPALITY</th>
+                <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY/MUN</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 2, this)">OLT NAME</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this, true)">AFFECTED CLIENTS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this, true)">CLIENTS</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">DT CAUSE</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 5, this, false, true)">AGING</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 6, this)">STATUS</th>
@@ -1788,7 +1787,7 @@ function closeNodeModal(event) {
 <div class="kiosk-root" id="kioskRoot" aria-hidden="true">
   <header class="kiosk-topbar">
     <div class="kiosk-brand">
-      <div class="kiosk-brand-name">GALLOPVISION <span>| CONVERGE</span></div>
+      <div class="kiosk-brand-name">GALLOPVISION <span></div>
       <div class="kiosk-brand-sub">NOC Wall Display</div>
     </div>
     <div class="kiosk-topbar-right">
