@@ -1,4 +1,10 @@
-const STATIC_CACHE = 'gvsi-shell-v3.8.2';
+/* Bumped for the admin session-token fix. This worker is CACHE-FIRST for everything
+   that is not the API, and its precache list holds the UNVERSIONED names the page
+   actually requests (`admin-module.js`, not `admin-module.js?v=...`), so a stale
+   `admin-module.js` would be served forever without a new cache generation: `install`
+   re-fetches every entry, `activate` deletes the old cache. Raising this name is
+   therefore the whole delivery mechanism for a fix to any of these files. */
+const STATIC_CACHE = 'gvsi-shell-v3.9.2';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
@@ -20,7 +26,18 @@ const STATIC_ASSETS = [
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      // 'reload' bypasses the HTTP cache, so a new generation can never seed itself
+      // with the copy the browser is still holding — a plain addAll can, and then the
+      // "update" installs the old bytes under the new name.
+      //
+      // Each entry is added independently: one missing or slow file must not fail the
+      // whole install, which would leave the device on the OLD worker (and, with a
+      // cache-first strategy, on every old file it had already cached).
+      return Promise.all(
+        STATIC_ASSETS.map((url) =>
+          cache.add(new Request(url, { cache: 'reload' })).catch(() => {})
+        )
+      );
     })
   );
   self.skipWaiting();
@@ -70,6 +87,17 @@ self.addEventListener('notificationclick', (e) => {
   );
 });
 
+/* The API's host when the app calls it through the edge proxy (window.NETPULSE_PROXY in
+   index.html — see proxy/README.md).
+
+   This MUST be excluded below. This worker is CACHE-FIRST for everything that is not
+   `script.google.com`, so with the proxy in front the API's host is this one — and a
+   cache-first branch would hand a wall display a STALE OUTAGE, the one thing it must
+   never show. It is the same reasoning that put this file's API branch first in the
+   newer tree; here it is two values that have to be changed together, so: the pair is
+   `NETPULSE_PROXY` in index.html and this constant. */
+const API_PROXY_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
+
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
 
@@ -79,7 +107,7 @@ self.addEventListener('fetch', (e) => {
   }
 
   // 1. Google Apps Script API Requests -> ALWAYS NETWORK (Fresh Data)
-  if (url.includes('script.google.com')) {
+  if (url.includes('script.google.com') || (API_PROXY_HOST && url.includes(API_PROXY_HOST))) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' }).catch(() => fetch(e.request))
     );

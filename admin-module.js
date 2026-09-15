@@ -15,30 +15,20 @@ function initAdminUrl() {
 // ====================== ROLE CHECK ======================
 
 function isAdmin() {
+  // Deliberately silent. This ran on every tab change and wrote FIVE console lines
+  // each time, which is how a real failure gets lost in the noise — the console is
+  // the only place this app can show an API problem, so it cannot be spent on
+  // "Match: true" forty times a session.
   var session = getSession();
-  console.log('[Admin] Session data:', session);
-  console.log('[Admin] Session role:', session ? JSON.stringify(session.role) : 'null');
-  
-  if (!session) {
-    console.log('[Admin] No session found');
-    return false;
-  }
-  
-  if (!session.role) {
-    console.log('[Admin] No role in session');
-    return false;
-  }
-  
+
+  if (!session) return false;
+  if (!session.role) return false;
+
   // Trim whitespace and compare exactly
   var userRole = String(session.role).trim();
   var adminRole = 'Tech admin/Dev';
-  var isAdm = (userRole === adminRole);
-  
-  console.log('[Admin] User role:', JSON.stringify(userRole));
-  console.log('[Admin] Expected role:', JSON.stringify(adminRole));
-  console.log('[Admin] Match:', isAdm);
-  
-  return isAdm;
+
+  return (userRole === adminRole);
 }
 
 // ====================== RENDER ADMIN TAB ======================
@@ -160,13 +150,16 @@ function renderAdminTab() {
   loadMaintenanceStatus();
   loadActiveUsers();
 
-  // Auto-refresh active users every 30 seconds
+  // Auto-refresh active users every 60 seconds, and only while this tab is open.
+  // The backend's ActiveUsers window is 5 minutes, so a 30 s poll was asking ten times
+  // more often than the answer can change — against a gated route, on a deployment that
+  // already rate-limits, from the one screen whose whole job is watching the API.
   if (_adminRefreshInterval) clearInterval(_adminRefreshInterval);
   _adminRefreshInterval = setInterval(() => {
     if (currentTab === 'admin') {
       loadActiveUsers();
     }
-  }, 30000);
+  }, 60000);
 }
 
 // ====================== MAINTENANCE MODE ======================
@@ -270,13 +263,36 @@ function showMaintenancePage() {
 // ====================== ACTIVE USERS ======================
 
 async function loadActiveUsers() {
+  var tbody = document.getElementById('activeUsersTableBody');
+  var countBadge = document.getElementById('activeUsersCount');
+  var lastUpdated = document.getElementById('activeUsersLastUpdated');
+
+  // An empty table is a CLAIM about the world, so the two ways of not knowing —
+  // refused, and unreachable — say so instead of rendering as "No active users".
+  // This route is gated: with no token the server answers { unauthorized: true },
+  // and that is not the same thing as nobody being online.
+  function showNote(text, color) {
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: ' + color + ';">' +
+        text + '</td></tr>';
+    }
+    if (countBadge) countBadge.textContent = '—';
+    if (lastUpdated) lastUpdated.textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+  }
+
   try {
-    var result = await fetchWithRetry(ADMIN_API_URL + '?action=getActiveUsers');
-    var tbody = document.getElementById('activeUsersTableBody');
-    var countBadge = document.getElementById('activeUsersCount');
-    var lastUpdated = document.getElementById('activeUsersLastUpdated');
-    
+    // withAuthToken() is explicit here (fetchWithRetry also attaches it) because this
+    // is one of the gated routes — the token is the whole difference between a list
+    // and a refusal.
+    var result = await fetchWithRetry(withAuthToken(ADMIN_API_URL + '?action=getActiveUsers'));
+
     if (!tbody) return;
+
+    if (result && result.unauthorized) {
+      showNote(result.message || 'Session expired — sign in again to see who is online',
+        'var(--badge-yellow-text)');
+      return;
+    }
 
     if (!result || !result.users || result.users.length === 0) {
       tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No active users</td></tr>';
@@ -343,24 +359,42 @@ async function loadActiveUsers() {
 
   } catch (err) {
     console.error('[Admin] Failed to load active users:', err);
+    showNote('Could not load active users — the API did not answer', 'var(--badge-yellow-text)');
   }
 }
 
 // ====================== HEARTBEAT ======================
 
 var _heartbeatInterval = null;
+var _heartbeatFirstBeat = null;
+var HEARTBEAT_MS = 60000;   // was 30000
+var FIRST_BEAT_DELAY_MS = 5000;
 
 function startHeartbeat() {
-  // Send heartbeat every 30 seconds
-  sendHeartbeat(); // Immediate
-  _heartbeatInterval = setInterval(sendHeartbeat, 30000);
+  // startHeartbeat() may be reached more than once (workspace entry, admin render), so
+  // it replaces whatever was pending rather than stacking a second beat on top of it.
+  stopHeartbeat();
+  // The first beat is DEFERRED, not immediate. It used to fire in the same tick as the
+  // dashboard's own five data fetches: one more concurrent request against an Apps
+  // Script instance that is usually still cold at that moment, spent on a call nobody
+  // is waiting for.
+  //
+  // 60 s, not 30 s, because the backend's ActiveUsers window is 5 minutes — a beat every
+  // 60 s is five times the recency it needs, while the old interval was 2,880 requests a
+  // day per signed-in client against a deployment that rate-limits.
+  _heartbeatFirstBeat = setTimeout(function () {
+    _heartbeatFirstBeat = null;
+    if (!getSession()) return;                 // signed out during the delay
+    sendHeartbeat();
+    _heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_MS);
+  }, FIRST_BEAT_DELAY_MS);
 }
 
 function stopHeartbeat() {
-  if (_heartbeatInterval) {
-    clearInterval(_heartbeatInterval);
-    _heartbeatInterval = null;
-  }
+  // Both, because the first beat now lives in its own timer: missing it here would
+  // leave a signed-out client beating anyway, which is what puts a ghost in the panel.
+  if (_heartbeatFirstBeat) { clearTimeout(_heartbeatFirstBeat); _heartbeatFirstBeat = null; }
+  if (_heartbeatInterval) { clearInterval(_heartbeatInterval); _heartbeatInterval = null; }
 }
 
 async function sendHeartbeat() {
@@ -373,8 +407,12 @@ async function sendHeartbeat() {
   try {
     // Use simple fetch instead of fetchWithRetry to avoid console spam
     // Heartbeat is non-critical — fail silently
+    // The token is what registers this tab in the ActiveUsers sheet. Without it the
+    // server refuses the beat with { unauthorized: true, message: "Sign-in required" }
+    // and this function swallows that on purpose — which is exactly how the admin
+    // panel came to show nobody online while everyone was signed in.
     await fetch(
-      url + '?action=heartbeat&username=' + encodeURIComponent(session.username) + '&fullName=' + encodeURIComponent(session.fullName || ''),
+      withAuthToken(url + '?action=heartbeat&username=' + encodeURIComponent(session.username) + '&fullName=' + encodeURIComponent(session.fullName || '')),
       { cache: 'no-store' }
     );
   } catch (e) {
@@ -391,7 +429,9 @@ function adminHandleLogout() {
   // Remove from active users
   var session = getSession();
   if (session && session.username) {
-    fetch(ADMIN_API_URL + '?action=removeActiveUser&username=' + encodeURIComponent(session.username)).catch(() => {});
+    // Built (and so token-stamped) while the session is still in storage: the
+    // original logout below clears it.
+    fetch(withAuthToken(ADMIN_API_URL + '?action=removeActiveUser&username=' + encodeURIComponent(session.username))).catch(() => {});
   }
   // Call original logout if exists
   if (_originalHandleLogout) _originalHandleLogout();
@@ -404,7 +444,9 @@ if (typeof handleLogout !== 'undefined') {
     stopHeartbeat();
     var session = getSession();
     if (session && session.username) {
-      fetch(ADMIN_API_URL + '?action=removeActiveUser&username=' + encodeURIComponent(session.username)).catch(() => {});
+      // Built (and so token-stamped) while the session is still in storage: the
+    // original logout below clears it.
+    fetch(withAuthToken(ADMIN_API_URL + '?action=removeActiveUser&username=' + encodeURIComponent(session.username))).catch(() => {});
     }
     _origLogout();
   };

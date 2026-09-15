@@ -738,7 +738,7 @@
       }
 
       // Linisin ang storage (preserve essential keys)
-      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry'];
+      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry', 'netpulse_session_token'];
       const _preserved = {};
       _preserveKeys.forEach(k => { _preserved[k] = localStorage.getItem(k); });
       localStorage.clear();
@@ -775,7 +775,30 @@
   checkAppVersion();
 
   // --- MGA APPLICATION VARIABLES ---
-  window.BASE_API_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
+  /* WHERE THE DATA PATH POINTS
+
+     APPS_SCRIPT_URL is the deployment itself. NETPULSE_PROXY is the Cloudflare worker
+     in front of it (see proxy/README.md), which retries the flaky Google redirect hop
+     server-side so the browser never pays for it.
+
+     Measured 2026-09-15, with the origin stalling badly:
+       direct   ?type=nap   200, 200, 404 after 27.7 s, 200 after 96.3 s, 200
+       worker   ?type=nap   200 in 1.1-1.4 s, on its FIRST attempt, three times running
+     A worker that is up while the redirect hop is not is a bad trade to make on every
+     module fetch, so the data path uses it.
+
+     AUTH DOES NOT: window.APP_URL below stays pointed at Apps Script directly. The
+     worker forwards only a whitelist of parameters, and the one time that whitelist was
+     missing `password` every sign-in in the app failed silently with "Invalid username
+     or password". Data and admin calls carry no credentials, so they go through the
+     worker; the sign-in call does not.
+
+     To go back to calling Apps Script directly: blank NETPULSE_PROXY here AND blank
+     API_PROXY_HOST in sw.js. Both, or the service worker starts caching API responses
+     (it is cache-first for everything that is not a known API host). */
+  window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
+  window.NETPULSE_PROXY = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev";
+  window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
   
   let currentTab = 'nap';
@@ -814,6 +837,10 @@
 
   // --- UTILITY: Fetch with Retry ---
   async function fetchWithRetry(url, retries = 2, delay = 500) {
+    // Attached in ONE place, so no caller has to remember: any API call made through
+    // here carries the session token the deployment issued at login. A call with no
+    // token stored goes out exactly as it always did.
+    url = withAuthToken(url);
     for (let i = 0; i <= retries; i++) {
       try {
         const res = await fetch(url, { cache: 'no-store' });
@@ -1032,12 +1059,40 @@ function closeNodeModal(event) {
   if (typeof initNotifications === 'function') initNotifications();
 
   // ==================== AUTH CONSTANTS ====================
-  window.APP_URL = 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
+  // Direct to Apps Script, deliberately: this is the one call that carries a password,
+  // and the worker's parameter whitelist is exactly what broke sign-in once. See the
+  // note on NETPULSE_PROXY above.
+  window.APP_URL = window.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
   var APP_URL = window.APP_URL;
   var SESSION_KEY = 'netpulse_session';
   var SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
+  var SESSION_TOKEN_KEY = 'netpulse_session_token';
   var REMEMBER_KEY = 'netpulse_remember';
   var SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+  // --- SESSION TOKEN ---
+  // Login answers with a token, and every route that identifies the CALLER now
+  // requires it: heartbeat, getActiveUsers, setMaintenance, removeActiveUser. Signing
+  // in works without one, which is why this stayed invisible until the admin panel
+  // started showing nobody online: the heartbeat was answered
+  // {"success":false,"unauthorized":true,"message":"Sign-in required"} and the
+  // heartbeat fails silently on purpose. Measured against the deployment: an untokened
+  // heartbeat and an untokened getActiveUsers are both refused, while getSettings and
+  // the ?type= data routes are not gated at all — so the dashboard never noticed.
+  //
+  // Kept in localStorage, not in memory: a reload must not drop this tab out of the
+  // ActiveUsers sheet, and the backend's 5-minute recency window means a dropped token
+  // reads as "never signed in" rather than as an error.
+  function withAuthToken(url) {
+    var api = window.BASE_API_URL || window.APP_URL || '';
+    var href = String(url || '');
+    if (!api || href.indexOf(api) !== 0) return url;  // never attach it to another host
+    if (href.indexOf('token=') !== -1) return href;   // already attached: stay idempotent
+    var token = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (!token) return href;                          // no token: the call goes as before
+    return href + (href.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(token);
+  }
+  window.withAuthToken = withAuthToken;
 
   // Global background refresh function (used by visibilitychange listener)
   function backgroundRefresh(type) {
@@ -1378,6 +1433,12 @@ function closeNodeModal(event) {
       if (result.success) {
         localStorage.setItem(SESSION_KEY, JSON.stringify(result.user));
         localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_DURATION));
+        // The token minted here is what makes this tab visible in the admin panel's
+        // Active Users list. Absent (an older deployment) simply means no token is
+        // sent — the pre-token behaviour, not a broken login.
+        if (result.token) {
+          localStorage.setItem(SESSION_TOKEN_KEY, result.token);
+        }
         // Save credentials if Remember Me is checked
         if (rememberMe) {
           localStorage.setItem(REMEMBER_KEY, JSON.stringify({ u: username, p: password }));
@@ -1419,6 +1480,7 @@ function closeNodeModal(event) {
   function handleLogout() {
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(SESSION_EXPIRY_KEY);
+    localStorage.removeItem(SESSION_TOKEN_KEY);
     localStorage.removeItem(REMEMBER_KEY);
     showLogin();
   }
