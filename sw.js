@@ -1,19 +1,19 @@
-/* Bumped for the DT Cause sizing fix in the OLT table and the kiosk cause strip — a new
-   generation is the only way the fix reaches an installed display. The visible app
-   version label stays 3.9.1 until the next release; nothing compares these names,
-   `activate` just drops every cache that is not this one, so the number only has to be
-   one no device has ever opened. It skips 3.9.2 deliberately: an unversioned kiosk
-   publish already left a `gvsi-shell-v3.9.2` behind, and reusing that name would keep
-   its stale runtime-cached `kiosk.css` alive, since `activate` spares the cache it
-   matches. What matters is that the name is NEW.
+/* The cache generation this release installs under. It follows the app version, because
+   the page asks for every file with that version in its URL (`styles.css?v=3.9.2`): a
+   device that still holds a cache of this name misses on all of them and re-fetches, and
+   `install` rewrites the precache entries below in place with `cache: 'reload'` regardless.
 
-   It has to be new, because this worker is CACHE-FIRST for everything that is not the
-   API, and its precache list holds the UNVERSIONED names the page actually requests
-   (`admin-module.js`, not `admin-module.js?v=...`), so a stale `admin-module.js` would be
-   served forever without a new generation: `install` re-fetches every entry, `activate`
-   deletes the old cache. A new name is therefore the whole delivery mechanism for a fix
-   to any of these files. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.3';
+   So a name only has to be NEW when a publish changes files WITHOUT moving the label:
+   then the copy cached under the same name is exactly the copy the page asks for again,
+   and nothing evicts it. That is why commit fe3459c shipped generation v3.9.3 while the
+   label stayed 3.9.1, and why this release can take the name back to the label. A publish
+   has to move the label, or the generation, or both — never neither.
+
+   Delivery depends on it being cache-first, because the precache list holds the
+   UNVERSIONED names the page requests (`admin-module.js`, not `admin-module.js?v=...`),
+   so for those files `install` re-fetching every entry and `activate` deleting every
+   other cache is the whole delivery mechanism. */
+const STATIC_CACHE = 'gvsi-shell-v3.9.2';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',

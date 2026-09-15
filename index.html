@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.1">
+  <link rel="stylesheet" href="styles.css?v=3.9.2">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.9.1">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.2">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -72,7 +72,7 @@
       </button>
       <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.9.1</div>
+    <div class="login-footer">GVSI NetPulse v3.9.2</div>
   </div>
 </div>
 
@@ -374,6 +374,13 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.2 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>OLT DT Cause Sizing (Fix):</strong> Every DT Cause pill in the OLT table is now the same size — one uniform width, one line, one height — so the column reads as a strip instead of ragged badges, and a long cause such as &quot;FIBER AND POWER&quot; no longer stretches its row.</li>
+                  <li><strong>Kiosk Cause Badge Sizing (Fix):</strong> The OLT kiosk DT Cause Breakdown badges are now equal-width cards, sized for the longest cause name, with their counts lined up in a column instead of drifting with the label length.</li>
+                </ul>
+
+                <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.1 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Kiosk OLT DT Cause Breakdown (New):</strong> The OLT kiosk slide now aggregates every DOWN record by DT Cause and shows it as colour-coded badges with live counts — Power, Fiber, Equipment, TBD and Fiber and Power — so the outage driver is readable from across the NOC.</li>
@@ -723,7 +730,7 @@
 
 <script>
 // 1. Version Guard Logic
-  /* Deliberately NOT the build's own version (3.9.1 in the footer, manifest and
+  /* Deliberately NOT the build's own version (3.9.2 in the footer, manifest and
      `?v=` tokens), and deliberately unchanged at "3.10.0" while this tree is the
      v3.9.x kiosk build.
 
@@ -737,7 +744,7 @@
      worker's new cache generation (sw.js), and this build carries the same session and
      token keys through a wipe anyway.
 
-     The same reasoning holds for a forward release on this tree: the 3.9.1 bump moves
+     The same reasoning holds for a forward release on this tree: the 3.9.2 bump moves
      the labels, the `?v=` tokens, the manifest and the cache generation, and leaves this
      guard alone — a wall display must never be held behind a button, and the new shell
      still reaches every device because `activate` drops the old cache in one step. */
@@ -1197,7 +1204,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.1').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.2').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1891,7 +1898,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.9.1"></script>
+<script src="kiosk-module.js?v=3.9.2"></script>
 
 </body>
 </html>

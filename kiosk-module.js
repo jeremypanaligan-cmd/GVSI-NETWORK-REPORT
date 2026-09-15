@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GVSI NetPulse — KIOSK MODE / NOC WALL DISPLAY   (v3.9.1)
+   GVSI NetPulse — KIOSK MODE / NOC WALL DISPLAY   (v3.9.2)
    --------------------------------------------------------------------------
    Presentation layer only.
 
