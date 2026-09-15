@@ -1,8 +1,11 @@
-/* Bumped for the v3.9.1 release — the proxy removal, the kiosk work and the loading
-   state. The name follows the app version (3.10.0 → gvsi-shell-v3.10.0) rather than
-   counting up on its own, so it can sit below a generation an unversioned kiosk publish
-   left behind (v3.9.2); that is harmless: nothing compares names, `activate` just drops
-   every cache that is not this one. What matters is that the name is NEW.
+/* Bumped for the DT Cause sizing fix in the OLT table and the kiosk cause strip — a new
+   generation is the only way the fix reaches an installed display. The visible app
+   version label stays 3.9.1 until the next release; nothing compares these names,
+   `activate` just drops every cache that is not this one, so the number only has to be
+   one no device has ever opened. It skips 3.9.2 deliberately: an unversioned kiosk
+   publish already left a `gvsi-shell-v3.9.2` behind, and reusing that name would keep
+   its stale runtime-cached `kiosk.css` alive, since `activate` spares the cache it
+   matches. What matters is that the name is NEW.
 
    It has to be new, because this worker is CACHE-FIRST for everything that is not the
    API, and its precache list holds the UNVERSIONED names the page actually requests
@@ -10,7 +13,7 @@
    served forever without a new generation: `install` re-fetches every entry, `activate`
    deletes the old cache. A new name is therefore the whole delivery mechanism for a fix
    to any of these files. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.1';
+const STATIC_CACHE = 'gvsi-shell-v3.9.3';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',

@@ -897,6 +897,42 @@ tr.total-row td {
 .badge-purple { background: var(--badge-purple); color: var(--badge-purple-text); }
 .badge-gray { background: var(--row-hover); color: var(--text-muted); }
 
+/* DT Cause badge (the OLT DOWN table's "DT CAUSE" cell; node-module.js still
+   builds its own inline pill)
+
+   The label is data-driven (FIBER, POWER, EQUIPMENT, TBD, FIBER AND POWER), so
+   with inline padding and no floor every row's pill came out a different size
+   and the column read as ragged noise instead of one strip. This class gives
+   every row the same pill - same minimum width, same height, always one line -
+   with the colour handed in per row as --cause-color / --cause-bg. */
+.dt-cause-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 8.5em;
+  padding: 0.35em 1em;
+  border: 1px solid color-mix(in srgb, var(--cause-color) 30%, transparent);
+  border-left: 3px solid var(--cause-color);
+  border-radius: 6px;
+  background: var(--cause-bg, transparent);
+  color: var(--cause-color);
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* No cause recorded - keep the dash aligned with the pills, drop the pill. */
+.dt-cause-badge.is-empty {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+}
+
 /* Modal / Popup Box */
 .modal-backdrop {
   position: fixed;

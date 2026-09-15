@@ -201,8 +201,8 @@ function renderOltTable() {
 
     const causeColor = getCauseColor(downtimeCause);
     const causeDisplay = downtimeCause && downtimeCause !== '-'
-      ? `<span style="display: inline-block; color: ${causeColor.color}; background: ${causeColor.bg}; padding: 4px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 700; letter-spacing: 0.3px; border-left: 3px solid ${causeColor.color};">${downtimeCause}</span>`
-      : `<span style="color: var(--text-muted);">–</span>`;
+      ? `<span class="dt-cause-badge" style="--cause-color: ${causeColor.color}; --cause-bg: ${causeColor.bg};">${downtimeCause}</span>`
+      : `<span class="dt-cause-badge is-empty">–</span>`;
 
     const alertClass = getAlertClass('clientsDown', clientsAffectedNum);
     const safeRemarks = remarks.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '');
