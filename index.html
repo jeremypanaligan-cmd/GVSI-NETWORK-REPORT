@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.2">
+  <link rel="stylesheet" href="styles.css?v=3.9.3">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.9.2">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.3">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -72,7 +72,7 @@
       </button>
       <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.9.2</div>
+    <div class="login-footer">GVSI NetPulse v3.9.3</div>
   </div>
 </div>
 
@@ -372,6 +372,13 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.3 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Active Users Tracking (Removed):</strong> The admin panel's Active Users card, and the heartbeat that fed it one request per signed-in client per minute, are gone. Presence was the largest single source of API requests against a metered, quota-limited deployment — and it answered a question nobody was asking on the NOC screen. The ActiveUsers sheet is left untouched; delete it in the spreadsheet if you no longer want that history.</li>
+                  <li><strong>Unknown Actions (Fix):</strong> An action the script does not recognise used to fall through to the data branch and answer with a full NAP payload, because type defaults to nap. It now returns a small JSON error instead — which is also what keeps a device still holding the previous shell from spending the heaviest branch in the app on a request nobody reads.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.2 — What's New:</strong></p>
@@ -730,8 +737,8 @@
 
 <script>
 // 1. Version Guard Logic
-  /* Deliberately NOT the build's own version (3.9.2 in the footer, manifest and
-     `?v=` tokens), and deliberately unchanged at "3.10.0" while this tree is the
+  /* Deliberately NOT the build's own version (the footer, manifest and `?v=` tokens
+     carry that), and deliberately unchanged at "3.10.0" while this tree is the
      v3.9.x kiosk build.
 
      This constant is the guard's match key, not a version label: a device whose stored
@@ -744,8 +751,8 @@
      worker's new cache generation (sw.js), and this build carries the same session and
      token keys through a wipe anyway.
 
-     The same reasoning holds for a forward release on this tree: the 3.9.2 bump moves
-     the labels, the `?v=` tokens, the manifest and the cache generation, and leaves this
+     The same reasoning holds for a forward release on this tree: each bump moves the
+     labels, the `?v=` tokens, the manifest and the cache generation, and leaves this
      guard alone — a wall display must never be held behind a button, and the new shell
      still reaches every device because `activate` drops the old cache in one step. */
   const REQUIRED_APP_VERSION = "3.10.0"; 
@@ -1110,18 +1117,18 @@ function closeNodeModal(event) {
   var SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
   // --- SESSION TOKEN ---
-  // Login answers with a token, and every route that identifies the CALLER now
-  // requires it: heartbeat, getActiveUsers, setMaintenance, removeActiveUser. Signing
-  // in works without one, which is why this stayed invisible until the admin panel
-  // started showing nobody online: the heartbeat was answered
-  // {"success":false,"unauthorized":true,"message":"Sign-in required"} and the
-  // heartbeat fails silently on purpose. Measured against the deployment: an untokened
-  // heartbeat and an untokened getActiveUsers are both refused, while getSettings and
-  // the ?type= data routes are not gated at all — so the dashboard never noticed.
+  // Login answers with a token, and exactly one route gates on it: setMaintenance,
+  // admin-only, which answers {"unauthorized":true,"message":"Sign-in required"} to an
+  // untokened caller. getSettings and the ?type= data routes are not gated at all, so a
+  // missing token is invisible until an admin action is refused.
   //
-  // Kept in localStorage, not in memory: a reload must not drop this tab out of the
-  // ActiveUsers sheet, and the backend's 5-minute recency window means a dropped token
-  // reads as "never signed in" rather than as an error.
+  // The deployment also implements ?action=logout, which revokes the token server-side.
+  // Nothing in this app calls it yet (handleLogout below only clears localStorage), so a
+  // token the client discards or loses stays valid for its full TTL — worth wiring the
+  // button to it.
+  //
+  // Kept in localStorage, not in memory: it has to survive a reload, because it is the
+  // only thing that lets an admin act without signing in again.
   function withAuthToken(url) {
     var api = window.BASE_API_URL || window.APP_URL || '';
     var href = String(url || '');
@@ -1204,7 +1211,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.2').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.3').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1609,11 +1616,6 @@ function closeNodeModal(event) {
       adminTabBtn.style.display = 'inline-flex';
     }
 
-    // Start heartbeat for active users tracking
-    if (typeof startHeartbeat === 'function') {
-      startHeartbeat();
-    }
-
     // Load data if not yet loaded
     if (typeof loadInitialData === 'function' && !window._dataLoaded) {
       loadInitialData();
@@ -1819,7 +1821,7 @@ function closeNodeModal(event) {
     { time: '8:08 AM', msg: 'OLT status scan complete — 460+ OLTs tracked', type: 'success' },
     { time: '8:12 AM', msg: 'Node DOWN detection active — real-time monitoring', type: 'info' },
     { time: '8:15 AM', msg: 'Backbone links scan complete — all routes checked', type: 'success' },
-    { time: '8:18 AM', msg: 'Heartbeat service started — tracking active users', type: 'info' },
+    { time: '8:18 AM', msg: 'Refresh timers armed — five modules polling on schedule', type: 'info' },
     { time: '8:20 AM', msg: 'Cache warmed — Apps Script server ready', type: 'success' },
     { time: '8:25 AM', msg: 'Maintenance mode check passed — all systems operational', type: 'success' },
     { time: '8:30 AM', msg: 'Analytics dashboard loaded — charts rendered', type: 'info' },
@@ -1898,7 +1900,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.9.2"></script>
+<script src="kiosk-module.js?v=3.9.3"></script>
 
 </body>
 </html>

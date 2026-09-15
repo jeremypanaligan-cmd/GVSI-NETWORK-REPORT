@@ -60,9 +60,15 @@ function doGet(e) {
   if (action === "keepalive")      return handleKeepAlive();
   if (action === "getSettings")    return handleGetSettings(e);
   if (action === "setMaintenance") return handleSetMaintenance(e);
-  if (action === "getActiveUsers") return handleGetActiveUsers(e);
-  if (action === "heartbeat")      return handleHeartbeat(e);
-  if (action === "removeActiveUser") return handleRemoveActiveUser(e);
+  // An action we do NOT recognise must never fall through to the data branch below:
+  // `type` defaults to "nap" there, so a typo — or a route that has been RETIRED, as
+  // the presence routes were (heartbeat / getActiveUsers / removeActiveUser) — would
+  // silently answer with a full NAP payload. That is the heaviest branch in the app,
+  // and a device still holding the previous shell would spend it, once a minute, on a
+  // response it never reads.
+  if (action) {
+    return jsonOut({ error: "Unknown action: " + action });
+  }
 
   // ---------------- DATA FETCHING ----------------
   // ---------------- 1. Cache Check ----------------

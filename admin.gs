@@ -125,11 +125,10 @@ function resolveSession(e, role) {
   // The expiry sweep deliberately does NOT run here. It is O(stored sessions):
   // getKeys() plus one read per session_* key. It used to run on every request
   // bearing a valid token, which put it on the busiest path in the app against a
-  // METERED daily quota (Properties read/write, 50,000/day on a consumer
-  // account) — a heartbeat alone is 1,440 requests/day per signed-in client, and
-  // the sweep made each one cost 2 + N operations instead of 1. It now runs at
-  // login (issueSessionToken), and readSessionToken still deletes a stale token
-  // the moment one is presented, so abandoned entries do not accumulate.
+  // METERED daily quota (Properties read/write, 50,000/day on a consumer account),
+  // and the sweep made each such request cost 2 + N operations instead of 1. It now
+  // runs at login (issueSessionToken), and readSessionToken still deletes a stale
+  // token the moment one is presented, so abandoned entries do not accumulate.
 
   if (role && String(session.role || "").trim() !== role) {
     return { session: null, error: unauthorizedResponse("Your role does not allow this action") };
@@ -332,140 +331,13 @@ function handleSetMaintenance(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ====================== ACTIVE USERS ======================
-
-function handleGetActiveUsers(e) {
-  var gate = requireSession(e, ADMIN_ROLE);
-  if (gate) return gate;
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("ActiveUsers");
-  
-  if (!sheet) {
-    sheet = ss.insertSheet("ActiveUsers");
-    sheet.appendRow(["Username", "FullName", "LastSeen"]);
-    return ContentService.createTextOutput(JSON.stringify({ users: [] }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  var data = sheet.getDataRange().getValues();
-  var users = [];
-  var now = new Date().getTime();
-  var rowsToDelete = [];
-  
-  for (var i = 1; i < data.length; i++) {
-    var lastSeen = new Date(data[i][2]).getTime();
-    var diffMinutes = (now - lastSeen) / (1000 * 60);
-    
-    if (diffMinutes > 5) {
-      rowsToDelete.push(i + 1);
-    } else {
-      users.push({
-        username: String(data[i][0]).trim(),
-        fullName: String(data[i][1]).trim(),
-        lastSeen: data[i][2]
-      });
-    }
-  }
-  
-  for (var j = rowsToDelete.length - 1; j >= 0; j--) {
-    sheet.deleteRow(rowsToDelete[j]);
-  }
-  
-  return ContentService.createTextOutput(JSON.stringify({ users: users }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function handleHeartbeat(e) {
-  var auth = resolveSession(e);
-  if (auth.error) return auth.error;
-
-  // Identity comes from the token when one is present, so a valid session can no
-  // longer register somebody else as active. The session comes from the gate
-  // itself: this route fires every 60s per signed-in client, so reading the token
-  // a second time here was a second Properties read on the busiest path in the app.
-  var session = auth.session;
-  var username = session ? session.u : (e.parameter.username || "");
-  var fullName = session ? session.name : (e.parameter.fullName || "");
-  
-  if (!username) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("ActiveUsers");
-  
-  if (!sheet) {
-    sheet = ss.insertSheet("ActiveUsers");
-    sheet.appendRow(["Username", "FullName", "LastSeen"]);
-  }
-  
-  var data = sheet.getDataRange().getValues();
-  var found = false;
-  
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]).trim().toLowerCase() === username.toLowerCase()) {
-      sheet.getRange(i + 1, 3).setValue(new Date().toISOString());
-      found = true;
-      break;
-    }
-  }
-  
-  if (!found) {
-    sheet.appendRow([username, fullName, new Date().toISOString()]);
-  }
-  
-  return ContentService.createTextOutput(JSON.stringify({ success: true }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function handleRemoveActiveUser(e) {
-  var auth = resolveSession(e);
-  if (auth.error) return auth.error;
-
-  var session = auth.session;
-  var requested = String(e.parameter.username || "").trim();
-
-  // Removing yourself (the logout path) is always fine; removing somebody else
-  // is an admin action. Note the target is the REQUESTED name, not the session's
-  // own — otherwise an admin could never clear another user's row.
-  var isSelf = !requested || !session || requested.toLowerCase() === session.u.toLowerCase();
-  if (session && !isSelf && String(session.role || "").trim() !== ADMIN_ROLE) {
-    return unauthorizedResponse("Your role does not allow this action");
-  }
-
-  var username = requested || (session ? session.u : "");
-  
-  if (!username) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("ActiveUsers");
-  
-  if (!sheet) {
-    return ContentService.createTextOutput(JSON.stringify({ success: true }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  var data = sheet.getDataRange().getValues();
-  
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]).trim().toLowerCase() === username.toLowerCase()) {
-      sheet.deleteRow(i + 1);
-      break;
-    }
-  }
-  
-  return ContentService.createTextOutput(JSON.stringify({ success: true }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
 // ====================== LOGOUT ======================
 // Revokes the token server-side. Without this, "logout" was client-side only and
 // a token that had already been copied stayed valid for its full TTL.
+//
+// NOTE: nothing in the app calls this route yet — handleLogout() in index.html only
+// clears localStorage, so a signed-out token stays valid until its TTL expires. The
+// route is kept because the fix is one call away.
 
 function handleLogout(e) {
   var token = (e && e.parameter && e.parameter.token) ? String(e.parameter.token) : "";

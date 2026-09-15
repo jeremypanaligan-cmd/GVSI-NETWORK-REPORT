@@ -2972,22 +2972,6 @@ body.dark-mode .kiosk-toggle-btn.active-kiosk {
   border-left: 3px solid #6366f1;
 }
 
-/* Active Users Status Badges */
-.status-online {
-  background: var(--badge-green-bg);
-  color: var(--badge-green-text);
-}
-
-.status-idle {
-  background: var(--badge-yellow-bg);
-  color: var(--badge-yellow-text);
-}
-
-.status-offline {
-  background: var(--card-bg);
-  color: var(--text-muted);
-}
-
 /* Dark mode admin styles */
 body.dark-mode .admin-tab-btn {
   background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
