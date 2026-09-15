@@ -717,7 +717,19 @@
 
 <script>
 // 1. Version Guard Logic
-  const REQUIRED_APP_VERSION = "3.8.2"; 
+  /* Deliberately NOT the build's own version, and deliberately unchanged at "3.10.0"
+     while this tree is the v3.9.0 kiosk build.
+
+     This constant is the guard's match key, not a version label: a device whose stored
+     `app_version` differs is taken to the update overlay — and on THIS build that
+     overlay does not reload by itself, it waits for a tap on "Refresh & Sync App"
+     while checkAppVersion() holds the app back. Every device already carrying the
+     3.10.0 shell reports "3.10.0", so lowering this to "3.8.2" (what the v3.9.0 commit
+     used) would block every dashboard AND every NOC wall display on a prompt nobody is
+     there to answer, for a rollback that does not need it: delivery is the service
+     worker's new cache generation (sw.js), and this build carries the same session and
+     token keys through a wipe anyway. */
+  const REQUIRED_APP_VERSION = "3.10.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
