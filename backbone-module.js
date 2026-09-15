@@ -82,7 +82,7 @@ function renderBackboneReport(data) {
     <!-- STAT CARDS -->
     <div class="bb-stats-grid">
       <div class="stat-card c-total">
-        <div class="label">TOTAL LINKS AFF.</div>
+        <div class="label">TOTAL LINK AFFECTED</div>
         <div class="value">${totalLinks}</div>
       </div>
       <div class="stat-card c-yellow">
@@ -110,7 +110,7 @@ function renderBackboneReport(data) {
           <thead>
             <tr>
               <th class="sortable" onclick="sortTable('backboneTableBody', 0, this)">PROVINCE</th>
-              <th class="sortable" onclick="sortTable('backboneTableBody', 1, this)">LINKS AFF.</th>
+              <th class="sortable" onclick="sortTable('backboneTableBody', 1, this)">LINK AFFECTED</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 2, this)">SERVICE</th>
               <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 3, this, true)">NO. OF LINKS</th>
               <th class="sortable" onclick="sortTable('backboneTableBody', 4, this)">CATEGORY</th>
@@ -158,7 +158,7 @@ function renderBackboneReport(data) {
     tableHtml += `
       <tr class="clickable-row${rowAlert}" onclick="openBackboneModal('${safeProvince}', '${safeTicket}', '${safeService}', '${safeCategory}', '${safeImpact}', '${safeDowntime}', '${safeAging}', '${safeLinks}', '${safeRemarks}')">
         <td data-label="Province"><strong>${province}</strong></td>
-        <td data-label="Links Aff.">
+        <td data-label="Link Affected">
           <div class="link-chip-container">
             ${linkChips || '<span style="color: var(--text-muted);">-</span>'}
           </div>
@@ -218,7 +218,7 @@ function renderBackboneEmptyState() {
     <!-- STAT CARDS - Zero State -->
     <div class="bb-stats-grid">
       <div class="stat-card c-total">
-        <div class="label">TOTAL LINKS AFF.</div>
+        <div class="label">TOTAL LINK AFFECTED</div>
         <div class="value">0</div>
       </div>
       <div class="stat-card c-yellow">

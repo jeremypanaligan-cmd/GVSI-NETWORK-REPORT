@@ -25,6 +25,22 @@ async function fetchOltData(forceRefresh = false) {
   }
 }
 
+function aggregateOltDownCauses(rows) {
+  const counts = {};
+  (Array.isArray(rows) ? rows : []).forEach(item => {
+    const status = (item.S || item.STATUS || '').toString().trim().toUpperCase();
+    if (status !== 'DOWN') return;
+
+    const cause = (item.DC || item.DT_CAUSE || '').toString().trim();
+    const normalizedCause = cause || 'UNKNOWN';
+    counts[normalizedCause] = (counts[normalizedCause] || 0) + 1;
+  });
+
+  return Object.keys(counts)
+    .map(label => ({ label, count: counts[label] }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
 function processAndRenderOlt() {
   let countUp = 0, countDown = 0, countLowPower = 0, countUplinkDown = 0, countDegradation = 0;
   let totalClientsDown = 0;
@@ -60,6 +76,10 @@ function processAndRenderOlt() {
 
   renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
   renderOltTable();
+
+  // Kiosk derives its own presentation, but expose the normalized aggregation
+  // for the regular dashboard and future consumers without changing the API.
+  window.oltDownCauseBreakdown = aggregateOltDownCauses(rawOltData);
 }
 
 function renderOltDonut(up, down, lowPower, uplinkDown, degradation, total) {

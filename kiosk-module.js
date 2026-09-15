@@ -267,12 +267,15 @@ function kioskSnapshotAll() {
   /* ---- NODE ---- */
   var node = kioskSource('node');
   if (node) {
-    var nd = { incidents: { value: 0, polarity: 'bad-up' }, nodes: { value: 0, polarity: 'bad-up' } };
+    var nd = { incidents: { value: 0, polarity: 'bad-up' }, nodes: { value: 0, polarity: 'bad-up' }, provinces: { value: 0, polarity: 'bad-up' } };
+    var nodeProvinces = {};
     node.forEach(function (r) {
       nd.incidents.value++;
       nd.nodes.value += kioskInt(r.C);
+      nodeProvinces[kioskProvince(r.P).toLowerCase()] = 1;
       nd[kioskAreaKey(kioskProvince(r.P), '')] = { value: kioskInt(r.C), polarity: 'bad-up', item: true };
     });
+    nd.provinces.value = Object.keys(nodeProvinces).filter(Boolean).length;
     snap.node = nd;
   }
 
@@ -408,6 +411,50 @@ function kioskOltBuckets(rows) {
   return b;
 }
 
+/* OLT cause inventory is intentionally DOWN-only for the kiosk outage view. */
+function kioskOltDownCauses(rows) {
+  var counts = {};
+  (rows || []).forEach(function (item) {
+    var status = String(item.S || item.STATUS || '').trim().toUpperCase();
+    if (status !== 'DOWN') return;
+    var cause = String(item.DC || item.DT_CAUSE || '').trim() || 'UNKNOWN';
+    counts[cause] = (counts[cause] || 0) + 1;
+  });
+
+  return Object.keys(counts).map(function (label) {
+    return { label: label, count: counts[label] };
+  }).sort(function (a, b) {
+    return b.count - a.count || a.label.localeCompare(b.label);
+  });
+}
+
+function kioskCauseColor(cause) {
+  var c = String(cause || '').toUpperCase();
+  if (c.indexOf('FIBER') !== -1 && c.indexOf('POWER') !== -1) return 'var(--k-violet)';
+  if (c.indexOf('FIBER') !== -1) return 'var(--k-red)';
+  if (c.indexOf('POWER') !== -1) return 'var(--k-amber)';
+  if (c.indexOf('EQUIPMENT') !== -1 || c.indexOf('HARDWARE') !== -1) return 'var(--k-yellow)';
+  return 'var(--k-teal)';
+}
+
+function kioskOltCauseStrip(rows) {
+  var causes = kioskOltDownCauses(rows);
+  if (!causes.length) {
+    return '<div class="kiosk-cause-strip is-empty"><span class="kiosk-cause-heading">DT Cause Breakdown</span><span class="kiosk-cause-empty">No DOWN OLT cause data</span></div>';
+  }
+
+  return '<div class="kiosk-cause-strip" aria-label="OLT down outage cause breakdown">' +
+    '<div class="kiosk-cause-heading">DT Cause Breakdown <small>DOWN OLTs only</small></div>' +
+    '<div class="kiosk-cause-list">' + causes.map(function (cause) {
+      var color = kioskCauseColor(cause.label);
+      return '<div class="kiosk-cause-badge" style="--cause-color:' + color + '">' +
+        '<span class="kiosk-cause-dot"></span>' +
+        '<span class="kiosk-cause-label">' + kioskEsc(cause.label) + '</span>' +
+        '<b>' + kioskChanged('olt', 'cause::' + cause.label, cause.count) + '</b>' +
+        '</div>';
+    }).join('') + '</div></div>';
+}
+
 /* Service type uses the app's own transform when available (NPE -> MPLS) */
 function kioskService(raw) {
   if (typeof transformBbService === 'function') return transformBbService(raw);
@@ -497,6 +544,7 @@ var KIOSK_CHANGE_LABELS = {
   'olt:clientsDown': 'OLT clients affected',
   'node:incidents': 'NODE incidents',
   'node:nodes': 'NODE nodes affected',
+  'node:provinces': 'NODE provinces affected',
   'backbone:links': 'backbone links affected',
   'backbone:dwdmDown': 'DWDM links down',
   'backbone:dwdmLow': 'DWDM low power',
@@ -1029,6 +1077,7 @@ function kioskRenderOlt() {
     '<div class="lbl">Clients affected (down)</div>' +
     '</div>' +
     '</div>' +
+    kioskOltCauseStrip(rows) +
     '<div class="kiosk-section-title">Down OLTs</div>' +
     downBlock;
 }
@@ -1036,6 +1085,143 @@ function kioskRenderOlt() {
 /* ------------------------------------------------------------------ *
    Slide 4 — NODE
  * ------------------------------------------------------------------ */
+var KIOSK_NORTH_LUZON_PROVINCES = [
+  { name: 'Ilocos Norte', points: '106,46 158,30 202,48 190,104 146,118 108,94' },
+  { name: 'Apayao', points: '202,48 250,30 292,48 280,104 238,112 190,104' },
+  { name: 'Cagayan', points: '292,48 360,34 414,62 430,132 374,158 326,122 280,104' },
+  { name: 'Ilocos Sur', points: '108,94 146,118 174,160 148,204 104,190 88,144' },
+  { name: 'Abra', points: '146,118 190,104 238,112 232,166 174,160' },
+  { name: 'Kalinga', points: '238,112 280,104 326,122 330,178 274,188 232,166' },
+  { name: 'Isabela', points: '326,122 374,158 430,132 454,204 416,266 348,240 330,178' },
+  { name: 'La Union', points: '88,144 104,190 148,204 154,246 112,270 76,230' },
+  { name: 'Benguet', points: '148,204 174,160 232,166 218,226 190,264 154,246' },
+  { name: 'Mountain Province', points: '232,166 274,188 278,238 218,226' },
+  { name: 'Ifugao', points: '278,188 330,178 348,240 310,272 278,238' },
+  { name: 'Nueva Vizcaya', points: '218,226 278,238 310,272 274,310 210,292 190,264' },
+  { name: 'Pangasinan', points: '112,270 154,246 190,264 210,292 194,338 132,332 96,302' },
+  { name: 'Nueva Ecija', points: '194,338 210,292 274,310 318,344 274,376 214,368' },
+  { name: 'Quirino', points: '310,272 348,240 416,266 396,326 358,344 318,344 274,310' },
+  { name: 'Aurora', points: '416,266 454,204 476,246 468,338 396,326' }
+];
+
+function kioskNorthLuzonKey(value) {
+  return String(value || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function kioskMapCallout(province, data, index) {
+  var x = province.points.split(' ')[0].split(',')[0] * 1;
+  var y = province.points.split(' ')[0].split(',')[1] * 1;
+  var rightSide = x < 250;
+  var boxX = rightSide ? 340 : 8;
+  var boxY = 42 + (index % 3) * 104;
+  var nodeNames = String(data.nodesText || 'Affected nodes').slice(0, 32);
+  return '<g class="kiosk-map-callout ' + (rightSide ? 'to-right' : 'to-left') + '">' +
+    '<path class="kiosk-map-leader" d="M' + x + ' ' + y + ' L' + (rightSide ? boxX : boxX + 172) + ' ' + (boxY + 28) + '"></path>' +
+    '<rect class="kiosk-map-callout-box" x="' + boxX + '" y="' + boxY + '" width="172" height="58" rx="4"></rect>' +
+    '<text class="kiosk-map-callout-title" x="' + (boxX + 9) + '" y="' + (boxY + 16) + '">RED PING · ' + kioskEsc(province.name.toUpperCase()) + '</text>' +
+    '<text class="kiosk-map-callout-body" x="' + (boxX + 9) + '" y="' + (boxY + 34) + '">NODE DOWN · ' + kioskEsc(nodeNames) + '</text>' +
+    '<text class="kiosk-map-callout-body" x="' + (boxX + 9) + '" y="' + (boxY + 49) + '">' + kioskEsc(String(data.nodes)) + ' NODE' + (data.nodes === 1 ? '' : 'S') + ' AFFECTED</text>' +
+    '</g>';
+}
+
+function kioskRenderNorthLuzonMap(rows) {
+  var active = {};
+  (rows || []).forEach(function (row) {
+    var key = kioskNorthLuzonKey(row.P || row.PROVINCE);
+    if (!key) return;
+    if (!active[key]) active[key] = { incidents: 0, nodes: 0, nodesText: '' };
+    active[key].incidents += 1;
+    active[key].nodes += kioskInt(row.C);
+    active[key].nodesText += (active[key].nodesText ? ', ' : '') + String(row.N || 'Affected nodes');
+  });
+
+  var activeCount = Object.keys(active).length;
+  var isClear = activeCount === 0;
+  var activeCallouts = [];
+  var regions = KIOSK_NORTH_LUZON_PROVINCES.map(function (province) {
+    var data = active[kioskNorthLuzonKey(province.name)];
+    var isActive = !!data;
+    var firstPoint = province.points.split(' ')[0].split(',');
+    var centerX = firstPoint[0] * 1 + 24;
+    var centerY = firstPoint[1] * 1 + 20;
+    var label = province.name + (isActive ? ': ' + data.nodes + ' affected nodes' : ': clear');
+    if (isActive && activeCallouts.length < 3) activeCallouts.push(kioskMapCallout(province, data, activeCallouts.length));
+    return '<g class="kiosk-map-province ' + (isActive ? 'is-active' : '') + '" tabindex="0" aria-label="' + kioskEsc(label) + '">' +
+      '<title>' + kioskEsc(label) + '</title>' +
+      '<polygon class="kiosk-map-region" points="' + province.points + '"></polygon>' +
+      (isActive ? '<circle class="kiosk-map-pulse" cx="' + centerX + '" cy="' + centerY + '" r="12"></circle><circle class="kiosk-map-marker" cx="' + centerX + '" cy="' + centerY + '" r="6"></circle>' : '') +
+      '<text class="kiosk-map-label" x="' + centerX + '" y="' + (centerY + 4) + '" text-anchor="middle">' + kioskEsc(province.name) + '</text>' +
+      '</g>';
+  }).join('');
+
+  return '<div class="kiosk-node-map-wrap ' + (isClear ? 'is-clear' : 'is-alert') + '">' +
+    '<div class="kiosk-node-map-head"><div><div class="kiosk-section-title">North Luzon Node Watch</div><div class="kiosk-node-map-sub">16 monitored provinces · live outage overlay</div></div>' +
+    '<span class="kiosk-node-map-status">' + (isClear ? '● All Regions Clear' : '● ' + activeCount + ' province' + (activeCount === 1 ? '' : 's') + ' affected') + '</span></div>' +
+    '<svg class="kiosk-north-map" viewBox="0 0 520 410" role="img" aria-label="North Luzon node outage map">' +
+    '<path class="kiosk-map-land-outline" d="M76 230 L88 144 106 46 202 30 250 30 360 34 414 62 454 204 476 246 468 338 396 326 358 344 318 344 274 376 214 368 132 332 96 302Z"></path>' +
+    regions + activeCallouts.join('') + '</svg></div>';
+}
+
+function kioskNodeImpactSummary(rows) {
+  var provinces = {};
+  var severityCounts = { critical: 0, high: 0, medium: 0, low: 0, other: 0 };
+  var totalNodes = 0;
+
+  (rows || []).forEach(function (row) {
+    var province = kioskNorthLuzonKey(row.P || row.PROVINCE);
+    if (province) provinces[province] = 1;
+    totalNodes += kioskInt(row.C);
+
+    var impact = String(row.I || '').trim().toUpperCase();
+    if (impact.indexOf('CRITICAL') !== -1) severityCounts.critical++;
+    else if (impact.indexOf('HIGH') !== -1) severityCounts.high++;
+    else if (impact.indexOf('MEDIUM') !== -1 || impact.indexOf('MODERATE') !== -1) severityCounts.medium++;
+    else if (impact.indexOf('LOW') !== -1) severityCounts.low++;
+    else severityCounts.other++;
+  });
+
+  var impactLabel = 'NO RATING';
+  var impactCount = 0;
+  ['critical', 'high', 'medium', 'low'].some(function (level) {
+    if (severityCounts[level] > 0) {
+      impactLabel = level.toUpperCase();
+      impactCount = severityCounts[level];
+      return true;
+    }
+    return false;
+  });
+
+  return {
+    incidents: (rows || []).length,
+    nodes: totalNodes,
+    provinces: Object.keys(provinces).length,
+    impact: impactLabel,
+    impactCount: impactCount,
+    latestSync: kioskTime(_kioskLastSync.node)
+  };
+}
+
+function kioskNodeImpactStrip(rows) {
+  var summary = kioskNodeImpactSummary(rows);
+  var impactTone = summary.impact === 'CRITICAL' || summary.impact === 'HIGH' ? 'is-critical' :
+    (summary.impact === 'NO RATING' ? 'is-muted' : 'is-warning');
+
+  function metric(value, label, className, changeKey) {
+    var displayValue = changeKey ? kioskChanged('node', changeKey, value) : kioskEsc(String(value));
+    return '<div class="kiosk-node-impact-metric ' + (className || '') + '">' +
+      '<div class="value">' + displayValue + '</div>' +
+      '<div class="label">' + kioskEsc(label) + '</div>' +
+      '</div>';
+  }
+
+  return '<div class="kiosk-node-impact-strip" aria-label="Node kiosk impact summary">' +
+    metric(summary.nodes, 'Affected nodes', 'is-primary', 'nodes') +
+    metric(summary.incidents, 'DOWN incidents', '', 'incidents') +
+    metric(summary.provinces, 'Provinces', '', 'provinces') +
+    metric(summary.latestSync, 'Latest sync', 'is-sync') +
+    '</div>';
+}
+
 function kioskRenderNode() {
   var el = kioskSlideEl('node');
   if (!el) return;
@@ -1063,7 +1249,7 @@ function kioskRenderNode() {
     (kioskSource('nap') || []).forEach(function (r) { countProvince(r.P); });
     monitoredProvinces = Object.keys(seen).length;
 
-    el.innerHTML = kioskCalmHtml(
+    el.innerHTML = kioskNodeImpactStrip([]) + kioskCalmHtml(
       { slide: 'node', text: 'Real-time regional monitoring' },
       'All Node Systems Operational',
       'No active node-down incidents reported across all monitored provinces.',
@@ -1105,11 +1291,16 @@ function kioskRenderNode() {
   var cards = top.map(function (r) {
     var nodeCount = kioskInt(r.C);
     var cause = String(r.DC || '—');
+    var affectedNodes = String(r.N || '—').split(',').map(function (node) {
+      return node.trim();
+    }).filter(Boolean).join(', ');
     var areaKey = kioskAreaKey(kioskProvince(r.P), '');
     return '<div class="kiosk-node-card' + kioskFlashClass('node', areaKey) + '">' +
-      '<div style="min-width:0">' +
-      '<div class="province">' + kioskEsc(kioskProvince(r.P)) + kioskNewChip('node', areaKey) + '</div>' +
-      '<div class="cause" style="color:' + causeColor(cause) + '">' + kioskEsc(cause) + '</div>' +
+      '<div class="kiosk-node-identity">' +
+      '<div class="affected-label">NPE NAME</div>' +
+      '<div class="affected-nodes">' + kioskEsc(affectedNodes) + kioskNewChip('node', areaKey) + '</div>' +
+      '<div class="province">' + kioskEsc(kioskProvince(r.P)) + '</div>' +
+      '<div class="cause" style="color:' + causeColor(cause) + '"><span class="affected-label">DT CAUSE</span> ' + kioskEsc(cause) + '</div>' +
       '</div>' +
       '<div class="nodes">' +
       '<div class="kiosk-down-stat"><div class="v">' + kioskEsc(String(r.I || '—')) + '</div><div class="k">Impact</div></div>' +
@@ -1125,6 +1316,7 @@ function kioskRenderNode() {
     : '';
 
   el.innerHTML = kioskSlideHead('node', subtitle) +
+    kioskNodeImpactStrip(rows) +
     '<div class="kiosk-node-list">' + cards + '</div>' +
     kioskFootNote(foot);
 }
