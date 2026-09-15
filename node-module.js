@@ -7,25 +7,17 @@ async function fetchNodeData(forceRefresh = false) {
     } else {
       renderNodeEmptyState();
     }
-    // Throttled per module — see shouldRevalidate() in cache-control.js.
-    if (shouldRevalidate('node')) {
-      fetchWithRetry(BASE_API_URL + "?type=node")
-        .then(data => {
-          // An empty array IS an answer from the API — the honest all-clear — so it is
-          // remembered as one. Only a failure means "we do not know".
-          const rows = Array.isArray(data) ? data : [];
-          dataCache.node = rows;
-          if (rows.length > 0) renderNodeReport(rows); else renderNodeEmptyState();
-          noteModuleFresh('node', rows);
-        })
-        .catch(() => noteModuleFailed('node'));
-    }
+    fetchWithRetry(BASE_API_URL + "?type=node")
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
+        else { dataCache.node = []; renderNodeEmptyState(); }
+      })
+      .catch(() => {});
     return;
   }
 
-  // Show skeleton on first load. This module builds its whole tab, so the shell is
-  // emitted first and its own tbody filled — the same shimmer rows NAP/LCP/OLT use.
-  if (!dataCache.node) renderNodeSkeleton();
+  // Show skeleton on first load
+  if (!dataCache.node) showSkeleton('node');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=node");
@@ -33,37 +25,27 @@ async function fetchNodeData(forceRefresh = false) {
     if (Array.isArray(data) && data.length > 0) {
       dataCache.node = data;
       renderNodeReport(data);
-      noteModuleFresh('node', data);
     } else {
       dataCache.node = [];
       renderNodeEmptyState();
-      noteModuleFresh('node', []);
     }
   } catch (error) {
     console.error('Error fetching NODE data:', error);
-    // This used to render the all-clear card, which made a failed fetch look exactly
-    // like a healthy network. Degrade to the last known incident list, or say plainly
-    // that we could not check — anything but "All Node Systems Operational".
-    const stale = degradeModuleToLastGood('node', dataCache.node);
-    if (Array.isArray(stale.payload) && stale.payload.length > 0) {
-      dataCache.node = stale.payload;
-      renderNodeReport(stale.payload);
-    } else if (stale.from === 'stored') {
-      // A remembered, genuine all-clear: still the last thing the API said, and the
-      // banner carries its timestamp.
-      dataCache.node = [];
-      renderNodeEmptyState();
-    } else {
-      renderNodeUnavailable();
-    }
+    renderNodeEmptyState();
   }
 }
 
-// The tab shell: title, table card, header, and the tbody left open. Shared by the
-// loading state and the data render, so the skeleton sits in the REAL table with
-// the real columns instead of a stand-in built out of divs.
-function nodeTableShellHtml() {
-  return `
+function renderNodeReport(data) {
+  const nodeTab = document.getElementById('tab-node');
+  if (!nodeTab) return;
+
+  // SAFETY CHECK: Kapag walang laman ang data, ipakita agad ang empty state
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    renderNodeEmptyState();
+    return;
+  }
+
+  let tableHtml = `
     <div class="page-title-row">
       <div class="page-title">NODE Status Report</div>
     </div>
@@ -81,42 +63,8 @@ function nodeTableShellHtml() {
               <th class="sortable" style="text-align: center;" onclick="sortTable('nodeTableBody', 6, this, false, true)">AGING</th>
             </tr>
           </thead>
-          <tbody id="nodeTableBody">`;
-}
-
-function nodeTableCloseHtml() {
-  return '</tbody></table></div></div>';
-}
-
-// Emit the real shell, then fill its tbody with the shared shimmer rows. Deliberately
-// no export buttons while loading — there is nothing to export yet.
-function renderNodeSkeleton() {
-  const nodeTab = document.getElementById('tab-node');
-  if (!nodeTab) return;
-  nodeTab.innerHTML = nodeTableShellHtml() + nodeTableCloseHtml();
-  renderSkeletonRows('nodeTableBody');
-}
-
-// A failed first load, with nothing remembered. Same shell and columns as the real
-// table so the shape of the screen does not change, but one honest row instead of an
-// all-clear card that was never earned.
-function renderNodeUnavailable() {
-  const nodeTab = document.getElementById('tab-node');
-  if (!nodeTab) return;
-  nodeTab.innerHTML = nodeTableShellHtml() + unavailableRowHtml(7) + nodeTableCloseHtml();
-}
-
-function renderNodeReport(data) {
-  const nodeTab = document.getElementById('tab-node');
-  if (!nodeTab) return;
-
-  // SAFETY CHECK: Kapag walang laman ang data, ipakita agad ang empty state
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    renderNodeEmptyState();
-    return;
-  }
-
-  let tableHtml = nodeTableShellHtml();
+          <tbody id="nodeTableBody">
+  `;
 
   let totalCount = 0;
 
@@ -139,7 +87,7 @@ function renderNodeReport(data) {
     };
     const causeColor = getNodeCauseColor(downtimeCause);
     const causeDisplay = downtimeCause && downtimeCause !== '-'
-      ? `<span style="display: inline-block; color: ${causeColor.color}; background: ${causeColor.bg}; padding: 4px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 700; letter-spacing: 0.3px; border-left: 3px solid ${causeColor.color};">${sanitizeHTML(downtimeCause)}</span>`
+      ? `<span style="display: inline-block; color: ${causeColor.color}; background: ${causeColor.bg}; padding: 4px 12px; border-radius: 6px; font-size: 0.85em; font-weight: 700; letter-spacing: 0.3px; border-left: 3px solid ${causeColor.color};">${downtimeCause}</span>`
       : `<span style="color: var(--text-muted);">–</span>`;
     const downtime = item.D || '-';
     const aging = item.AG || '-';
@@ -154,7 +102,7 @@ function renderNodeReport(data) {
     const nodeBadges = rawNodes.split(',')
       .map(node => node.trim())
       .filter(node => node !== '')
-      .map(node => `<span class="node-chip">${sanitizeHTML(node)}</span>`)
+      .map(node => `<span class="node-chip">${typeof sanitizeHTML === 'function' ? sanitizeHTML(node) : node}</span>`)
       .join('');
 
     // Ligtas na pag-escape para sa String parameters sa onclick event
@@ -165,17 +113,17 @@ function renderNodeReport(data) {
 
     tableHtml += `
       <tr class="clickable-row" onclick="openNodeModal('${safeProvince}', '${safeTicket}', '${safeBadges}', '${safeRemarks}')">
-        <td data-label="Province"><strong>${sanitizeHTML(province)}</strong></td>
+        <td data-label="Province"><strong>${province}</strong></td>
         <td data-label="Affected Nodes">
           <div class="node-chip-container">
             ${nodeBadges || '-'}
           </div>
         </td>
         <td data-label="Count" style="text-align: center;"><span class="badge badge-purple">${count}</span></td>
-        <td data-label="Impact" style="text-align: center;"><span class="badge badge-red">${sanitizeHTML(impact)}</span></td>
+        <td data-label="Impact" style="text-align: center;"><span class="badge badge-red">${impact}</span></td>
         <td data-label="DT Cause" style="text-align: center;">${causeDisplay}</td>
-        <td data-label="Downtime" style="text-align: center;">${sanitizeHTML(downtime)}</td>
-        <td data-label="Aging" style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${sanitizeHTML(aging)}</td>
+        <td data-label="Downtime" style="text-align: center;">${downtime}</td>
+        <td data-label="Aging" style="text-align: center; color: var(--badge-orange-text); font-weight: 700;">${aging}</td>
       </tr>
     `;
   });
@@ -185,7 +133,12 @@ function renderNodeReport(data) {
               <td colspan="2" data-label="Summary">TOTAL AFFECTED EQUIPMENT</td>
               <td data-label="Total Count" style="text-align: center;">${totalCount}</td>
               <td colspan="4"></td>
-            </tr>` + nodeTableCloseHtml();
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 
   nodeTab.innerHTML = tableHtml;
 

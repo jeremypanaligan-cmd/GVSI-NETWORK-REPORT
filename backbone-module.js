@@ -15,25 +15,17 @@ async function fetchBackboneData(forceRefresh = false) {
     } else {
       renderBackboneEmptyState();
     }
-    // Throttled per module — see shouldRevalidate() in cache-control.js.
-    if (shouldRevalidate('backbone')) {
-      fetchWithRetry(BASE_API_URL + "?type=backbone")
-        .then(data => {
-          // An empty array IS an answer from the API — the honest all-clear — so it is
-          // remembered as one. Only a failure means "we do not know".
-          const rows = Array.isArray(data) ? data : [];
-          dataCache.backbone = rows;
-          if (rows.length > 0) renderBackboneReport(rows); else renderBackboneEmptyState();
-          noteModuleFresh('backbone', rows);
-        })
-        .catch(() => noteModuleFailed('backbone'));
-    }
+    fetchWithRetry(BASE_API_URL + "?type=backbone")
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
+        else { dataCache.backbone = []; renderBackboneEmptyState(); }
+      })
+      .catch(() => {});
     return;
   }
 
-  // Show skeleton on first load. This module builds its whole tab, so the shell is
-  // emitted first and its own tbody filled — the same shimmer rows NAP/LCP/OLT use.
-  if (!dataCache.backbone) renderBackboneSkeleton();
+  // Show skeleton on first load
+  if (!dataCache.backbone) showSkeleton('backbone');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=backbone");
@@ -41,102 +33,14 @@ async function fetchBackboneData(forceRefresh = false) {
     if (Array.isArray(data) && data.length > 0) {
       dataCache.backbone = data;
       renderBackboneReport(data);
-      noteModuleFresh('backbone', data);
     } else {
       dataCache.backbone = [];
       renderBackboneEmptyState();
-      noteModuleFresh('backbone', []);
     }
   } catch (error) {
     console.error('Error fetching BACKBONE data:', error);
-    // This used to render the all-clear card, so a failed fetch looked exactly like a
-    // healthy network. Degrade to the last known link list, or say plainly that we
-    // could not check — anything but "All Backbone Links Operational".
-    const stale = degradeModuleToLastGood('backbone', dataCache.backbone);
-    if (Array.isArray(stale.payload) && stale.payload.length > 0) {
-      dataCache.backbone = stale.payload;
-      renderBackboneReport(stale.payload);
-    } else if (stale.from === 'stored') {
-      // A remembered, genuine all-clear: still the last thing the API said, and the
-      // banner carries its timestamp.
-      dataCache.backbone = [];
-      renderBackboneEmptyState();
-    } else {
-      renderBackboneUnavailable();
-    }
+    renderBackboneEmptyState();
   }
-}
-
-// The tab shell: title, the five stat cards, the table header, and the tbody left
-// open. Shared by the loading state and the data render. The card values are passed
-// in so the skeleton can stand a shimmer in for each number instead of printing a
-// 0, which would read as "no outages" rather than "not loaded yet".
-function backboneShellHtml(v) {
-  return `
-    <div class="page-title-row">
-      <div class="page-title">Backbone Links Status</div>
-    </div>
-
-    <!-- STAT CARDS -->
-    <div class="bb-stats-grid">
-      <div class="stat-card c-total">
-        <div class="label">TOTAL LINKS AFF.</div>
-        <div class="value">${v.total}</div>
-      </div>
-      <div class="stat-card c-yellow">
-        <div class="label">DWDM LOW POWER</div>
-        <div class="value">${v.dwdmLow}</div>
-      </div>
-      <div class="stat-card c-red">
-        <div class="label">DWDM LINK DOWN</div>
-        <div class="value">${v.dwdmDown}</div>
-      </div>
-      <div class="stat-card c-orange">
-        <div class="label">MPLS LOW POWER</div>
-        <div class="value">${v.mplsLow}</div>
-      </div>
-      <div class="stat-card c-purple">
-        <div class="label">MPLS LINK DOWN</div>
-        <div class="value">${v.mplsDown}</div>
-      </div>
-    </div>
-
-    <!-- DATA TABLE -->
-    <div class="table-card">
-      <div class="table-wrapper">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th class="sortable" onclick="sortTable('backboneTableBody', 0, this)">PROVINCE</th>
-              <th class="sortable" onclick="sortTable('backboneTableBody', 1, this)">LINKS AFF.</th>
-              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 2, this)">SERVICE</th>
-              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 3, this, true)">NO. OF LINKS</th>
-              <th class="sortable" onclick="sortTable('backboneTableBody', 4, this)">CATEGORY</th>
-              <th class="sortable" onclick="sortTable('backboneTableBody', 5, this)">IMPACT</th>
-              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 6, this, false, true)">AGING</th>
-            </tr>
-          </thead>
-          <tbody id="backboneTableBody">`;
-}
-
-function backboneTableCloseHtml() {
-  return '</tbody></table></div></div>';
-}
-
-// Emit the real shell with a shimmer where each card number goes, then fill the
-// tbody. Deliberately no export buttons while loading — nothing to export yet.
-function renderBackboneSkeleton() {
-  const bbTab = document.getElementById('tab-backbone');
-  if (!bbTab) return;
-  const shimmer = skeletonNumberHtml();
-  bbTab.innerHTML = backboneShellHtml({
-    total: shimmer,
-    dwdmLow: shimmer,
-    dwdmDown: shimmer,
-    mplsLow: shimmer,
-    mplsDown: shimmer
-  }) + backboneTableCloseHtml();
-  renderSkeletonRows('backboneTableBody');
 }
 
 // Renderer: Backbone Report Table + Stat Cards
@@ -170,13 +74,52 @@ function renderBackboneReport(data) {
   });
 
   // --- BUILD HTML ---
-  let tableHtml = backboneShellHtml({
-    total: totalLinks,
-    dwdmLow: dwdmLowPower,
-    dwdmDown: dwdmLinkDown,
-    mplsLow: mplsLowPower,
-    mplsDown: mplsLinkDown
-  });
+  let tableHtml = `
+    <div class="page-title-row">
+      <div class="page-title">Backbone Links Status</div>
+    </div>
+
+    <!-- STAT CARDS -->
+    <div class="bb-stats-grid">
+      <div class="stat-card c-total">
+        <div class="label">TOTAL LINKS AFF.</div>
+        <div class="value">${totalLinks}</div>
+      </div>
+      <div class="stat-card c-yellow">
+        <div class="label">DWDM LOW POWER</div>
+        <div class="value">${dwdmLowPower}</div>
+      </div>
+      <div class="stat-card c-red">
+        <div class="label">DWDM LINK DOWN</div>
+        <div class="value">${dwdmLinkDown}</div>
+      </div>
+      <div class="stat-card c-orange">
+        <div class="label">MPLS LOW POWER</div>
+        <div class="value">${mplsLowPower}</div>
+      </div>
+      <div class="stat-card c-purple">
+        <div class="label">MPLS LINK DOWN</div>
+        <div class="value">${mplsLinkDown}</div>
+      </div>
+    </div>
+
+    <!-- DATA TABLE -->
+    <div class="table-card">
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="sortTable('backboneTableBody', 0, this)">PROVINCE</th>
+              <th class="sortable" onclick="sortTable('backboneTableBody', 1, this)">LINKS AFF.</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 2, this)">SERVICE</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 3, this, true)">NO. OF LINKS</th>
+              <th class="sortable" onclick="sortTable('backboneTableBody', 4, this)">CATEGORY</th>
+              <th class="sortable" onclick="sortTable('backboneTableBody', 5, this)">IMPACT</th>
+              <th class="sortable" style="text-align: center;" onclick="sortTable('backboneTableBody', 6, this, false, true)">AGING</th>
+            </tr>
+          </thead>
+          <tbody id="backboneTableBody">
+  `;
 
   data.forEach(item => {
     const province = item.P || '-';
@@ -234,7 +177,12 @@ function renderBackboneReport(data) {
             <tr class="total-row">
               <td colspan="6" data-label="Summary">TOTAL LINKS AFFECTED</td>
               <td data-label="Total Count" style="text-align: center; font-weight: 800; color: var(--primary-teal); font-size: 15px;">${totalLinks}</td>
-            </tr>` + backboneTableCloseHtml();
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 
   bbTab.innerHTML = tableHtml;
 
@@ -369,17 +317,6 @@ function renderBackboneEmptyState() {
       </div>
     </div>
   `;
-}
-
-// A failed first load, with nothing remembered. The five stat cards keep their labels
-// but carry a dash, because a printed 0 would say "no links affected" about a feed we
-// could not read at all.
-function renderBackboneUnavailable() {
-  const bbTab = document.getElementById('tab-backbone');
-  if (!bbTab) return;
-  bbTab.innerHTML = backboneShellHtml({
-    total: '\u2014', dwdmLow: '\u2014', dwdmDown: '\u2014', mplsLow: '\u2014', mplsDown: '\u2014'
-  }) + unavailableRowHtml(7) + backboneTableCloseHtml();
 }
 
 // Modal: Open Backbone Link Details

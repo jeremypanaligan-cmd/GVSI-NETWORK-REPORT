@@ -1,97 +1,27 @@
 // ====================== OLT MODULE ======================
 
-// shape=2 is the compact OLT payload: province and municipality arrive as indices into
-// two dictionaries, rows are positional, and the field order travels in `f` (see
-// compactOltRows() in code.gs). Asking for it explicitly means an un-reloaded client
-// keeps getting the legacy shape, and this build keeps working against a backend that
-// has not been redeployed yet.
-function oltRequestUrl() {
-  return BASE_API_URL + "?type=olt&shape=2";
-}
-
-/* Decode a compact OLT payload back into the row objects every consumer already
-   expects ({N, P, M, S, T, AG, RM, DC, CA}). Done here, at the fetch boundary, so the
-   admin table, the details modal, the kiosk slide and analytics need no changes at all.
-
-   Returns the payload untouched if it is already the legacy array, and null for a shape
-   this build does not know — refusing to guess beats rendering wrong numbers. */
-function decodeOltPayload(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (!payload || payload.v !== 2 || !Array.isArray(payload.r) || !Array.isArray(payload.f)) return null;
-
-  const provinces = payload.p || [];
-  const municipalities = payload.m || [];
-  const fields = payload.f;
-
-  return payload.r.map(function (row) {
-    const out = {};
-    for (let i = 0; i < fields.length; i++) {
-      const field = fields[i];
-      let value = row[i];
-      if (field === 'P') value = provinces[value];
-      else if (field === 'M') value = municipalities[value];
-      out[field] = value;
-    }
-    return out;
-  });
-}
-
 async function fetchOltData(forceRefresh = false) {
   if (!forceRefresh && dataCache.olt) {
     rawOltData = dataCache.olt;
     processAndRenderOlt();
-    // Throttled per module — see shouldRevalidate() in cache-control.js. This is the
-    // one that mattered: ?type=olt is 50 KB and 96.9% of all API bytes, and the kiosk
-    // rotation used to pull it back down every 9 seconds.
-    if (shouldRevalidate('olt')) {
-      fetchWithRetry(oltRequestUrl())
-        .then(raw => {
-          const data = decodeOltPayload(raw);
-          if (Array.isArray(data) && data.length > 0) {
-            dataCache.olt = data;
-            rawOltData = data;
-            processAndRenderOlt();
-            noteModuleFresh('olt', data);
-          } else if (data === null) console.warn('OLT payload shape not understood — left the current data on screen');
-        })
-        .catch(() => noteModuleFailed('olt'));
-    }
+    fetchWithRetry(BASE_API_URL + "?type=olt")
+      .then(data => { if (Array.isArray(data) && data.length > 0) { dataCache.olt = data; rawOltData = data; processAndRenderOlt(); } })
+      .catch(() => {});
     return;
   }
 
-  // The tab markup lives in index.html and only the tbody, the cards and the
-  // donut legend are ours to fill, so the skeleton goes inside those — never over
-  // the whole tab.
-  if (!dataCache.olt) showModuleSkeleton('olt');
+  // No skeleton for OLT — has hardcoded HTML elements
 
   try {
-    const data = decodeOltPayload(await fetchWithRetry(oltRequestUrl()));
+    const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
 
     if (Array.isArray(data) && data.length > 0) {
       dataCache.olt = data;
       rawOltData = data;
       processAndRenderOlt();
-      noteModuleFresh('olt', data);
-    } else if (data === null) {
-      console.warn('OLT payload shape not understood — left the current data on screen');
     }
   } catch (error) {
     console.error('Error fetching OLT data:', error);
-    // processAndRenderOlt() over an empty array reports 461 total and 0 down, which
-    // reads as a clean network. Degrade to the last known rows instead, or show an
-    // explicit unavailable state — never a zeroed status board.
-    const stale = degradeModuleToLastGood('olt', dataCache.olt);
-    if (Array.isArray(stale.payload) && stale.payload.length > 0) {
-      dataCache.olt = stale.payload;
-      rawOltData = stale.payload;
-      processAndRenderOlt();
-    } else {
-      renderOltUnavailable();
-    }
-  } finally {
-    // This catch has no UI of its own, so without the clear a failed OLT fetch
-    // would leave the tables shimmering as if they were still loading.
-    clearModuleSkeleton('olt');
   }
 }
 
@@ -130,22 +60,6 @@ function processAndRenderOlt() {
 
   renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
   renderOltTable();
-}
-
-// A failed first load: keep the real table headers, dash the counters rather than
-// printing zeros, and leave the donut out of it entirely.
-function renderOltUnavailable() {
-  const tbody = document.getElementById('oltTableBody');
-  if (tbody) tbody.innerHTML = unavailableRowHtml(7);
-
-  ['oltCardTotal', 'oltCardUp', 'oltCardDown', 'oltCardLowPower', 'oltCardUplinkDown',
-   'oltCardDegradation', 'oltCardClientsDown', 'oltDonutTotalLabel'].forEach(function (id) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = '\u2014';
-  });
-
-  const legend = document.getElementById('oltDonutLegend');
-  if (legend) legend.innerHTML = '';
 }
 
 function renderOltDonut(up, down, lowPower, uplinkDown, degradation, total) {

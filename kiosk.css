@@ -1006,12 +1006,59 @@ body.kiosk-mode .kiosk-root {
 }
 
 /* ------------------------------------------------------------------ *
-   8. NODE slide — calm all-clear, or the incident summary + spotlight
+   8. NODE slide — calm all-clear / incident list
  * ------------------------------------------------------------------ */
+.kiosk-node-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0.9vh;
+}
 
-/* The summary band. The same component as the BACKBONE category chips, so the
-   declarations below are shared with `.kiosk-bb-chip` rather than duplicated. */
-.kiosk-node-summary,
+.kiosk-node-card {
+  flex: 1 1 auto;
+  min-height: 68px;
+  max-height: 17vh;
+  display: flex;
+  align-items: center;
+  gap: 1.6vw;
+  padding: 1.1vh 1.6vw;
+  background: var(--k-panel-raised);
+  border: 1px solid var(--k-line);
+  border-left: 5px solid var(--k-amber);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.kiosk-node-card .province {
+  font-size: clamp(0.9rem, 1.15vw, 1.15rem);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kiosk-node-card .cause {
+  font-family: var(--k-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-amber);
+}
+
+.kiosk-node-card .nodes {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1.6vw;
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------ *
+   9. BACKBONE slide — category chips + link card grid
+ * ------------------------------------------------------------------ */
 .kiosk-bb-chips {
   flex-shrink: 0;
   display: flex;
@@ -1019,7 +1066,6 @@ body.kiosk-mode .kiosk-root {
   flex-wrap: wrap;
 }
 
-.kiosk-node-stat,
 .kiosk-bb-chip {
   flex: 1 1 0;
   min-width: 120px;
@@ -1032,7 +1078,11 @@ body.kiosk-mode .kiosk-root {
   border-radius: 12px;
 }
 
-.kiosk-node-stat .v,
+.kiosk-bb-chip.is-hero {
+  background: linear-gradient(135deg, var(--k-panel-raised), rgba(47, 227, 192, 0.06));
+  border-color: var(--k-teal-dim);
+}
+
 .kiosk-bb-chip .v {
   font-family: var(--k-mono);
   font-variant-numeric: tabular-nums;
@@ -1040,94 +1090,16 @@ body.kiosk-mode .kiosk-root {
   font-weight: 600;
 }
 
-.kiosk-node-stat .k,
+.kiosk-bb-chip.is-hero .v {
+  font-size: clamp(1.8rem, 2.4vw, 2.4rem);
+  color: var(--k-teal);
+}
+
 .kiosk-bb-chip .k {
   font-size: 0.66rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--k-text-dim);
-}
-
-/* Exactly one incident: it gets the whole stage. A single row of a list on a
-   wall display reads as a broken layout, and this is the case that matters
-   most — so the node name becomes the headline. */
-.kiosk-node-hero {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.2vh;
-  padding: 2.4vh 2.6vw;
-  background: linear-gradient(135deg, var(--k-panel-raised), rgba(240, 71, 95, 0.05));
-  border: 1px solid var(--k-line);
-  border-left: 6px solid var(--k-red);
-  border-radius: 14px;
-}
-
-.kiosk-node-hero .hero-kicker {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--k-red);
-}
-
-.kiosk-node-hero .hero-name {
-  font-family: var(--k-mono);
-  font-size: clamp(1.8rem, 4vw, 3.4rem);
-  font-weight: 600;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.kiosk-node-hero .hero-loc {
-  font-size: clamp(0.9rem, 1.3vw, 1.25rem);
-  color: var(--k-text-dim);
-}
-
-.kiosk-node-hero .kiosk-stat-row {
-  justify-content: center;
-  margin-top: 0.6vh;
-}
-
-/* SA (service affecting) / NSA. Shown as a chip — as a bare 40px code it was
-   the least readable thing on the slide. */
-.kiosk-node-impact {
-  flex-shrink: 0;
-  font-family: var(--k-mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 0.4rem 0.8rem;
-  border: 1px solid var(--k-line);
-  border-radius: 6px;
-  color: var(--k-text-dim);
-}
-
-.kiosk-node-impact.is-sa {
-  border-color: var(--k-red);
-  background: rgba(240, 71, 95, 0.1);
-  color: var(--k-red);
-}
-
-.kiosk-node-impact.is-nsa {
-  color: var(--k-text-faint);
-}
-
-/* ------------------------------------------------------------------ *
-   9. BACKBONE slide — category chips + link card grid
- * ------------------------------------------------------------------ *//* Base chip visuals are declared with `.kiosk-node-stat` in section 8. */
-.kiosk-bb-chip.is-hero {
-  background: linear-gradient(135deg, var(--k-panel-raised), rgba(47, 227, 192, 0.06));
-  border-color: var(--k-teal-dim);
-}
-.kiosk-bb-chip.is-hero .v {
-  font-size: clamp(1.8rem, 2.4vw, 2.4rem);
-  color: var(--k-teal);
 }
 
 .kiosk-bb-grid {
@@ -1531,82 +1503,6 @@ body.kiosk-mode .kiosk-root {
 /* ------------------------------------------------------------------ *
    13. Reduced motion
  * ------------------------------------------------------------------ */
-/* ------------------------------------------------------------------ *
-   Stale-data banner + "no live data" slide state  (v3.9.1)
-   Both are driven by last-good.js: the banner whenever a module is showing old
-   numbers, the slide state when a module was never loaded at all. A wall display
-   must say which of those it is rather than look normally calm.
- * ------------------------------------------------------------------ */
-.kiosk-root .kiosk-stale-banner {
-  display: none;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.75rem 2.6vw;
-  background: var(--k-red-dim);
-  border-bottom: 1px solid var(--k-red);
-  color: #f2a5b0;
-  font-family: var(--k-mono);
-  font-size: 0.74rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
-.kiosk-root .kiosk-stale-banner.is-visible {
-  display: flex;
-}
-
-.kiosk-root .kiosk-stale-banner .stale-banner-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--k-red);
-  flex: 0 0 auto;
-  animation: kioskPulse 2.2s infinite;
-}
-
-.kiosk-root .kiosk-stale-banner .stale-banner-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kiosk-unreachable {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.4vh;
-  text-align: center;
-}
-
-.kiosk-unreachable-tag {
-  font-family: var(--k-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--k-red);
-  background: rgba(240, 71, 95, 0.1);
-  border: 1px solid var(--k-red);
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-}
-
-.kiosk-unreachable-headline {
-  font-size: clamp(1.6rem, 3vw, 2.6rem);
-  font-weight: 700;
-  color: var(--k-text);
-}
-
-.kiosk-unreachable-sub {
-  font-size: 0.95rem;
-  color: var(--k-text-dim);
-  max-width: 52ch;
-  line-height: 1.55;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .kiosk-ticker-track {
     animation: none;
@@ -1634,9 +1530,5 @@ body.kiosk-mode .kiosk-root {
     animation: none;
     width: 100%;
     background: var(--k-line);
-  }
-
-  .kiosk-root .kiosk-stale-banner .stale-banner-dot {
-    animation: none;
   }
 }

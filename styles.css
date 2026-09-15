@@ -169,19 +169,10 @@ body.dark-mode .tab-btn.active {
   border-bottom-color: #14b8a6;
 }
 
-/* ── FROSTED GLASS: Bottom Nav ──
-   Paint only. Do NOT add `position` or `z-index` here.
-
-   This rule is `body.dark-mode .bottom-nav` — specificity (0,2,1) — and the bar is
-   only ever DISPLAYED inside `@media (max-width: 768px)`, where `.bottom-nav` is
-   (0,1,0). So anything this rule declares for layout beats the media query, and
-   only on the one device where it matters. It used to carry
-   `position: relative; z-index: 2` (copied from the modal rule below), which
-   replaced the bar's `position: fixed` with normal flow and dropped its z-index
-   from 100 to 2 — so on mobile the bar was a plain flex item with a z-index
-   beneath every overlay instead of a pinned bar. Kept as paint-only, and
-   tests/shell-dom.test.js fails if position or z-index reappears here. */
+/* ── FROSTED GLASS: Bottom Nav ── */
 body.dark-mode .bottom-nav {
+  position: relative;
+  z-index: 2;
   background: rgba(7, 10, 15, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -1801,7 +1792,11 @@ body.dark-mode .remarks-paragraph-box {
    SKELETON LOADING
    ======================== */
 
-/* Shimmer animation — one placeholder mechanism for all five modules. */
+.skeleton-container {
+  padding: 12px;
+}
+
+/* Shimmer animation */
 @keyframes shimmer {
   0% { background-position: -400px 0; }
   100% { background-position: 400px 0; }
@@ -1814,34 +1809,70 @@ body.dark-mode .remarks-paragraph-box {
   border-radius: 6px;
 }
 
-/* Rows written into a REAL <tbody> — every module, including NODE and BACKBONE,
-   which emit their own shell and then fill its tbody. The skeleton is always the
-   module's actual table with shimmer rows in it, never a stand-in table built from
-   divs whose header and columns had nothing to do with the real one. */
-.skeleton-tr td {
-  padding: 12px 10px;
+/* Skeleton stat cards */
+.skeleton-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.skeleton-stat {
+  height: 60px;
+  border-radius: 8px;
+}
+
+/* Skeleton table rows */
+.skeleton-table-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.skeleton-thead {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--primary-teal);
+  opacity: 0.7;
+}
+
+.skeleton-th {
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.3);
+  flex: 1;
+}
+
+.skeleton-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.skeleton-tr:last-child td {
+.skeleton-row:last-child {
   border-bottom: none;
 }
 
-.skeleton-bar {
-  display: block;
-  height: 14px;
-  width: 100%;
+.skeleton-cell {
+  height: 16px;
   border-radius: 4px;
+  flex: 1;
 }
 
-/* Stands in for a stat-card number while its module is loading. The render
-   assigns textContent, which overwrites it — no cleanup needed. */
-.skeleton-num {
-  display: inline-block;
-  width: 44px;
-  height: 26px;
-  border-radius: 6px;
-  vertical-align: middle;
+.skeleton-cell.wide { flex: 2; }
+.skeleton-cell.narrow { flex: 0.5; }
+.skeleton-cell.badge { width: 50px; flex: none; height: 22px; border-radius: 12px; }
+
+/* Skeleton donut placeholder */
+.skeleton-donut {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .skeleton-legend {
@@ -2825,85 +2856,4 @@ body.dark-mode .admin-tab-btn:hover {
     padding: 6px 8px;
     font-size: 10px;
   }
-}
-
-/* ============================
-   Stale-data banner  (v3.9.1)
-   Mounted right under the header and hidden until last-good.js marks a module
-   stale — i.e. the API could not be reached and the screen is showing the last
-   known values. There is no id on purpose: the dashboard and the kiosk shell each
-   mount one and last-good.js finds them by class.
-   ============================ */
-.stale-banner {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
-  background: var(--badge-orange);
-  color: var(--badge-orange-text);
-  border-bottom: 1px solid var(--border-color);
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  z-index: 60;
-}
-
-.stale-banner.is-visible {
-  display: flex;
-}
-
-.stale-banner-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: 0 0 auto;
-  animation: stalePulse 2s ease-in-out infinite;
-}
-
-@keyframes stalePulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-
-.stale-banner-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (max-width: 640px) {
-  .stale-banner-text {
-    white-space: normal;
-  }
-}
-
-/* ============================
-   "Live data unavailable" module state  (last-good.js)
-   An honest row for a module whose fetch failed with nothing remembered. A blank
-   table reads as a quiet day, so this says the opposite out loud.
-   ============================ */
-.unavailable-tr td {
-  padding: 30px 16px !important;
-  text-align: center;
-}
-
-.unavailable-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.unavailable-cell strong {
-  color: var(--badge-red-text);
-  font-size: 13px;
-}
-
-.unavailable-cell span {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-  max-width: 54ch;
 }

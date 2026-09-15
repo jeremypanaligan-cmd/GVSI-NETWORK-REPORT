@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.10.0">
+  <link rel="stylesheet" href="styles.css?v=3.9.0">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.10.0">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.0">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -44,7 +44,9 @@
 <div id="loginOverlay" class="login-overlay">
   <div class="login-card">
     <div class="login-brand">
-      <span class="brand-gallop" style="font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 22px; letter-spacing: 3px; color: var(--dark-charcoal);">GALLOPVISION</span>    </div>
+      <span class="brand-gallop" style="font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 22px; letter-spacing: 3px; color: var(--dark-charcoal);">GALLOPVISION</span>
+      <span class="brand-converge" style="font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 1.8px; color: var(--primary-teal);">CONVERGE</span>
+    </div>
     <div class="login-subtitle">Network Operations Dashboard</div>
     <form class="login-form" id="loginForm" onsubmit="return handleLogin(event)">
       <div class="login-input-group">
@@ -67,7 +69,7 @@
       </label>
       <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.10.0</div>
+    <div class="login-footer">GVSI NetPulse v3.9.0</div>
   </div>
 </div>
 
@@ -75,6 +77,8 @@
 <header class="app-header">
 <div class="brand-title">
   <span class="brand-gallop">GALLOPVISION</span>
+  <span class="brand-divider">|</span>
+  <span class="brand-converge">CONVERGE</span>
 </div>
   <div class="header-actions">
     <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme">
@@ -98,14 +102,6 @@
     <button class="refresh-btn" onclick="refreshCurrentTab()">REFRESH</button>
   </div>
 </header>
-
-<!-- Stale-data banner. Empty and hidden until last-good.js marks a module stale;
-     there are two of these (here and in the kiosk shell) and both are found by
-     class, never by id. See last-good.js. -->
-<div class="stale-banner" role="status" aria-live="polite">
-  <span class="stale-banner-dot" aria-hidden="true"></span>
-  <span class="stale-banner-text"></span>
-</div>
 
 <!-- Live Activity Ticker Bar -->
 <div class="ticker-bar" id="tickerBar">
@@ -329,10 +325,10 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th class="sortable" onclick="sortTable('oltTableBody', 0, this)">PROV</th>
-                <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY / MUN</th>
+                <th class="sortable" onclick="sortTable('oltTableBody', 0, this)">PROVINCE</th>
+                <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY / MUNICIPALITY</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 2, this)">OLT NAME</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this, true)">CLIENTS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this, true)">AFFECTED CLIENTS</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">DT CAUSE</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 5, this, false, true)">AGING</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 6, this)">STATUS</th>
@@ -383,21 +379,6 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-                <p><strong>Version 3.10.0 — What's New:</strong></p>
-                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                  <li><strong>Bottom Navigation Fixed on Mobile:</strong> the bar at the bottom of the app was never actually pinned on phones — a dark-mode styling rule was overriding it, leaving it in normal page flow and behind every overlay. It is pinned again, and stays on top of the content it belongs to.</li>
-                  <li><strong>No More Restart-Only Recovery:</strong> the maintenance screen used to rebuild the entire page, which deleted the header and the bottom navigation until the app was closed and reopened. It is drawn on top now, so the screen underneath it survives.</li>
-                </ul>
-
-                <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-                <p><strong>Version 3.9.1 — What's New:</strong></p>
-                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
-                  <li><strong>Honest Failure States (New):</strong> When the API cannot be reached, each module now keeps showing the last known data instead of a blank table or an error row, and a banner across the top says <em>STALE</em> with the time the data is from. NODE and BACKBONE no longer show their &quot;all clear&quot; card on a failed load — a screen must never confuse &quot;nothing is wrong&quot; with &quot;we could not check&quot;.</li>
-                  <li><strong>Fast API Path (New):</strong> API calls now go through a small edge proxy instead of the two-hop Google redirect which intermittently returned 404s. The proxy retries an origin failure server-side, so a module sees a clean answer rather than a broken one.</li>
-                  <li><strong>Kiosk Shows Staleness Too:</strong> the wall display carries the same stale banner in its top bar, and a slide with no data at all says so instead of loading forever.</li>
-                </ul>
-
-                <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.0 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Kiosk Mode Redesign (New):</strong> The NOC/TV wall display is now its own presentation layer — severity band and hotspot provinces for NAP, client-impact hero for LCP, status donut with down-OLT alert cards for OLT, a calm all-clear state for NODE, and DWDM/MPLS link cards for BACKBONE. Admin tables, export buttons and sorting are unchanged.</li>
@@ -724,57 +705,57 @@
   </div>
 </div>
 
-<script src="db.js?v=3.10.0"></script>
-<script src="notifications.js?v=3.10.0"></script>
-<script src="cache-control.js?v=3.10.0"></script>
-<!-- Must come before the modules: they call into it on every fetch (see last-good.js). -->
-<script src="last-good.js?v=3.10.0"></script>
-<script src="nap-module.js?v=3.10.0"></script>
-<script src="lcp-module.js?v=3.10.0"></script>
-<script src="olt-module.js?v=3.10.0"></script>
-<script src="node-module.js?v=3.10.0"></script>
-<script src="backbone-module.js?v=3.10.0"></script>
-<script src="analytics-module.js?v=3.10.0"></script>
-<script src="admin-module.js?v=3.10.0"></script>
+<script src="db.js"></script>
+<script src="notifications.js"></script>
+<script src="nap-module.js"></script>
+<script src="lcp-module.js"></script>
+<script src="olt-module.js"></script>
+<script src="node-module.js"></script>
+<script src="backbone-module.js"></script>
+<script src="analytics-module.js"></script>
+<script src="admin-module.js"></script>
 
 <script>
 // 1. Version Guard Logic
+  /* Deliberately NOT the build's own version, and deliberately unchanged at "3.10.0"
+     while this tree is the v3.9.0 kiosk build.
+
+     This constant is the guard's match key, not a version label: a device whose stored
+     `app_version` differs is taken to the update overlay — and on THIS build that
+     overlay does not reload by itself, it waits for a tap on "Refresh & Sync App"
+     while checkAppVersion() holds the app back. Every device already carrying the
+     3.10.0 shell reports "3.10.0", so lowering this to "3.8.2" (what the v3.9.0 commit
+     used) would block every dashboard AND every NOC wall display on a prompt nobody is
+     there to answer, for a rollback that does not need it: delivery is the service
+     worker's new cache generation (sw.js), and this build carries the same session and
+     token keys through a wipe anyway. */
   const REQUIRED_APP_VERSION = "3.10.0"; 
 
   async function checkAppVersion() {
     const currentVersion = localStorage.getItem('app_version');
 
     if (!currentVersion || currentVersion !== REQUIRED_APP_VERSION) {
-      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry', 'netpulse_session_token'];
-
-      if (window.netpulseCache) {
-        // One call clears the client-side caching layers instead of the old
-        // five ad-hoc steps. See cache-control.js.
-        await netpulseCache.invalidateAll({
-          serviceWorker: true,
-          storage: true,
-          preserve: _preserveKeys
-        });
-      } else {
-        // Fallback using native APIs only. The update path must never depend on
-        // a file that may itself be missing — that is the one case it exists to
-        // recover from.
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          for (let reg of registrations) {
-            await reg.unregister();
-          }
+      // Unregister lahat ng Service Worker
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let reg of registrations) {
+          await reg.unregister();
         }
-        if ('caches' in window) {
-          const cacheNames = await caches.keys();
-          await Promise.all(cacheNames.map(name => caches.delete(name)));
-        }
-        const _preserved = {};
-        _preserveKeys.forEach(k => { _preserved[k] = localStorage.getItem(k); });
-        localStorage.clear();
-        Object.entries(_preserved).forEach(([k, v]) => { if (v !== null) localStorage.setItem(k, v); });
-        sessionStorage.clear();
       }
+
+      // Burahin ang lahat ng CacheStorage
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+      }
+
+      // Linisin ang storage (preserve essential keys)
+      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry', 'netpulse_session_token'];
+      const _preserved = {};
+      _preserveKeys.forEach(k => { _preserved[k] = localStorage.getItem(k); });
+      localStorage.clear();
+      Object.entries(_preserved).forEach(([k, v]) => { if (v !== null) localStorage.setItem(k, v); });
+      sessionStorage.clear();
 
       // Siguraduhing loaded na ang DOM bago palitan ang HTML
       if (document.readyState === 'loading') {
@@ -806,19 +787,27 @@
   checkAppVersion();
 
   // --- MGA APPLICATION VARIABLES ---
-  // Where the API lives. ONE value decides it, here.
-  //
-  // NETPULSE_PROXY puts a Cloudflare Worker in front of Apps Script (see proxy/).
-  // The direct call is a TWO-hop Google redirect whose second hop — a
-  // script.googleusercontent.com/macros/echo page — is the one that intermittently
-  // answers 404. The browser pays the whole chain, sees the 404, and cannot retry it
-  // cheaply; behind the worker the chain is one request and a 404 is retried
-  // server-side before the caller ever hears about it. Measured 2026-09-13: 2 hops
-  // become 1, warm p50 1,096 -> 1,158 ms, and a 404 that used to reach a module (and
-  // strand it on "Error loading data." until its next poll) now cannot.
-  //
-  // Set NETPULSE_PROXY to "" to go straight to Apps Script again. If you change it,
-  // sw.js must change with it — tests/proxy.test.js fails if the two disagree.
+  /* WHERE THE DATA PATH POINTS
+
+     APPS_SCRIPT_URL is the deployment itself. NETPULSE_PROXY is the Cloudflare worker
+     in front of it (see proxy/README.md), which retries the flaky Google redirect hop
+     server-side so the browser never pays for it.
+
+     Measured 2026-09-15, with the origin stalling badly:
+       direct   ?type=nap   200, 200, 404 after 27.7 s, 200 after 96.3 s, 200
+       worker   ?type=nap   200 in 1.1-1.4 s, on its FIRST attempt, three times running
+     A worker that is up while the redirect hop is not is a bad trade to make on every
+     module fetch, so the data path uses it.
+
+     AUTH DOES NOT: window.APP_URL below stays pointed at Apps Script directly. The
+     worker forwards only a whitelist of parameters, and the one time that whitelist was
+     missing `password` every sign-in in the app failed silently with "Invalid username
+     or password". Data and admin calls carry no credentials, so they go through the
+     worker; the sign-in call does not.
+
+     To go back to calling Apps Script directly: blank NETPULSE_PROXY here AND blank
+     API_PROXY_HOST in sw.js. Both, or the service worker starts caching API responses
+     (it is cache-first for everything that is not a known API host). */
   window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
   window.NETPULSE_PROXY = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev";
   window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
@@ -827,25 +816,9 @@
   let currentTab = 'nap';
   let rawOltData = [];
   let currentOltFilter = 'DOWN';
+  let _isInitialLoad = true;
 
   const dataCache = { nap: null, lcp: null, olt: null, node: null, backbone: null };
-
-  // --- ALERT THRESHOLDS ---
-  // Declared here, with the other application variables, and NOT next to its only
-  // reader further down the file. getAlertClass() is reached SYNCHRONOUSLY from the
-  // top-level checkMaintenanceAndLogin() call: that call can run showApp() ->
-  // loadInitialData() -> a module fetcher -> a render -> getAlertClass(), all before
-  // the script has finished evaluating. A `const` read before its own statement
-  // throws in that window, and this class of bug has already shipped twice in other
-  // forms. tests/inline-order.test.js is the gate that keeps it out.
-  const ALERT_THRESHOLDS = {
-    oltDown: 5,        // >5 OLTs down = HIGH alert
-    oltLowPower: 3,    // >3 low power = MEDIUM
-    nodeTickets: 3,    // >3 node tickets = MEDIUM
-    bbTickets: 2,      // >2 backbone tickets = MEDIUM
-    napCritical: 5,    // >5 NAP >3days = HIGH
-    clientsDown: 100   // >100 clients affected = HIGH
-  };
 
   // --- LOADER CONTROL (centralized) ---
   function showLoader() {
@@ -874,186 +847,36 @@
     _debounceTimers[key] = setTimeout(fn, ms);
   }
 
-  // --- UTILITY: Fetch with Retry (deduped + backoff) ---
-  // Apps Script throttles when many calls overlap, so this guards twice:
-  //   1. identical in-flight URLs share ONE request, so a burst (tab click +
-  //      prefetch + visibility refresh) collapses into a single call. This is
-  //      what stops the request storm.
-  //   2. only TRANSIENT failures are retried, with jittered backoff, so a busy
-  //      server never gets retried into the ground.
-  //
-  // Note on the 404: measured over a 15-call sweep of this deployment, 3 came
-  // back 404 and EVERY one of them took 8-33 s, while every fast call (1.1-1.3 s)
-  // was 200. The 404 lands on the redirect hop (script.googleusercontent.com/
-  // macros/echo, reached after /exec answers 302) and this app's own script
-  // cannot return it at all — ContentService always answers 200. It is therefore
-  // a stall signature, NOT a missing route, and it is retried. A 400/401/403
-  // will not fix itself and is fatal.
-  const _inflightFetches = new Map();
-
-  /* --- SHARED STALL GATE: why a retry no longer waits 500 ms ----------------
-     Retrying 500 ms into an 8 s stall cannot help — the retry lands inside the
-     same stall. And with six callers doing it at once (five modules plus the
-     heartbeat) one bad second turned into ~18 invocations, all inside the stall.
-     Two changes fix that:
-
-       1. the wait scales with the stall the attempt ACTUALLY observed, and
-       2. it is SHARED — one clock for the whole app, so the callers come back as
-          a single trickle instead of six overlapping storms.
-
-     A healthy boot never consults any of this: the gate is only touched after a
-     failure, so the five modules still start together in one tick.
-     ----------------------------------------------------------------------- */
-  var _stallGateUntil = 0;      // epoch ms; no further attempt starts before this
-
-  // Named so a test can read the real numbers out of the source and run
-  // retryDelayMs() against them rather than against a copy.
-  const RETRY_MIN_WAIT = 1500;  // nothing healthy answers faster than ~1.1 s, so a
-                                // shorter wait retries inside the same window
-  const RETRY_MAX_WAIT = 20000; // past this the module's own poll is the better retry
-
-  // Pure and deliberately readable: the old exponential stays in charge of a FAST
-  // failure (a 100 ms blip is still a blip), while a slow one is treated as a
-  // stall and waits about as long as it took to answer.
-  function retryDelayMs(stallMs, attempt, base) {
-    const stalled = Number(stallMs) || 0;
-    const step = Number(attempt) || 1;
-    const exponential = (Number(base) || 500) * Math.pow(2, Math.max(0, step - 1));
-    let wait = Math.max(exponential, Math.round(stalled * 1.5));
-    if (wait < RETRY_MIN_WAIT) wait = RETRY_MIN_WAIT;
-    if (wait > RETRY_MAX_WAIT) wait = RETRY_MAX_WAIT;
-    return wait;
-  }
-
-  // Every failing caller pushes the SAME gate out, and the console hears about a
-  // stall once per window instead of once per caller per attempt.
-  function noteStall(waitMs) {
-    const now = Date.now();
-    const windowWasOpen = _stallGateUntil <= now;
-    const until = now + waitMs;
-    if (until > _stallGateUntil) _stallGateUntil = until;
-    if (windowWasOpen) {
-      console.warn('[API] stalled — retries gated for ' + Math.round(waitMs) + 'ms');
-    }
-  }
-
-  // Loops rather than sleeping once: a sibling that fails while we wait pushes the
-  // gate out beneath us, and leaving early is how the storm starts again.
-  async function waitForStallGate() {
-    for (;;) {
-      const remaining = _stallGateUntil - Date.now();
-      if (remaining <= 0) return;
-      await new Promise(function (r) { setTimeout(r, remaining); });
-    }
-  }
-
-  function fetchWithRetry(url, retries = 2, delay = 500) {
-    // Attach the session token BEFORE the dedupe lookup, so a burst of identical
-    // calls still collapses into one request.
+  // --- UTILITY: Fetch with Retry ---
+  async function fetchWithRetry(url, retries = 2, delay = 500) {
+    // Attached in ONE place, so no caller has to remember: any API call made through
+    // here carries the session token the deployment issued at login. A call with no
+    // token stored goes out exactly as it always did.
     url = withAuthToken(url);
-
-    if (_inflightFetches.has(url)) return _inflightFetches.get(url);
-
-    const promise = (async () => {
-      const maxAttempts = retries + 1;
-
-      for (let attempt = 1; ; attempt++) {
-        let status = 0;                       // 0 = network/offline failure
-        let rejectedSession = false;
-        let finalHop = '';                    // see the failure message below
-
-        // How long this attempt really took. A 40 ms answer and a 20 s stall carry
-        // the same failure code and need opposite retry treatment, so the wait is
-        // derived from this rather than from the attempt number alone.
-        const attemptStart = Date.now();
-
-        try {
-          const res = await fetch(url, { cache: 'no-store' });
-          if (res.ok) {
-            const body = await res.json();
-            // Apps Script always answers 200 (ContentService cannot set a status
-            // code), so a rejected session arrives as a body marker instead.
-            if (body && body.unauthorized) rejectedSession = true;
-            else return body;
-          } else {
-            status = res.status;
-            // An /exec call redirects to scriptusercontent.com, so a failure can
-            // originate on either hop and Chrome reports both against the request
-            // URL. res.url is the hop that actually produced the status — the only
-            // way to tell a frontend throttle on /exec apart from a rejected
-            // content key on the redirect target. Without it the next occurrence
-            // is another guess.
-            finalHop = res.url || '';
-          }
-        } catch (err) {
-          status = 0;
-        }
-
-        const stallMs = Date.now() - attemptStart;
-
-        // A rejected session is fatal and already reported: never retried, and
-        // never mistaken for a network blip.
-        if (rejectedSession) {
-          onUnauthorized();
-          throw new Error(`Unauthorized for ${url}`);
-        }
-
-        const isNetworkError = status === 0;
-        const isServerBusy = status === 429 || status === 500 || status === 502 ||
-                             status === 503 || status === 504;
-
-        // A 404 here is Google answering an /exec call with its own error page —
-        // observed repeatedly on this deployment, and always transient: the same
-        // URL returns 200 moments later. It is never real data, so retrying costs
-        // nothing but the backoff. Tolerating only ONE 404 meant two consecutive
-        // stalls gave up, and a failed module then sat on "Error loading data."
-        // until its next poll — up to an hour for NAP. Retry it like any other
-        // transient server condition, bounded by the caller's retry budget.
-        const isAppsScriptStall = status === 404;
-
-        const canRetry =
-          attempt < maxAttempts &&
-          (isNetworkError || isServerBusy || isAppsScriptStall);
-
-        if (!canRetry) {
-          // Name the hop that failed, but only when it is NOT the URL we asked for —
-          // otherwise the message just repeats itself.
-          const hop = (finalHop && finalHop !== url)
-            ? ` (failed hop: ${finalHop.split('?')[0]})`
-            : '';
-          throw new Error(status ? `HTTP ${status} for ${url}${hop}` : `Network request failed: ${url}`);
-        }
-
-        // Stall-aware backoff, then wait out the shared gate. The jitter stays so
-        // the callers do not leave the gate in one synchronised line.
-        noteStall(retryDelayMs(stallMs, attempt, delay));
-        await waitForStallGate();
-        await new Promise(r => setTimeout(r, Math.random() * 250));
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        console.warn(`[Retry ${i + 1}/${retries + 1}] ${url}:`, err.message);
+        if (i < retries) await new Promise(r => setTimeout(r, delay * (i + 1)));
       }
-    })();
-
-    // Share the work; release the slot as soon as it settles (either way).
-    _inflightFetches.set(url, promise);
-    promise.then(
-      () => _inflightFetches.delete(url),
-      () => _inflightFetches.delete(url)
-    );
-    return promise;
+    }
+    throw new Error(`Failed after ${retries + 1} attempts: ${url}`);
   }
 
-  // --- APPS SCRIPT KEEP-ALIVE: REMOVED, and why ------------------------------
-  // A one-shot ping used to live here, behind `if (!window.APP_URL) return;`. It
-  // never ran once: window.APP_URL is assigned ~180 lines FURTHER DOWN this same
-  // script, so the guard always returned early — "[KeepAlive] Apps Script warmed
-  // up" has never appeared in any console.
-  //
-  // It would not have helped even when wired up. It fires in the same tick as the
-  // maintenance check, so both requests land on the same cold instance and the
-  // second one still pays the cold start. Measured: 45.3 s cold against 1.1-1.3 s
-  // warm. Only a PERIODIC ping (~every 3-4 min, while a display is open) can
-  // remove that, and it spends backend request budget this app has no reason to
-  // spend. Rebuild it as a timer if the cold start ever becomes the priority;
-  // never re-add it as a one-shot.
+  // --- APPS SCRIPT KEEP-ALIVE ---
+  // Warm up the Google Apps Script server on page load to reduce cold start delay.
+  // Without this, the first API call (maintenance check or login) takes 2-3s.
+  // With this ping, the server stays warm and subsequent calls are ~500ms-1s.
+  (function appsScriptKeepAlive() {
+    if (!window.APP_URL) return;
+    // Fire-and-forget ping — don't await, don't block UI
+    fetch(window.APP_URL + '?action=keepalive', { cache: 'no-store' })
+      .then(function() { console.log('[KeepAlive] Apps Script warmed up'); })
+      .catch(function() { /* silent — non-critical */ });
+  })();
 
   let currentSortState = {
     napTableBody: { col: 0, asc: true, isNum: false },
@@ -1142,6 +965,26 @@ function refreshCurrentTab() {
   }, 500);
 }
 
+  // 1. NAP Data Fetcher
+
+  function prefetchOtherTabsInBackground() {
+  // Parallel prefetch: All modules fetch simultaneously after NAP loads
+  // Best for small teams (4 users) — no API quota concerns, fastest UX
+  const allModules = ['lcp', 'olt', 'node', 'backbone'];
+  
+  allModules.forEach(type => {
+    if (!dataCache[type]) {
+      fetchWithRetry(BASE_API_URL + "?type=" + type)
+        .then(data => { if (data) dataCache[type] = data; })
+        .catch(() => {}); // Silent fail for prefetch — user can manually load later
+    }
+  });
+
+  // Save daily snapshot after initial data is loaded
+  setTimeout(() => {
+    if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
+  }, 1000); // 1s buffer for all parallel fetches
+}
       
 
 
@@ -1228,61 +1071,44 @@ function closeNodeModal(event) {
   if (typeof initNotifications === 'function') initNotifications();
 
   // ==================== AUTH CONSTANTS ====================
-  // The same deployment BASE_API_URL points at — auth actions and data routes are one
-  // endpoint — so the single value to flip is window.NETPULSE_PROXY above.
-  window.APP_URL = window.BASE_API_URL;
+  // Direct to Apps Script, deliberately: this is the one call that carries a password,
+  // and the worker's parameter whitelist is exactly what broke sign-in once. See the
+  // note on NETPULSE_PROXY above.
+  window.APP_URL = window.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
   var APP_URL = window.APP_URL;
   var SESSION_KEY = 'netpulse_session';
   var SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
+  var SESSION_TOKEN_KEY = 'netpulse_session_token';
   var REMEMBER_KEY = 'netpulse_remember';
   var SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-  // Server-issued session token (P1). The backend verifies this and derives the
-  // caller's identity from it — the session object above only drives UI
-  // decisions like isAdmin(), and never was a security boundary.
-  // Declared with `var` on purpose: `fetchWithRetry` can run before this block
-  // executes, and a `let`/`const` here would throw in its temporal dead zone.
-  var TOKEN_KEY = 'netpulse_session_token';
-
-  function getSessionToken() {
-    try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
-  }
-
-  // Attaches the token to our own API calls only — never to third-party URLs
-  // (FCM, CDNs). A missing token is a no-op, which is what keeps phase 1 working
-  // for a cached shell that predates tokens.
+  // --- SESSION TOKEN ---
+  // Login answers with a token, and every route that identifies the CALLER now
+  // requires it: heartbeat, getActiveUsers, setMaintenance, removeActiveUser. Signing
+  // in works without one, which is why this stayed invisible until the admin panel
+  // started showing nobody online: the heartbeat was answered
+  // {"success":false,"unauthorized":true,"message":"Sign-in required"} and the
+  // heartbeat fails silently on purpose. Measured against the deployment: an untokened
+  // heartbeat and an untokened getActiveUsers are both refused, while getSettings and
+  // the ?type= data routes are not gated at all — so the dashboard never noticed.
+  //
+  // Kept in localStorage, not in memory: a reload must not drop this tab out of the
+  // ActiveUsers sheet, and the backend's 5-minute recency window means a dropped token
+  // reads as "never signed in" rather than as an error.
   function withAuthToken(url) {
     var api = window.BASE_API_URL || window.APP_URL || '';
     var href = String(url || '');
-    if (!api || href.indexOf(api) !== 0) return url;
-    var token = getSessionToken();
-    if (!token) return url;
+    if (!api || href.indexOf(api) !== 0) return url;  // never attach it to another host
+    if (href.indexOf('token=') !== -1) return href;   // already attached: stay idempotent
+    var token = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (!token) return href;                          // no token: the call goes as before
     return href + (href.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(token);
   }
   window.withAuthToken = withAuthToken;
 
-  // A rejected session is fatal but arrives as HTTP 200 with a marker body, so it
-  // has to be detected on the payload. Report once, then drop to the login screen
-  // rather than leaving the app quietly broken.
-  var _unauthorizedHandled = false;
-  function onUnauthorized(message) {
-    if (_unauthorizedHandled) return;
-    _unauthorizedHandled = true;
-    try {
-      if (typeof showToast === 'function') {
-        showToast(message || 'Session expired — please sign in again', 'error', 5000);
-      }
-    } catch (e) { /* the toast is cosmetic — it must never block the logout */ }
-    handleLogout();
-  }
-
   // Global background refresh function (used by visibilitychange listener)
   function backgroundRefresh(type) {
     if (typeof dataCache !== 'undefined' && dataCache[type] !== undefined) dataCache[type] = null;
-    // A forced fetch bypasses the per-module throttle in cache-control.js, so it has
-    // to start the window itself — otherwise a cache hit moments later would pull
-    // the same payload down a second time.
-    markRevalidated(type);
     if (type === 'nap') fetchNapData(true);
     else if (type === 'lcp') fetchLcpData(true);
     else if (type === 'olt') fetchOltData(true);
@@ -1291,54 +1117,10 @@ function closeNodeModal(event) {
   }
 
   // ==================== AUTH CHECK ====================
-  // ==================== BOOT ====================
-  // All five modules start together. Before this, only NAP was fired here and the
-  // other four were launched from NAP's own success branch (nap-module.js), so the
-  // wall display paid NAP's entire round trip — ~1.07s warm, up to ~37s on a cold
-  // start — before the other four had even STARTED.
-  //
-  // Measured against the live API: five modules fetched in parallel take 1,157ms
-  // wall, while a single one takes 1,074ms. The extra four cost ~83ms, because each
-  // /exec runs on its own Apps Script instance and they overlap. The ordering was
-  // the whole cost, not the number of requests.
-  //
-  // A single combined ?type=all endpoint was considered and measured out. Apps Script
-  // is single-threaded and getValues() blocks, so one execution would run the five
-  // payload builds sequentially: ~1,275ms warm and ~2,400ms on a cold cache, against
-  // the 1,157ms of five parallel requests. Do not reintroduce the chaining or the
-  // combining — tests/boot-parallel.test.js guards both.
   function loadInitialData() {
     window._dataLoaded = true;
     showLoader();
-
-    var boot = [
-      fetchNapData(),
-      fetchLcpData(),
-      fetchOltData(),
-      fetchNodeData(),
-      fetchBackboneData()
-    ];
-
-    // NAP is the default tab, so the loader still waits on NAP and on nothing else —
-    // the same moment it became usable when NAP was the anchor. Waiting for all five
-    // instead would hold the loader over a dashboard that already shows four loaded
-    // modules. Counted by hand rather than with .finally(), which this codebase does
-    // not use anywhere else.
-    var loaderDone = function () { hideLoader(); };
-    boot[0].then(loaderDone, loaderDone);
-
-    // saveDailySnapshot() reads every module cache, so it has to run once they have
-    // ALL settled. It used to be a blind 1s timer started alongside the four
-    // prefetches — by which point OLT (~2.4s), NODE (~2.3s) and BACKBONE (~2.0s) were
-    // still in flight, and db.js keeps only the FIRST snapshot of each day, so those
-    // modules were recorded as zero for the rest of that day.
-    var pending = boot.length;
-    var onSettle = function () {
-      if (--pending > 0) return;
-      if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
-    };
-    boot.forEach(function (p) { p.then(onSettle, onSettle); });
-
+    fetchNapData();
     // I-refresh ang BAWAT tab sa sarili nitong interval
     setInterval(() => backgroundRefresh('nap'),  60 * 60 * 1000);
     setInterval(() => backgroundRefresh('lcp'),  30 * 60 * 1000);
@@ -1357,47 +1139,25 @@ function closeNodeModal(event) {
       return;
     }
 
-    // Fire the maintenance check NOW but don't await it yet. Awaiting it first
-    // made signing in cost two sequential round trips — measured ~3s warm, and a
-    // cold start on this deployment can be ~37s, so the wait was paid twice.
-    var settingsPromise = fetchWithRetry(APP_URL + '?action=getSettings', 1, 800)
-      .catch(function () { return null; }); // can't check -> carry on to login
+    try {
+      var settings = await fetchWithRetry(APP_URL + '?action=getSettings', 1, 800);
+      if (settings && settings.maintenance === true) {
+        showMaintenancePage();
+        return;
+      }
+    } catch (e) {
+      // If can't check maintenance, continue with normal login
+    }
 
     // Check for saved credentials — auto-login using performLogin() directly
     var savedCreds = null;
     try { savedCreds = JSON.parse(localStorage.getItem(REMEMBER_KEY)); } catch(e) {}
-
-    var settings;
-
-    if (!savedCreds || !savedCreds.u || !savedCreds.p) {
-      // Nothing to sign in with yet, so the form is shown and the maintenance
-      // result still decides what the user ends up seeing.
+    if (savedCreds && savedCreds.u && savedCreds.p) {
+      // Auto-login: call performLogin directly (no form event needed)
+      performLogin(savedCreds.u, savedCreds.p, true);
+    } else {
       showLogin();
-      settings = await settingsPromise;
-      if (settings && settings.maintenance === true) showMaintenancePage();
-      return;
     }
-
-    // Auto-login runs in PARALLEL with the maintenance check. Showing the app is
-    // deferred so maintenance can still win without the app flashing on screen.
-    var results = await Promise.all([
-      settingsPromise,
-      performLogin(savedCreds.u, savedCreds.p, true, true)
-    ]);
-    settings = results[0];
-    var loggedIn = results[1];
-
-    if (settings && settings.maintenance === true) {
-      // Maintenance wins. The parallel login may already have minted a session,
-      // and isLoggedIn() SHORT-CIRCUITS the maintenance check — so leaving it
-      // would let the user straight in on the next load. Drop the session but
-      // keep the saved credentials, so auto-login works again once it ends.
-      if (loggedIn) discardSession();
-      showMaintenancePage();
-      return;
-    }
-
-    if (loggedIn) showApp();
   }
   checkMaintenanceAndLogin();
 
@@ -1416,187 +1176,53 @@ function closeNodeModal(event) {
   });
 
   if ('serviceWorker' in navigator) {
-    // One controlled reload when a NEW worker takes over.
-    // When a replacement worker takes charge (observed: it can wait until the next
-    // load before it does), this page keeps running the JS it already loaded — so
-    // without this it would sit on the previous build indefinitely. That is exactly
-    // how the wall display came to be running a build whose fix was already in the
-    // cache (runningCodeHasBuggyConst: true while cachedIndexHasFix: true).
-    // Only when a worker was ALREADY controlling the page: on a first install there
-    // is nothing older to replace, and reloading would just be noise.
-    const controlledAtLoad = !!navigator.serviceWorker.controller;
-    let _swReloading = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (_swReloading || !controlledAtLoad) return;
-      // Leave the out-of-date case to the version guard entirely. That guard clears
-      // every worker and cache on each load while it waits for the user to press
-      // "Refresh & Sync", then re-registers — so a worker takes control on EVERY
-      // load in that state, and reloading here as well would loop the display.
-      // Its state is read from localStorage rather than the overlay element: the
-      // guard has not necessarily painted the overlay yet (observed — the clear had
-      // run, the prompt had not) and that window is exactly when the loop would
-      // start. It only writes app_version when the user completes the sync.
-      if (localStorage.getItem('app_version') !== REQUIRED_APP_VERSION) return;
-      _swReloading = true;
-      window.location.reload();
-    });
-
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.10.0').then(reg => {
-        // Force an update check on every load. Without this the browser only
-        // re-checks sw.js on a navigation once every 24h, so a change to the
-        // worker itself can sit dormant for a day even though app assets update
-        // on their own through stale-while-revalidate. The update fetch bypasses
-        // both the HTTP cache and this worker, so it sees the real bytes; the
-        // worker's own skipWaiting()/clients.claim() then makes it live at once.
-        reg.update().catch(() => { /* offline or blocked — nothing to do */ });
-      }).catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.8.2').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
   }
 
   // ==================== SKELETON LOADING ====================
-  // -------------------- the loading placeholder, in one place --------------------
-  // Shimmer rows written into the module's REAL table, plus a shimmer block in
-  // place of a number. Column counts come from each table's own <thead>, so a
-  // skeleton cannot drift out of step with the table it stands in for, and every
-  // render assigns textContent/innerHTML and so overwrites its own placeholder.
-  //
-  // This replaces an earlier whole-tab swap that put a FAKE div "table" on screen
-  // whose header and columns had nothing to do with the real one. NODE and
-  // BACKBONE used that only because they build their entire tab; they now emit
-  // their shell and fill its tbody through these same helpers.
-  //
-  // Functions, not top-level `const`s, on purpose: a top-level const in this script
-  // sits in its temporal dead zone until its own statement runs, and
-  // loadInitialData() -> fetchNapData() is invoked from a statement further UP this
-  // same script. A table here throws "Cannot access ... before initialization" on
-  // the real boot path only — never when called from the console afterwards.
-  // (cache-control.js documents the same hazard for dataCache.)
-  function skeletonRowCount() { return 6; }
+  function getSkeletonHTML(type) {
+    const rows = 6;
+    let html = '<div class="skeleton-container">';
 
-  function skeletonRowHtml(cols) {
-    let html = '<tr class="skeleton-tr">';
-    for (let c = 0; c < Math.max(1, cols); c++) {
-      html += '<td><span class="skeleton skeleton-bar"></span></td>';
+    // Stat cards skeleton
+    if (type === 'nap' || type === 'lcp') {
+      html += '<div class="skeleton-stats">';
+      for (let i = 0; i < 4; i++) html += '<div class="skeleton skeleton-stat"></div>';
+      html += '</div>';
+    } else if (type === 'olt') {
+      html += '<div class="skeleton-stats" style="grid-template-columns: repeat(3, 1fr);">';
+      for (let i = 0; i < 6; i++) html += '<div class="skeleton skeleton-stat"></div>';
+      html += '</div>';
+    } else if (type === 'analytics') {
+      html += '<div class="skeleton-stats" style="grid-template-columns: repeat(2, 1fr);">';
+      for (let i = 0; i < 4; i++) html += '<div class="skeleton skeleton-stat"></div>';
+      html += '</div>';
     }
-    return html + '</tr>';
-  }
 
-  function skeletonRowsHtml(cols, count) {
-    let html = '';
-    for (let r = 0; r < count; r++) html += skeletonRowHtml(cols);
+    // Table skeleton
+    html += '<div class="skeleton-table-card">';
+    html += '<div class="skeleton-thead">';
+    for (let i = 0; i < 5; i++) html += '<div class="skeleton skeleton-th"></div>';
+    html += '</div>';
+    for (let i = 0; i < rows; i++) {
+      html += '<div class="skeleton-row">';
+      html += '<div class="skeleton skeleton-cell wide"></div>';
+      html += '<div class="skeleton skeleton-cell"></div>';
+      html += '<div class="skeleton skeleton-cell badge"></div>';
+      html += '<div class="skeleton skeleton-cell narrow"></div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
     return html;
   }
 
-  function skeletonNumberHtml() {
-    return '<span class="skeleton skeleton-num"></span>';
-  }
-
-  function skeletonLegendHtml(count) {
-    // Uses the legend placeholder classes that already existed in styles.css but
-    // were never wired to anything.
-    let html = '<div class="skeleton-legend">';
-    for (let i = 0; i < count; i++) {
-      html += '<div class="skeleton-legend-row">' +
-                '<span class="skeleton skeleton-dot"></span>' +
-                '<span class="skeleton skeleton-text"></span>' +
-              '</div>';
-    }
-    return html + '</div>';
-  }
-
-  function tableColCount(body) {
-    const table = (body && body.closest) ? body.closest('table') : null;
-    return table ? table.querySelectorAll('thead th').length : 0;
-  }
-
-  // The two entry points every module renderer uses. They take the element the
-  // module owns, so the static-markup modules (NAP/LCP/OLT) and the tab-building
-  // ones (NODE/BACKBONE) go through exactly the same code.
-  function renderSkeletonRows(bodyOrId, count) {
-    const body = (typeof bodyOrId === 'string') ? document.getElementById(bodyOrId) : bodyOrId;
-    if (!body) return false;
-    body.innerHTML = skeletonRowsHtml(tableColCount(body), count == null ? skeletonRowCount() : count);
-    return true;
-  }
-
-  function renderSkeletonNumbers(ids, legendId) {
-    (ids || []).forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = skeletonNumberHtml();
-    });
-    if (legendId) {
-      const legend = document.getElementById(legendId);
-      if (legend) legend.innerHTML = skeletonLegendHtml(5);
-    }
-  }
-
-  // What the three static-markup modules (NAP/LCP/OLT) need filled. NODE and
-  // BACKBONE have no entry here: their renderers call renderSkeletonRows /
-  // renderSkeletonNumbers themselves, because their tbody only exists once they
-  // have emitted their own shell (see renderNodeShell / renderBackboneShell).
-  function moduleSkeletonSpec(name) {
-    const TARGETS = {
-      nap: {
-        bodies: ['napTableBody'],
-        numbers: ['card24', 'card13', 'card3', 'cardTotal']
-      },
-      lcp: {
-        bodies: ['lcpAgingTableBody', 'lcpImpactTableBody'],
-        numbers: ['lcpCard24', 'lcpCard13', 'lcpCard3',
-                  'lcpCardClients', 'lcpCardTT', 'lcpCardLCP']
-      },
-      olt: {
-        bodies: ['oltTableBody'],
-        numbers: ['oltCardTotal', 'oltCardUp', 'oltCardDown', 'oltCardLowPower',
-                  'oltCardUplinkDown', 'oltCardDegradation', 'oltCardClientsDown',
-                  'oltDonutTotalLabel'],
-        legend: 'oltDonutLegend'
-      }
-    };
-    return TARGETS[name] || null;
-  }
-
-  // Returns false when the module has no skeleton defined, so a caller can tell
-  // "nothing to draw" from "drawn empty".
-  function showModuleSkeleton(name) {
-    const spec = moduleSkeletonSpec(name);
-    if (!spec) return false;
-
-    (spec.bodies || []).forEach(function (id) { renderSkeletonRows(id); });
-    renderSkeletonNumbers(spec.numbers, spec.legend);
-
-    return true;
-  }
-
-  // Removes only what showModuleSkeleton() put there, so it is safe to call on
-  // every exit path (including success) and safe to call after a render has
-  // already written real content. Without this a failed fetch would leave the
-  // table shimmering forever, which reads as "still loading" rather than "failed".
-  function clearModuleSkeleton(name) {
-    const spec = moduleSkeletonSpec(name);
-    if (!spec) return;
-
-    if (spec.bodies) {
-      spec.bodies.forEach(function (id) {
-        const body = document.getElementById(id);
-        if (body && body.querySelector('.skeleton-tr')) body.innerHTML = '';
-      });
-    }
-
-    if (spec.numbers) {
-      spec.numbers.forEach(function (id) {
-        const el = document.getElementById(id);
-        if (el && el.querySelector('.skeleton')) el.textContent = '0';
-      });
-    }
-
-    if (spec.legend) {
-      const legend = document.getElementById(spec.legend);
-      if (legend && legend.querySelector('.skeleton-legend')) legend.innerHTML = '';
-    }
+  function showSkeleton(tabName) {
+    const tab = document.getElementById('tab-' + tabName);
+    if (tab) tab.innerHTML = getSkeletonHTML(tabName);
   }
 
   // ==================== CLIPBOARD COPY ====================
@@ -1624,9 +1250,15 @@ function closeNodeModal(event) {
     return `<span class="copyable-ticket ${extraClass || ''}" onclick="event.stopPropagation(); copyToClipboard('${safe}')" title="Click to copy">${ticketNo}</span>`;
   }
 
-  // ==================== ALERT BADGES ====================
-  // ALERT_THRESHOLDS lives with the application variables at the top of this script;
-  // see the comment there for why it cannot sit next to the function that reads it.
+  // ==================== ALERT THRESHOLDS ====================
+  const ALERT_THRESHOLDS = {
+    oltDown: 5,        // >5 OLTs down = HIGH alert
+    oltLowPower: 3,    // >3 low power = MEDIUM
+    nodeTickets: 3,    // >3 node tickets = MEDIUM
+    bbTickets: 2,      // >2 backbone tickets = MEDIUM
+    napCritical: 5,    // >5 NAP >3days = HIGH
+    clientsDown: 100   // >100 clients affected = HIGH
+  };
 
   function getAlertClass(module, value) {
     switch(module) {
@@ -1796,23 +1428,8 @@ function closeNodeModal(event) {
     }
   }
 
-  // Drops the local session and revokes the token, WITHOUT touching saved
-  // credentials. Used when the session must not survive (maintenance came back
-  // on); handleLogout() is the user-initiated path, which also forgets them.
-  function discardSession() {
-    var token = getSessionToken();
-    if (token) {
-      fetch(APP_URL + '?action=logout&token=' + encodeURIComponent(token)).catch(function () {});
-    }
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(SESSION_EXPIRY_KEY);
-    localStorage.removeItem(TOKEN_KEY);
-  }
-
-  // Core login logic — reusable by form handler AND auto-login.
-  // `deferShow` leaves showApp() to the caller, so a concurrent maintenance check
-  // can win the decision without the app appearing first.
-  async function performLogin(username, password, rememberMe, deferShow) {
+  // Core login logic — reusable by form handler AND auto-login
+  async function performLogin(username, password, rememberMe) {
     var errorEl = document.getElementById('loginError');
     var btn = document.getElementById('loginBtn');
 
@@ -1828,11 +1445,11 @@ function closeNodeModal(event) {
       if (result.success) {
         localStorage.setItem(SESSION_KEY, JSON.stringify(result.user));
         localStorage.setItem(SESSION_EXPIRY_KEY, String(Date.now() + SESSION_DURATION));
-        // Server-issued token — every later API call carries it, and the backend
-        // takes the caller's identity from it instead of trusting the URL.
+        // The token minted here is what makes this tab visible in the admin panel's
+        // Active Users list. Absent (an older deployment) simply means no token is
+        // sent — the pre-token behaviour, not a broken login.
         if (result.token) {
-          localStorage.setItem(TOKEN_KEY, result.token);
-          _unauthorizedHandled = false;
+          localStorage.setItem(SESSION_TOKEN_KEY, result.token);
         }
         // Save credentials if Remember Me is checked
         if (rememberMe) {
@@ -1840,8 +1457,7 @@ function closeNodeModal(event) {
         } else {
           localStorage.removeItem(REMEMBER_KEY);
         }
-        // Deferred when a maintenance check is racing us — see the auto-login path.
-        if (!deferShow) showApp();
+        showApp();
         if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
         return true;
       } else {
@@ -1874,27 +1490,10 @@ function closeNodeModal(event) {
   }
 
   function handleLogout() {
-    // Revoke server-side and drop the active-users row while the token is still
-    // valid. Both are fire-and-forget: logout must never wait on the network.
-    // This is also the only place that cleanup actually runs — the "override" in
-    // admin-module.js never installed (that file loads before this one declares
-    // handleLogout), so ?action=removeActiveUser had never fired on logout.
-    var token = getSessionToken();
-    var session = getSession();
-    if (token) {
-      fetch(APP_URL + '?action=logout&token=' + encodeURIComponent(token)).catch(function() {});
-    }
-    if (session && session.username) {
-      fetch(APP_URL + '?action=removeActiveUser&username=' + encodeURIComponent(session.username) +
-            (token ? '&token=' + encodeURIComponent(token) : '')).catch(function() {});
-    }
-    // Stop the heartbeat interval too, or it keeps ticking after logout.
-    if (typeof stopHeartbeat === 'function') stopHeartbeat();
-
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(SESSION_EXPIRY_KEY);
+    localStorage.removeItem(SESSION_TOKEN_KEY);
     localStorage.removeItem(REMEMBER_KEY);
-    localStorage.removeItem(TOKEN_KEY);
     showLogin();
   }
 
@@ -2175,8 +1774,8 @@ function closeNodeModal(event) {
 <div class="kiosk-root" id="kioskRoot" aria-hidden="true">
   <header class="kiosk-topbar">
     <div class="kiosk-brand">
-      <div class="kiosk-brand-name">GALLOPVISION</div>
-      <div class="kiosk-brand-sub">LNOC Wall Display</div>
+      <div class="kiosk-brand-name">GALLOPVISION <span>| CONVERGE</span></div>
+      <div class="kiosk-brand-sub">NOC Wall Display</div>
     </div>
     <div class="kiosk-topbar-right">
       <div class="kiosk-pill" id="kioskPill">
@@ -2189,13 +1788,6 @@ function closeNodeModal(event) {
       </div>
     </div>
   </header>
-
-  <!-- Same stale-data banner as the dashboard, restyled for the dark shell. A wall
-       display must say it is showing old numbers, not just show them. -->
-  <div class="stale-banner kiosk-stale-banner" role="status" aria-live="polite">
-    <span class="stale-banner-dot" aria-hidden="true"></span>
-    <span class="stale-banner-text"></span>
-  </div>
 
   <main class="kiosk-stage" id="kioskStage">
     <section class="kiosk-slide" data-kiosk-slide="nap"></section>
@@ -2220,7 +1812,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.10.0"></script>
+<script src="kiosk-module.js?v=3.9.0"></script>
 
 </body>
 </html>

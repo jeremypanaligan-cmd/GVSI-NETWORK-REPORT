@@ -3,24 +3,13 @@
 async function fetchLcpData(forceRefresh = false) {
   if (!forceRefresh && dataCache.lcp) {
     renderLcpReport(dataCache.lcp.lcpAging, dataCache.lcp.lcpImpact);
-    // Throttled per module — see shouldRevalidate() in cache-control.js.
-    if (shouldRevalidate('lcp')) {
-      fetchWithRetry(BASE_API_URL + "?type=lcp")
-        .then(data => {
-          if (data && data.lcpAging) {
-            dataCache.lcp = data;
-            renderLcpReport(data.lcpAging, data.lcpImpact || []);
-            noteModuleFresh('lcp', data);
-          }
-        })
-        .catch(() => noteModuleFailed('lcp'));
-    }
+    fetchWithRetry(BASE_API_URL + "?type=lcp")
+      .then(data => { if (data && data.lcpAging) { dataCache.lcp = data; renderLcpReport(data.lcpAging, data.lcpImpact || []); } })
+      .catch(() => {});
     return;
   }
 
-  // The tab markup lives in index.html and only the two tbodies and the cards are
-  // ours to fill, so the skeleton goes inside those — never over the whole tab.
-  if (!dataCache.lcp) showModuleSkeleton('lcp');
+  // No skeleton for LCP — has hardcoded HTML elements
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=lcp");
@@ -28,39 +17,10 @@ async function fetchLcpData(forceRefresh = false) {
     if (data && data.lcpAging) {
       dataCache.lcp = data;
       renderLcpReport(data.lcpAging, data.lcpImpact || []);
-      noteModuleFresh('lcp', data);
     }
   } catch (error) {
     console.error('Error fetching LCP data:', error);
-    // Two empty tables read as "no LCPs down", which is the opposite of what a
-    // failure means. Show the last known numbers with the banner saying how old
-    // they are, or say plainly that there is nothing to show.
-    const stale = degradeModuleToLastGood('lcp', dataCache.lcp);
-    if (stale.payload && Array.isArray(stale.payload.lcpAging)) {
-      dataCache.lcp = stale.payload;
-      renderLcpReport(stale.payload.lcpAging, stale.payload.lcpImpact || []);
-    } else {
-      renderLcpUnavailable();
-    }
-  } finally {
-    // This catch has no UI of its own, so without the clear a failed LCP fetch
-    // would leave the tables shimmering as if they were still loading.
-    clearModuleSkeleton('lcp');
   }
-}
-
-// Nothing was ever loaded and the API is unreachable. The tables keep their real
-// headers and carry one honest row, because a blank table is indistinguishable
-// from a quiet day.
-function renderLcpUnavailable() {
-  const agingBody = document.getElementById('lcpAgingTableBody');
-  if (agingBody) agingBody.innerHTML = unavailableRowHtml(6);
-  const impactBody = document.getElementById('lcpImpactTableBody');
-  if (impactBody) impactBody.innerHTML = unavailableRowHtml(5);
-  ['lcpCard24', 'lcpCard13', 'lcpCard3', 'lcpCardTT', 'lcpCardLCP'].forEach(function (id) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = '\u2014';
-  });
 }
 
 function renderLcpReport(agingData, impactData) {
