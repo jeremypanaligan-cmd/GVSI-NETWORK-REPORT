@@ -36,6 +36,7 @@ async function fetchNodeData(forceRefresh = false) {
 }
 
 function renderNodeReport(data) {
+  hideModuleLoading('node');
   const nodeTab = document.getElementById('tab-node');
   if (!nodeTab) return;
 
@@ -162,6 +163,7 @@ function renderNodeReport(data) {
 }
 
 function renderNodeEmptyState() {
+  hideModuleLoading('node');
   const nodeTab = document.getElementById('tab-node');
   if (!nodeTab) return;
 

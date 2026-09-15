@@ -37,7 +37,7 @@
    Deployment: see proxy/README.md.  Tests: tests/proxy.test.js.
  * ------------------------------------------------------------------ */
 
-const ORIGIN = 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
+const ORIGIN = 'https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec';
 
 const ATTEMPTS = 3;
 // Apps Script answers in ~1.2 s warm and can stall for 30 s+; a per-attempt ceiling

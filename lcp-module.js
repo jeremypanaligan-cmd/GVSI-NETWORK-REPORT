@@ -9,7 +9,8 @@ async function fetchLcpData(forceRefresh = false) {
     return;
   }
 
-  // No skeleton for LCP — has hardcoded HTML elements
+  // Keep the existing dashboard shell visible underneath the executive loading state.
+  showModuleLoading('lcp');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=lcp");
@@ -20,10 +21,13 @@ async function fetchLcpData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching LCP data:', error);
+  } finally {
+    hideModuleLoading('lcp');
   }
 }
 
 function renderLcpReport(agingData, impactData) {
+  hideModuleLoading('lcp');
   const agingBody = document.getElementById('lcpAgingTableBody');
   if (!agingBody) return;
   let agingHtml = '';

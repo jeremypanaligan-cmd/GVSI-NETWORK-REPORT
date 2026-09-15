@@ -45,6 +45,7 @@ async function fetchBackboneData(forceRefresh = false) {
 
 // Renderer: Backbone Report Table + Stat Cards
 function renderBackboneReport(data) {
+  hideModuleLoading('backbone');
   const bbTab = document.getElementById('tab-backbone');
   if (!bbTab) return;
 
@@ -207,6 +208,7 @@ function renderBackboneReport(data) {
 
 // Empty State / Landing Page: Kapag walang active backbone incidents
 function renderBackboneEmptyState() {
+  hideModuleLoading('backbone');
   const bbTab = document.getElementById('tab-backbone');
   if (!bbTab) return;
 

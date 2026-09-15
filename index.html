@@ -66,7 +66,11 @@
       <label class="remember-me-label">
         <input type="checkbox" id="rememberMe"> Remember me
       </label>
-      <button type="submit" class="login-btn" id="loginBtn">SIGN IN</button>
+      <button type="submit" class="login-btn" id="loginBtn" aria-live="polite" aria-busy="false">
+        <span class="login-btn-spinner" id="loginBtnSpinner" aria-hidden="true"></span>
+        <span id="loginBtnText">SIGN IN</span>
+      </button>
+      <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
     </form>
     <div class="login-footer">GVSI NetPulse v3.9.0</div>
   </div>
@@ -119,12 +123,6 @@
 
   <!-- Content Container -->
   <div class="main-container">
-    <!-- Loader -->
-    <div id="loader" class="loader-overlay">
-      <div class="spinner"></div>
-      <p style="margin-top: 12px; font-weight: 600; font-size: 13px; color: var(--dark-charcoal);">Loading Data...</p>
-    </div>
-
     <!-- 1. NAP MODULE TAB -->
     <div id="tab-nap" class="tab-content active">
       <div class="page-title-row">
@@ -805,7 +803,7 @@
      To go back to calling Apps Script directly: blank NETPULSE_PROXY here AND blank
      API_PROXY_HOST in sw.js. Both, or the service worker starts caching API responses
      (it is cache-first for everything that is not a known API host). */
-  window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec";
+  window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec";
   window.NETPULSE_PROXY = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev";
   window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
@@ -1085,7 +1083,7 @@ function closeNodeModal(event) {
   // forwards the whitelisted login parameters over HTTPS and shields the browser from
   // the Apps Script redirect hop that intermittently returns 404/timeout responses.
   // Direct Apps Script remains the fallback when NETPULSE_PROXY is blank.
-  window.APP_URL = window.BASE_API_URL || window.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxFrgXlnvqLrxPk672wYAMjdPaGfcpYFj77hUjS1zMvOLEtaV_MjfRpBSNpXXWVv3wjWA/exec';
+  window.APP_URL = window.BASE_API_URL || window.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec';
   var APP_URL = window.APP_URL;
   var SESSION_KEY = 'netpulse_session';
   var SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
@@ -1231,9 +1229,49 @@ function closeNodeModal(event) {
     return html;
   }
 
-  function showSkeleton(tabName) {
+  var MODULE_LOADING_LABELS = {
+    nap: 'NAP Outages',
+    lcp: 'LCP Outages',
+    olt: 'OLT Status',
+    node: 'Node Down Incidents',
+    backbone: 'Backbone Links',
+    analytics: 'Network Analytics'
+  };
+
+  function showModuleLoading(tabName, moduleLabel) {
     const tab = document.getElementById('tab-' + tabName);
-    if (tab) tab.innerHTML = getSkeletonHTML(tabName);
+    if (!tab) return;
+    if (tab.querySelector('.module-loading-screen')) return;
+
+    const label = moduleLabel || (MODULE_LOADING_LABELS && MODULE_LOADING_LABELS[tabName]) || 'Network Data';
+    tab.classList.add('is-gathering-data');
+    const screen = document.createElement('div');
+    screen.className = 'module-loading-screen';
+    screen.setAttribute('role', 'status');
+    screen.setAttribute('aria-live', 'polite');
+    screen.innerHTML = `
+      <div class="module-loading-orbit" aria-hidden="true">
+        <span></span><span></span><span></span>
+        <div class="module-loading-core">NP</div>
+      </div>
+      <div class="module-loading-kicker">GVSI NETPULSE · LIVE FEED</div>
+      <div class="module-loading-title">Gathering data...</div>
+      <div class="module-loading-module">${sanitizeHTML(label)}</div>
+      <div class="module-loading-status"><span></span> Establishing secure telemetry stream</div>
+    `;
+    tab.appendChild(screen);
+  }
+
+  function hideModuleLoading(tabName) {
+    const tab = document.getElementById('tab-' + tabName);
+    if (!tab) return;
+    tab.classList.remove('is-gathering-data');
+    const screen = tab.querySelector('.module-loading-screen');
+    if (screen) screen.remove();
+  }
+
+  function showSkeleton(tabName) {
+    showModuleLoading(tabName);
   }
 
   // ==================== CLIPBOARD COPY ====================
@@ -1439,12 +1477,31 @@ function closeNodeModal(event) {
     }
   }
 
+  function setLoginProgress(isLoading, message) {
+    var btn = document.getElementById('loginBtn');
+    var btnText = document.getElementById('loginBtnText');
+    var spinner = document.getElementById('loginBtnSpinner');
+    var progress = document.getElementById('loginProgress');
+
+    if (btn) {
+      btn.disabled = isLoading;
+      btn.classList.toggle('is-loading', isLoading);
+      btn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+    }
+    if (btnText) btnText.textContent = isLoading ? 'SIGNING IN...' : 'SIGN IN';
+    if (spinner) spinner.hidden = !isLoading;
+    if (progress) {
+      progress.textContent = isLoading ? (message || 'Verifying credentials...') : '';
+      progress.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
+    }
+  }
+
   // Core login logic — reusable by form handler AND auto-login
   async function performLogin(username, password, rememberMe) {
     var errorEl = document.getElementById('loginError');
     var btn = document.getElementById('loginBtn');
 
-    if (btn) { btn.disabled = true; btn.textContent = 'SIGNING IN...'; }
+    setLoginProgress(true, 'Connecting securely...');
     if (errorEl) errorEl.textContent = '';
 
     try {
@@ -1469,17 +1526,17 @@ function closeNodeModal(event) {
           localStorage.removeItem(REMEMBER_KEY);
         }
         showApp();
-        if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
+        setLoginProgress(false);
         return true;
       } else {
         if (errorEl) errorEl.textContent = result.message || 'Invalid credentials';
-        if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
+        setLoginProgress(false);
         return false;
       }
     } catch(err) {
       if (errorEl) errorEl.textContent = 'Connection error. Please try again.';
       console.error('Login error:', err);
-      if (btn) { btn.disabled = false; btn.textContent = 'SIGN IN'; }
+      setLoginProgress(false);
       return false;
     }
   }

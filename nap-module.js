@@ -11,7 +11,8 @@ async function fetchNapData(forceRefresh = false) {
     return;
   }
 
-  // No skeleton for NAP — has hardcoded HTML elements
+  // Keep the existing dashboard shell visible underneath the executive loading state.
+  showModuleLoading('nap');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=nap");
@@ -27,12 +28,14 @@ async function fetchNapData(forceRefresh = false) {
     console.error('Error fetching NAP data:', error);
     document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
   } finally {
+    hideModuleLoading('nap');
     hideLoader();
     _isInitialLoad = false;
   }
 }
 
 function renderNapReport(data) {
+  hideModuleLoading('nap');
   const tbody = document.getElementById('napTableBody');
   if (!tbody) return;
   let tableHtml = '';

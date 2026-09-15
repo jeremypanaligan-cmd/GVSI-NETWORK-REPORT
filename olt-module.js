@@ -10,7 +10,8 @@ async function fetchOltData(forceRefresh = false) {
     return;
   }
 
-  // No skeleton for OLT — has hardcoded HTML elements
+  // Keep the existing dashboard shell visible underneath the executive loading state.
+  showModuleLoading('olt');
 
   try {
     const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
@@ -22,6 +23,8 @@ async function fetchOltData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching OLT data:', error);
+  } finally {
+    hideModuleLoading('olt');
   }
 }
 
@@ -42,6 +45,7 @@ function aggregateOltDownCauses(rows) {
 }
 
 function processAndRenderOlt() {
+  hideModuleLoading('olt');
   let countUp = 0, countDown = 0, countLowPower = 0, countUplinkDown = 0, countDegradation = 0;
   let totalClientsDown = 0;
   let totalOlt = rawOltData.length;

@@ -50,16 +50,7 @@ async function fetchAnalyticsData(forceRefresh = false) {
   const analyticsTab = document.getElementById('tab-analytics');
   if (!analyticsTab) return;
 
-  // Show loading state
-  analyticsTab.innerHTML = `
-    <div class="page-title-row">
-      <div class="page-title">Analytics Dashboard</div>
-    </div>
-    <div class="analytics-loading">
-      <div class="spinner"></div>
-      <p style="margin-top:12px; font-size:13px; color:var(--text-muted);">Computing analytics across all modules...</p>
-    </div>
-  `;
+  // Analytics renders directly from the module caches; no module loading overlay here.
 
   // Wait a tick for all caches to be populated (they prefetch in background)
   await new Promise(r => setTimeout(r, 400));
