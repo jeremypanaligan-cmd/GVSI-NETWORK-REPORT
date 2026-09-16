@@ -13,7 +13,7 @@
    UNVERSIONED names the page requests (`admin-module.js`, not `admin-module.js?v=...`),
    so for those files `install` re-fetching every entry and `activate` deleting every
    other cache is the whole delivery mechanism. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.6';
+const STATIC_CACHE = 'gvsi-shell-v3.9.7';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
@@ -110,7 +110,7 @@ self.addEventListener('notificationclick', (e) => {
    BLANK while the proxy is off (2026-09-15): the app calls `script.google.com` directly
    again and that rule above already covers it. Set this back in the same step that
    `NETPULSE_PROXY` in index.html is restored — never one without the other. */
-const API_PROXY_HOST = '';
+const API_PROXY_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
 
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;

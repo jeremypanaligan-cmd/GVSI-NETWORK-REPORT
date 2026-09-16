@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.5">
+  <link rel="stylesheet" href="styles.css?v=3.9.7">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.9.5">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.7">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -896,7 +896,7 @@
      sw.js in the same step. Both, or the service worker starts caching API responses
      (it is cache-first for everything that is not a known API host). */
   window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyqE-aSuZu8W-fU_q6C7-VGhfDBohPdnosoxy5TEXdMoy5jwsDckiS5mlst4AecrdWw-g/exec";
-  window.NETPULSE_PROXY = "";
+  window.NETPULSE_PROXY = "";  // TEMP: disabled while origin is down — re-enable when stable
   window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
   
@@ -947,7 +947,7 @@
     }
   }
 
-  async function fetchWithRetry(url, retries = 2, delay = 500) {
+  async function fetchWithRetry(url, retries = 0, delay = 500) {
     // Attached in ONE place, so no caller has to remember: any API call made through
     // here carries the session token the deployment issued at login. A call with no
     // token stored goes out exactly as it always did.
@@ -1281,7 +1281,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.5').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.7').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1965,7 +1965,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.9.5"></script>
+<script src="kiosk-module.js?v=3.9.7"></script>
 
 </body>
 </html>

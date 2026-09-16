@@ -25,7 +25,7 @@
   'use strict';
 
   var MIN_INTERVAL_MS = 60000; // one successful background fetch per type per minute
-  var TIMEOUT_MS = 30000;      // hard ceiling per request cycle (fetchWithRetry retries inside)
+  var TIMEOUT_MS = 30000;      // hard ceiling per request cycle — proxy handles retries server-side
 
   var inflight = {};    // type -> raw fetch promise (rejects on failure)
   var lastFetchAt = {}; // type -> timestamp of last successful fetch (any path)
