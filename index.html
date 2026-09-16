@@ -40,39 +40,101 @@
 </head>
 <body>
 
-<!-- ==================== LOGIN SCREEN ==================== -->
+<!-- ==================== LOGIN SCREEN (v3.10.0 - Modern Redesign) ==================== -->
 <div id="loginOverlay" class="login-overlay">
-  <div class="login-card">
-    <div class="login-brand">
-      <span class="brand-gallop" style="font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 22px; letter-spacing: 3px; color: var(--dark-charcoal);">GALLOPVISION</span>
-    </div>
-    <div class="login-subtitle">Network Operations Dashboard</div>
-    <form class="login-form" id="loginForm" onsubmit="return handleLogin(event)">
-      <div class="login-input-group">
-        <label for="loginUsername">Username</label>
-        <input type="text" id="loginUsername" placeholder="Enter username" autocomplete="username" required>
-      </div>
-      <div class="login-input-group">
-        <label for="loginPassword">Password</label>
-        <div style="position: relative;">
-          <input type="password" id="loginPassword" placeholder="Enter password" autocomplete="current-password" required style="padding-right: 40px; width: 100%;">
-          <button type="button" onclick="togglePasswordVisibility()" id="togglePwdBtn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 4px; color: var(--text-muted); display: flex; align-items: center; justify-content: center;">
-            <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <svg id="eyeOffIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-          </button>
+  <div class="login-container">
+    <!-- Left Panel: Brand Showcase -->
+    <div class="login-brand-panel">
+      <div class="brand-content">
+        <div class="brand-logo">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <circle cx="24" cy="24" r="22" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+            <path d="M16 24L22 30L32 18" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h1 class="brand-name">GALLOPVISION</h1>
+        <p class="brand-tagline">Network Operations Dashboard</p>
+        <div class="brand-features">
+          <div class="feature-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <span>Real-time monitoring</span>
+          </div>
+          <div class="feature-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Incident management</span>
+          </div>
+          <div class="feature-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span>24/7 availability</span>
+          </div>
         </div>
       </div>
-      <div class="login-error" id="loginError"></div>
-      <label class="remember-me-label">
-        <input type="checkbox" id="rememberMe"> Remember me
-      </label>
-      <button type="submit" class="login-btn" id="loginBtn" aria-live="polite" aria-busy="false">
-        <span class="login-btn-spinner" id="loginBtnSpinner" aria-hidden="true"></span>
-        <span id="loginBtnText">SIGN IN</span>
-      </button>
-      <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
-    </form>
-    <div class="login-footer">GVSI NetPulse v3.9.5</div>
+      <div class="brand-footer">
+        <span>Secure - Reliable - Fast</span>
+      </div>
+    </div>
+
+    <!-- Right Panel: Login Form -->
+    <div class="login-form-panel">
+      <div class="form-wrapper">
+        <div class="form-header">
+          <h2>Welcome back</h2>
+          <p>Sign in to access your dashboard</p>
+        </div>
+
+        <form class="login-form" id="loginForm" onsubmit="return handleLogin(event)" novalidate>
+          <!-- Username Field (Floating Label) -->
+          <div class="input-group floating">
+            <input type="text" id="loginUsername" name="username" autocomplete="username" required aria-label="Username" placeholder=" ">
+            <label for="loginUsername">Username</label>
+            <div class="input-highlight"></div>
+          </div>
+
+          <!-- Password Field (Floating Label + Toggle) -->
+          <div class="input-group floating">
+            <input type="password" id="loginPassword" name="password" autocomplete="current-password" required aria-label="Password" placeholder=" " style="padding-right: 44px;">
+            <label for="loginPassword">Password</label>
+            <div class="input-highlight"></div>
+            <button type="button" class="password-toggle" id="togglePwdBtn" aria-label="Toggle password visibility" onclick="togglePasswordVisibility()">
+              <svg id="eyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg id="eyeOffIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </div>
+
+          <!-- Error Message -->
+          <div class="login-error" id="loginError" role="alert" aria-live="assertive"></div>
+
+          <!-- Remember Me + Forgot Password -->
+          <div class="form-options">
+            <label class="remember-me">
+              <input type="checkbox" id="rememberMe">
+              <span class="checkmark"></span>
+              <span>Remember me</span>
+            </label>
+            <a href="#" class="forgot-link" onclick="return false;">Forgot password?</a>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" class="login-btn" id="loginBtn" aria-live="polite" aria-busy="false">
+            <span class="btn-content">
+              <span id="loginBtnText">Sign In</span>
+              <svg class="btn-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </span>
+            <span class="login-btn-spinner" id="loginBtnSpinner" aria-hidden="true" hidden></span>
+          </button>
+
+          <!-- Loading Progress -->
+          <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
+        </form>
+
+        <!-- Footer -->
+        <div class="login-footer">
+          <span>GVSI NetPulse v3.10.0</span>
+          <span class="footer-dot">|</span>
+          <span>Secured connection</span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
