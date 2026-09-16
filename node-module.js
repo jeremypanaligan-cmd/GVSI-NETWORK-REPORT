@@ -7,12 +7,11 @@ async function fetchNodeData(forceRefresh = false) {
     } else {
       renderNodeEmptyState();
     }
-    fetchWithRetry(BASE_API_URL + "?type=node")
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
-        else { dataCache.node = []; renderNodeEmptyState(); }
-      })
-      .catch(() => {});
+    fetchGate.fetchQueued('node', BASE_API_URL + "?type=node", data => {
+      if (!data) return; // gate swallows failures — keep cached content on screen
+      if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
+      else { dataCache.node = []; renderNodeEmptyState(); }
+    });
     return;
   }
 
@@ -20,7 +19,7 @@ async function fetchNodeData(forceRefresh = false) {
   if (!dataCache.node) showSkeleton('node');
 
   try {
-    const data = await fetchWithRetry(BASE_API_URL + "?type=node");
+    const data = await fetchGate.run('node', BASE_API_URL + "?type=node");
 
     if (Array.isArray(data) && data.length > 0) {
       dataCache.node = data;
@@ -160,6 +159,8 @@ function renderNodeReport(data) {
     const tableCard = nodeTab.querySelector('.table-card');
     if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
   }
+
+  if (window.fetchGate) fetchGate.refreshTicker('node');
 }
 
 function renderNodeEmptyState() {
@@ -221,4 +222,5 @@ function renderNodeEmptyState() {
       </div>
     </div>
   `;
+  if (window.fetchGate) fetchGate.refreshTicker('node');
 }

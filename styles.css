@@ -560,115 +560,53 @@ body.dark-mode .brand-gallop {
   display: block;
 }
 
+/* ==================== MODULE GATHERING CHIP ====================
+   Replaces the old full-cover "Gathering data…" overlay (v3.9.1–v3.9.4).
+   While a module fetch is in flight, a small inline chip now sits at the
+   TOP of the tab's own content flow (first child), so nothing is ever
+   covered: whatever is already rendered stays visible underneath.
+   The class name is kept (call sites query '.module-loading-screen'). */
 .module-loading-screen {
-  position: absolute;
-  z-index: 20;
-  inset: 0;
-  min-height: 320px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(20, 184, 166, 0.2);
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(20, 184, 166, 0.14), transparent 32%),
-    linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(7, 10, 15, 0.98));
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.26), 0 0 40px rgba(20, 184, 166, 0.08);
-  color: var(--dark-charcoal);
-  text-align: center;
-}
-
-.module-loading-screen::before,
-.module-loading-screen::after {
-  content: '';
-  position: absolute;
-  width: 72%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(20, 184, 166, 0.36), transparent);
-}
-.module-loading-screen::before { top: 22%; }
-.module-loading-screen::after { bottom: 22%; }
-
-.module-loading-orbit {
-  display: none;
-  position: relative;
-  width: 76px;
-  height: 76px;
-  margin-bottom: 8px;
-}
-.module-loading-orbit span {
-  position: absolute;
-  inset: 0;
-  border: 1px solid rgba(45, 212, 191, 0.34);
-  border-radius: 50%;
-  animation: moduleOrbit 2.4s ease-in-out infinite;
-}
-.module-loading-orbit span:nth-child(2) { inset: 10px; animation-delay: -0.8s; }
-.module-loading-orbit span:nth-child(3) { inset: 20px; animation-delay: -1.6s; }
-.module-loading-core {
-  position: absolute;
-  inset: 26px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--primary-teal);
-  border-radius: 50%;
-  background: rgba(20, 184, 166, 0.16);
-  color: #5eead4;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  box-shadow: 0 0 22px rgba(20, 184, 166, 0.28);
-}
-.module-loading-kicker {
-  color: #5eead4;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.2em;
-}
-.module-loading-title {
-  color: #f8fafc;
-  font-size: clamp(19px, 2vw, 28px);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-.module-loading-module {
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.module-loading-status {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-top: 8px;
-  color: #64748b;
+  margin: 2px 0 10px;
+  padding: 3px 12px;
+  width: fit-content;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--row-hover);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
 }
-.module-loading-status span {
+
+/* Animated teal dot before the text */
+.module-loading-screen::before {
+  content: '';
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #2dd4bf;
-  box-shadow: 0 0 10px rgba(45, 212, 191, 0.8);
-  animation: moduleStatusPulse 1.3s ease-in-out infinite;
+  background: var(--primary-teal);
+  animation: moduleDotPulse 1.2s ease-in-out infinite;
 }
-@keyframes moduleOrbit {
-  0%, 100% { transform: scale(0.94); opacity: 0.35; }
-  50% { transform: scale(1.05); opacity: 1; }
+
+/* Module label after the text: "Gathering data · NAP Outages" */
+.module-loading-screen::after {
+  content: '· ' attr(data-module);
+  color: var(--dark-charcoal);
+  font-weight: 800;
 }
-@keyframes moduleStatusPulse {
-  0%, 100% { transform: scale(0.7); opacity: 0.45; }
-  50% { transform: scale(1.15); opacity: 1; }
+
+@keyframes moduleDotPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.75); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
+
 @media (prefers-reduced-motion: reduce) {
-  .module-loading-orbit span,
-  .module-loading-status span { animation: none; }
+  .module-loading-screen::before { animation: none; }
 }
 
 
@@ -3030,5 +2968,52 @@ body.dark-mode .admin-tab-btn:hover {
   .logout-btn {
     padding: 6px 8px;
     font-size: 10px;
+  }
+}
+
+/* ==================== MODULE REFRESH TICKER ====================
+   "Updated Xs ago / Refreshing in Ys" chip. Rendered by fetch-gate.js
+   into each tab's .page-title-row, re-created after every module render
+   (self-healing). States: ok (muted) / deferred (amber pulse). */
+.module-refresh-ticker {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--row-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+
+.module-refresh-ticker[data-state="deferred"] {
+  color: var(--badge-yellow-text);
+  background: var(--badge-yellow);
+  border-color: transparent;
+  animation: tickerPulse 2s ease-in-out infinite;
+}
+
+@keyframes tickerPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Page titles may be long (Backbone Links Status) — let them ellipsize
+   so the chip keeps its place at the right edge on narrow screens. */
+.page-title-row .page-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .module-refresh-ticker {
+    font-size: 9px;
+    padding: 2px 8px;
+    flex-shrink: 0;
   }
 }

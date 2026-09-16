@@ -15,12 +15,11 @@ async function fetchBackboneData(forceRefresh = false) {
     } else {
       renderBackboneEmptyState();
     }
-    fetchWithRetry(BASE_API_URL + "?type=backbone")
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
-        else { dataCache.backbone = []; renderBackboneEmptyState(); }
-      })
-      .catch(() => {});
+    fetchGate.fetchQueued('backbone', BASE_API_URL + "?type=backbone", data => {
+      if (!data) return; // gate swallows failures — keep cached content on screen
+      if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
+      else { dataCache.backbone = []; renderBackboneEmptyState(); }
+    });
     return;
   }
 
@@ -28,7 +27,7 @@ async function fetchBackboneData(forceRefresh = false) {
   if (!dataCache.backbone) showSkeleton('backbone');
 
   try {
-    const data = await fetchWithRetry(BASE_API_URL + "?type=backbone");
+    const data = await fetchGate.run('backbone', BASE_API_URL + "?type=backbone");
 
     if (Array.isArray(data) && data.length > 0) {
       dataCache.backbone = data;
@@ -204,6 +203,8 @@ function renderBackboneReport(data) {
     const tableCard = bbTab.querySelector('.table-card');
     if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
   }
+
+  if (window.fetchGate) fetchGate.refreshTicker('backbone');
 }
 
 // Empty State / Landing Page: Kapag walang active backbone incidents
@@ -319,6 +320,7 @@ function renderBackboneEmptyState() {
       </div>
     </div>
   `;
+  if (window.fetchGate) fetchGate.refreshTicker('backbone');
 }
 
 // Modal: Open Backbone Link Details

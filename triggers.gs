@@ -7,6 +7,7 @@
  * 
  * Trigger Schedule:
  * - Aging Duration (OLT): Every 15 minutes
+ * - OLT Cache Warmer: Every 15 minutes
  * - Aging Duration (Node/Backbone): Every 30 minutes
  * - Backbone Ticket Processing: Every hour
  * - Node Ticket Processing: Every hour
@@ -25,6 +26,13 @@ function setupAllTriggers() {
     .everyMinutes(15)
     .create();
   Logger.log('✅ Created trigger: updateAgingDurationStatic (every 15 minutes)');
+  
+  // 1b. OLT Cache Warmer (Every 15 minutes — same cadence as aging writer)
+  ScriptApp.newTrigger('warmOltCache')
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+  Logger.log('✅ Created trigger: warmOltCache (every 15 minutes)');
   
   // 2. Aging Duration - Node & Backbone (Every 30 minutes)
   ScriptApp.newTrigger('updateAgingDurationColP')

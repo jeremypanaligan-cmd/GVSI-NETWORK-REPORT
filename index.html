@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.4">
+  <link rel="stylesheet" href="styles.css?v=3.9.5">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.9.4">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.5">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -72,7 +72,7 @@
       </button>
       <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.9.4</div>
+    <div class="login-footer">GVSI NetPulse v3.9.5</div>
   </div>
 </div>
 
@@ -340,10 +340,7 @@
     <!-- 4. NODE MODULE TAB -->
     <div id="tab-node" class="tab-content">
       <div class="page-title">NODE Status Report</div>
-      <div class="placeholder-card">
-        <h3>NODE Module</h3>
-        <p>I-connect ang NODE Apps Script API URL para ma-render ang data dito.</p>
-      </div>
+      <!-- Node module renders its own table or its "All systems operational" empty state via node-module.js -->
     </div>
 
     <!-- 5. BACKBONE LINKS TAB -->
@@ -372,6 +369,12 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.5 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Covering Loading Screens (Removed):</strong> The full-cover "Gathering data…&quot; overlay that hid each module while its data was loading is gone. The gathering state is now a small inline chip at the top of the tab, so already-rendered data stays visible during every refresh — no more covered dashboards.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.4 — What's New:</strong></p>
@@ -726,6 +729,7 @@
 </div>
 
 <script src="db.js"></script>
+<script src="fetch-gate.js"></script>
 <script src="notifications.js"></script>
 <script src="nap-module.js"></script>
 <script src="lcp-module.js"></script>
@@ -1002,22 +1006,26 @@ function refreshCurrentTab() {
   // 1. NAP Data Fetcher
 
   function prefetchOtherTabsInBackground() {
-  // Parallel prefetch: All modules fetch simultaneously after NAP loads
-  // Best for small teams (4 users) — no API quota concerns, fastest UX
+  // Staggered prefetch: one module every 400ms after NAP loads instead of a
+  // simultaneous burst — Apps Script's echo endpoint intermittently 404s when
+  // hammered with parallel hits. The gate also dedupes against any fetch the
+  // user's clicks or the kiosk rotation already put in flight.
   const allModules = ['lcp', 'olt', 'node', 'backbone'];
   
-  allModules.forEach(type => {
+  allModules.forEach((type, i) => {
     if (!dataCache[type]) {
-      fetchWithRetry(BASE_API_URL + "?type=" + type)
-        .then(data => { if (data) dataCache[type] = data; })
-        .catch(() => {}); // Silent fail for prefetch — user can manually load later
+      setTimeout(() => {
+        fetchGate.fetchQueued(type, BASE_API_URL + "?type=" + type, data => {
+          if (data) dataCache[type] = data;
+        });
+      }, i * 400);
     }
   });
 
   // Save daily snapshot after initial data is loaded
   setTimeout(() => {
     if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
-  }, 1000); // 1s buffer for all parallel fetches
+  }, 5000); // buffer covers the 400ms×4 stagger plus fetch time
 }
       
 
@@ -1211,7 +1219,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.3').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.5').catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
@@ -1263,34 +1271,29 @@ function closeNodeModal(event) {
     analytics: 'Network Analytics'
   };
 
+  /* v3.9.5: the full-cover "Gathering data…" overlay is gone. The gathering state
+     is now a small inline chip at the TOP of the tab's own content flow, so
+     already-rendered data stays visible while a fetch is in flight. The class
+     name and both function signatures are kept on purpose: every module call
+     site (nap/lcp/olt/node/backbone) and showSkeleton() stay untouched. */
   function showModuleLoading(tabName, moduleLabel) {
     const tab = document.getElementById('tab-' + tabName);
     if (!tab) return;
     if (tab.querySelector('.module-loading-screen')) return;
 
     const label = moduleLabel || (MODULE_LOADING_LABELS && MODULE_LOADING_LABELS[tabName]) || 'Network Data';
-    tab.classList.add('is-gathering-data');
-    const screen = document.createElement('div');
-    screen.className = 'module-loading-screen';
-    screen.setAttribute('role', 'status');
-    screen.setAttribute('aria-live', 'polite');
-    screen.innerHTML = `
-      <div class="module-loading-orbit" aria-hidden="true">
-        <span></span><span></span><span></span>
-        <div class="module-loading-core">NP</div>
-      </div>
-      <div class="module-loading-kicker">GVSI NETPULSE · LIVE FEED</div>
-      <div class="module-loading-title">Gathering data...</div>
-      <div class="module-loading-module">${sanitizeHTML(label)}</div>
-      <div class="module-loading-status"><span></span> Establishing secure telemetry stream</div>
-    `;
-    tab.appendChild(screen);
+    const chip = document.createElement('div');
+    chip.className = 'module-loading-screen';
+    chip.setAttribute('role', 'status');
+    chip.setAttribute('aria-live', 'polite');
+    chip.setAttribute('data-module', label);
+    chip.textContent = 'Gathering data';
+    tab.insertBefore(chip, tab.firstChild);
   }
 
   function hideModuleLoading(tabName) {
     const tab = document.getElementById('tab-' + tabName);
     if (!tab) return;
-    tab.classList.remove('is-gathering-data');
     const screen = tab.querySelector('.module-loading-screen');
     if (screen) screen.remove();
   }
@@ -1900,7 +1903,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.9.4"></script>
+<script src="kiosk-module.js?v=3.9.5"></script>
 
 </body>
 </html>

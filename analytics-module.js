@@ -69,11 +69,11 @@ async function fetchAnalyticsData(forceRefresh = false) {
     // Fetch all data then re-render
     try {
       await Promise.all([
-        fetchWithRetry(BASE_API_URL + "?type=nap").then(d => { if (d) dataCache.nap = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=lcp").then(d => { if (d) dataCache.lcp = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=olt").then(d => { if (d) dataCache.olt = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=node").then(d => { if (d) dataCache.node = d; }).catch(() => {}),
-        fetchWithRetry(BASE_API_URL + "?type=backbone").then(d => { if (d) dataCache.backbone = d; }).catch(() => {})
+        fetchGate.run('nap', BASE_API_URL + "?type=nap").then(d => { if (d) dataCache.nap = d; }).catch(() => {}),
+        fetchGate.run('lcp', BASE_API_URL + "?type=lcp").then(d => { if (d) dataCache.lcp = d; }).catch(() => {}),
+        fetchGate.run('olt', BASE_API_URL + "?type=olt").then(d => { if (d) dataCache.olt = d; }).catch(() => {}),
+        fetchGate.run('node', BASE_API_URL + "?type=node").then(d => { if (d) dataCache.node = d; }).catch(() => {}),
+        fetchGate.run('backbone', BASE_API_URL + "?type=backbone").then(d => { if (d) dataCache.backbone = d; }).catch(() => {})
       ]);
       // Re-render with fresh data
       return renderAnalyticsDashboard();

@@ -1,12 +1,38 @@
 // ====================== OLT MODULE ======================
 
+// Decode compact OLT format (v2/v3) into plain objects
+function decodeOltCompact(compact) {
+  var f = compact.f, p = compact.p, m = compact.m, r = compact.r;
+  return r.map(function(row) {
+    var obj = {};
+    f.forEach(function(field, i) {
+      if (field === 'P') obj[field] = p[row[i]];
+      else if (field === 'M') obj[field] = m[row[i]];
+      else obj[field] = row[i];
+    });
+    return obj;
+  });
+}
+
+// Server-provided meta summary for shape=3 compact responses
+var oltMeta = null;
+
 async function fetchOltData(forceRefresh = false) {
   if (!forceRefresh && dataCache.olt) {
     rawOltData = dataCache.olt;
     processAndRenderOlt();
-    fetchWithRetry(BASE_API_URL + "?type=olt")
-      .then(data => { if (Array.isArray(data) && data.length > 0) { dataCache.olt = data; rawOltData = data; processAndRenderOlt(); } })
-      .catch(() => {});
+    // Deduped + throttled background refresh via the shared gate
+    fetchGate.fetchQueued('olt', BASE_API_URL + "?type=olt&shape=3", data => {
+      if (data && data.meta) {
+        dataCache.olt = decodeOltCompact(data);
+        oltMeta = data.meta;
+      } else if (Array.isArray(data) && data.length > 0) {
+        dataCache.olt = data;
+        oltMeta = null;
+      }
+      rawOltData = dataCache.olt;
+      processAndRenderOlt();
+    });
     return;
   }
 
@@ -14,11 +40,17 @@ async function fetchOltData(forceRefresh = false) {
   showModuleLoading('olt');
 
   try {
-    const data = await fetchWithRetry(BASE_API_URL + "?type=olt");
+    const data = await fetchGate.run('olt', BASE_API_URL + "?type=olt&shape=3");
 
-    if (Array.isArray(data) && data.length > 0) {
+    if (data && data.meta) {
+      dataCache.olt = decodeOltCompact(data);
+      oltMeta = data.meta;
+    } else if (Array.isArray(data) && data.length > 0) {
       dataCache.olt = data;
-      rawOltData = data;
+      oltMeta = null;
+    }
+    rawOltData = dataCache.olt;
+    if (rawOltData && rawOltData.length > 0) {
       processAndRenderOlt();
     }
   } catch (error) {
@@ -50,17 +82,29 @@ function processAndRenderOlt() {
   let totalClientsDown = 0;
   let totalOlt = rawOltData.length;
 
-  rawOltData.forEach(item => {
-    const status = (item.S || item.STATUS || '').toString().trim().toUpperCase();
-    if (status === 'DOWN') {
-      countDown++;
-      totalClientsDown += parseInt(item.CA || 0) || 0;
-    }
-    else if (status.includes('LOW POWER')) countLowPower++;
-    else if (status.includes('UPLINK DOWN')) countUplinkDown++;
-    else if (status.includes('DEGRADATION')) countDegradation++;
-    else countUp++;
-  });
+  if (oltMeta) {
+    // Use precomputed meta from server (shape=3 compact response)
+    countUp = oltMeta.up;
+    countDown = oltMeta.down;
+    countLowPower = oltMeta.lowPower;
+    countUplinkDown = oltMeta.uplinkDown;
+    countDegradation = oltMeta.degradation;
+    totalClientsDown = oltMeta.clientsDown;
+    totalOlt = oltMeta.total;
+  } else {
+    // Fallback: compute from data (legacy shape=1)
+    rawOltData.forEach(item => {
+      const status = (item.S || item.STATUS || '').toString().trim().toUpperCase();
+      if (status === 'DOWN') {
+        countDown++;
+        totalClientsDown += parseInt(item.CA || 0) || 0;
+      }
+      else if (status.includes('LOW POWER')) countLowPower++;
+      else if (status.includes('UPLINK DOWN')) countUplinkDown++;
+      else if (status.includes('DEGRADATION')) countDegradation++;
+      else countUp++;
+    });
+  }
 
   // Null-safe DOM updates
   const _el = (id) => document.getElementById(id);
@@ -243,6 +287,8 @@ function renderOltTable() {
     const tableCard = oltTab.querySelector('.filter-toolbar');
     if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard.nextSibling);
   }
+
+  if (window.fetchGate) fetchGate.refreshTicker('olt');
 }
 
 function openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks, clientsAffected) {

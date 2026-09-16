@@ -3,9 +3,10 @@
 async function fetchLcpData(forceRefresh = false) {
   if (!forceRefresh && dataCache.lcp) {
     renderLcpReport(dataCache.lcp.lcpAging, dataCache.lcp.lcpImpact);
-    fetchWithRetry(BASE_API_URL + "?type=lcp")
-      .then(data => { if (data && data.lcpAging) { dataCache.lcp = data; renderLcpReport(data.lcpAging, data.lcpImpact || []); } })
-      .catch(() => {});
+    // Deduped + throttled background refresh via the shared gate
+    fetchGate.fetchQueued('lcp', BASE_API_URL + "?type=lcp", data => {
+      if (data && data.lcpAging) { dataCache.lcp = data; renderLcpReport(data.lcpAging, data.lcpImpact || []); }
+    });
     return;
   }
 
@@ -13,7 +14,7 @@ async function fetchLcpData(forceRefresh = false) {
   showModuleLoading('lcp');
 
   try {
-    const data = await fetchWithRetry(BASE_API_URL + "?type=lcp");
+    const data = await fetchGate.run('lcp', BASE_API_URL + "?type=lcp");
 
     if (data && data.lcpAging) {
       dataCache.lcp = data;
@@ -136,4 +137,6 @@ function renderLcpReport(agingData, impactData) {
     const agingCard = lcpTab.querySelector('.table-card');
     if (agingCard) agingCard.parentNode.insertBefore(toolbar, agingCard);
   }
+
+  if (window.fetchGate) fetchGate.refreshTicker('lcp');
 }

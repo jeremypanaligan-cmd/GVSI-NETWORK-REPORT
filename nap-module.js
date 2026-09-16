@@ -4,10 +4,10 @@ async function fetchNapData(forceRefresh = false) {
   // Show cached data instantly (no skeleton)
   if (!forceRefresh && dataCache.nap) {
     renderNapReport(dataCache.nap);
-    // Still fetch fresh data in background
-    fetchWithRetry(BASE_API_URL + "?type=nap")
-      .then(data => { if (data) { dataCache.nap = data; renderNapReport(data); } })
-      .catch(() => {});
+    // Still fetch fresh data in background (deduped + throttled by the shared gate)
+    fetchGate.fetchQueued('nap', BASE_API_URL + "?type=nap", data => {
+      if (data) { dataCache.nap = data; renderNapReport(data); }
+    });
     return;
   }
 
@@ -15,7 +15,7 @@ async function fetchNapData(forceRefresh = false) {
   showModuleLoading('nap');
 
   try {
-    const data = await fetchWithRetry(BASE_API_URL + "?type=nap");
+    const data = await fetchGate.run('nap', BASE_API_URL + "?type=nap");
 
     if (Array.isArray(data) && data.length > 0) {
       dataCache.nap = data;
@@ -102,4 +102,6 @@ function renderNapReport(data) {
     const tableCard = napTab.querySelector('.table-card');
     if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
   }
+
+  if (window.fetchGate) fetchGate.refreshTicker('nap');
 }

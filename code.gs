@@ -51,7 +51,8 @@ function doGet(e) {
   // to the wrong caller — the OLT payload is cached, and a cache hit is returned
   // before anything else looks at `shape`. Drop the legacy branch once every client
   // sends shape=2.
-  var oltShape = (type === "olt" && e && e.parameter && String(e.parameter.shape) === "2") ? 2 : 1;
+  var oltShapeParam = (type === "olt" && e && e.parameter && e.parameter.shape) ? parseInt(e.parameter.shape, 10) : 1;
+  var oltShape = (oltShapeParam === 2 || oltShapeParam === 3) ? oltShapeParam : 1;
 
   // ---------------- ROUTING: Login, Admin, Keep-Alive ----------------
   // All handled by admin.gs functions
@@ -73,7 +74,7 @@ function doGet(e) {
   // ---------------- DATA FETCHING ----------------
   // ---------------- 1. Cache Check ----------------
   var cache = CacheService.getScriptCache();
-  var cacheKey = "cache_v2_" + type + (oltShape === 2 ? "_c2" : "");
+  var cacheKey = "cache_v2_" + type + (oltShape >= 2 ? "_c" + oltShape : "");
 
   // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
   var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
@@ -350,7 +351,27 @@ if (!oltSheet) {
         });
       }
     }
-    resultData = oltList;
+    // Compute meta summary for the compact shapes
+    var oltMeta = { total: oltList.length, up: 0, down: 0, lowPower: 0, uplinkDown: 0, degradation: 0, clientsDown: 0 };
+    for (var oi = 0; oi < oltList.length; oi++) {
+      var os = oltList[oi].S;
+      if (os === "UP") oltMeta.up++;
+      else if (os === "DOWN") { oltMeta.down++; oltMeta.clientsDown += parseInt(oltList[oi].CA) || 0; }
+      else if (os && os.indexOf("LOW POWER") !== -1) oltMeta.lowPower++;
+      else if (os && os.indexOf("UPLINK DOWN") !== -1) oltMeta.uplinkDown++;
+      else if (os && os.indexOf("DEGRADATION") !== -1) oltMeta.degradation++;
+    }
+
+    if (oltShape === 3) {
+      // Problem-only rows: filter out UP OLTs, return compact with meta summary
+      var problemRows = oltList.filter(function(row) { return row.S !== "UP"; });
+      var compact = compactOltRows(problemRows);
+      resultData = { v: 3, f: compact.f, p: compact.p, m: compact.m, meta: oltMeta, r: compact.r };
+    } else if (oltShape === 2) {
+      resultData = compactOltRows(oltList);
+    } else {
+      resultData = oltList;
+    }
   }
 }
 
@@ -382,7 +403,7 @@ if (!oltSheet) {
   }
 
 // ---------------- SAVE TO CACHE (Dynamic TTL per Type) ----------------
-  var jsonResponse = JSON.stringify(oltShape === 2 ? compactOltRows(resultData) : resultData);
+  var jsonResponse = JSON.stringify(resultData);
   var payloadSize = jsonResponse.length;
   
   try {
