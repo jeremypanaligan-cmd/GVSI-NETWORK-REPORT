@@ -5,7 +5,7 @@
 
    So a name only has to be NEW when a publish changes files WITHOUT moving the label:
    then the copy cached under the same name is exactly the copy the page asks for again,
-   and nothing evicts it. That is why commit fe3459c shipped generation v3.9.3 while the
+   and nothing evicts it. That is why commit fe3459c shipped generation v3.9.4 while the
    label stayed 3.9.1, and why this release can take the name back to the label. A publish
    has to move the label, or the generation, or both — never neither.
 
@@ -13,7 +13,7 @@
    UNVERSIONED names the page requests (`admin-module.js`, not `admin-module.js?v=...`),
    so for those files `install` re-fetching every entry and `activate` deleting every
    other cache is the whole delivery mechanism. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.3';
+const STATIC_CACHE = 'gvsi-shell-v3.9.4';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',

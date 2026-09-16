@@ -22,9 +22,9 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.3">
+  <link rel="stylesheet" href="styles.css?v=3.9.4">
   <!-- Kiosk Mode / NOC Wall Display (fully scoped to kiosk mode only) -->
-  <link rel="stylesheet" href="kiosk.css?v=3.9.3">
+  <link rel="stylesheet" href="kiosk.css?v=3.9.4">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -72,7 +72,7 @@
       </button>
       <div class="login-progress" id="loginProgress" role="status" aria-live="polite" aria-hidden="true"></div>
     </form>
-    <div class="login-footer">GVSI NetPulse v3.9.3</div>
+    <div class="login-footer">GVSI NetPulse v3.9.4</div>
   </div>
 </div>
 
@@ -374,7 +374,7 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
-                <p><strong>Version 3.9.3 — What's New:</strong></p>
+                <p><strong>Version 3.9.4 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Active Users Tracking (Removed):</strong> The admin panel's Active Users card, and the heartbeat that fed it one request per signed-in client per minute, are gone. Presence was the largest single source of API requests against a metered, quota-limited deployment — and it answered a question nobody was asking on the NOC screen. The ActiveUsers sheet is left untouched; delete it in the spreadsheet if you no longer want that history.</li>
                   <li><strong>Unknown Actions (Fix):</strong> An action the script does not recognise used to fall through to the data branch and answer with a full NAP payload, because type defaults to nap. It now returns a small JSON error instead — which is also what keeps a device still holding the previous shell from spending the heaviest branch in the app on a request nobody reads.</li>
@@ -1900,7 +1900,7 @@ function closeNodeModal(event) {
 <div class="kiosk-exit-hint" id="kioskExitHint"></div>
 
 <!-- Kiosk controller: presentation layer only, loaded after the app globals -->
-<script src="kiosk-module.js?v=3.9.3"></script>
+<script src="kiosk-module.js?v=3.9.4"></script>
 
 </body>
 </html>
