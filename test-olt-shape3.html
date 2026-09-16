@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>OLT Shape=3 Test</title>
+<style>
+  body { font-family: system-ui; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+  h1 { color: #0d8a80; }
+  .result { background: #f1f5f9; padding: 16px; border-radius: 8px; margin: 16px 0; }
+  .success { background: #dcfce7; border-left: 4px solid #15803d; }
+  .error { background: #fee2e2; border-left: 4px solid #b91c1c; }
+  pre { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+  th { background: #f1f5f9; }
+</style>
+</head>
+<body>
+<h1>OLT Shape=3 Decoder Test</h1>
+
+<div id="status" class="result">Loading...</div>
+<div id="meta" style="display:none"></div>
+<div id="table" style="display:none"></div>
+<pre id="raw" style="display:none"></pre>
+
+<script>
+// Decoder function (same as olt-module.js)
+function decodeOltCompact(compact) {
+  var f = compact.f, p = compact.p, m = compact.m, r = compact.r;
+  return r.map(function(row) {
+    var obj = {};
+    f.forEach(function(field, i) {
+      if (field === 'P') obj[field] = p[row[i]];
+      else if (field === 'M') obj[field] = m[row[i]];
+      else obj[field] = row[i];
+    });
+    return obj;
+  });
+}
+
+// Test with mock data
+var mockData = {
+  v: 3,
+  f: ["P", "M", "N", "S", "T", "AG", "RM", "DC", "CA"],
+  p: ["ABRA", "BENGUET", "PANGASINAN"],
+  m: ["BANGUED", "LA TRINIDAD", "DAGUPAN"],
+  meta: { total: 461, up: 456, down: 1, lowPower: 1, uplinkDown: 2, degradation: 1, clientsDown: 150 },
+  r: [
+    [0, 0, "BDA001-OLT-01", "DOWN", "TKT-001", "2h 30m", "Fiber cut", "FIBER", "75"],
+    [1, 1, "LTB001-OLT-01", "OLT UPLINK LOW POWER", "TKT-002", "1h 15m", "Signal weak", "POWER", "45"],
+    [2, 2, "DGN001-OLT-01", "OLT UPLINK DOWN", "TKT-003", "45m", "Uplink failure", "UPLINK", "30"]
+  ]
+};
+
+// Run decoder
+var decoded = decodeOltCompact(mockData);
+
+// Display results
+var status = document.getElementById('status');
+status.className = 'result success';
+status.innerHTML = '<strong>✅ Decoder working!</strong> Decoded ' + decoded.length + ' problem rows from compact format.';
+
+// Display meta
+var metaDiv = document.getElementById('meta');
+metaDiv.style.display = 'block';
+metaDiv.innerHTML = '<h3>Meta Summary (from server)</h3>' +
+  '<pre>' + JSON.stringify(mockData.meta, null, 2) + '</pre>';
+
+// Display table
+var tableDiv = document.getElementById('table');
+tableDiv.style.display = 'block';
+var html = '<h3>Decoded Rows</h3><table><tr><th>Province</th><th>Municipality</th><th>OLT Name</th><th>Status</th><th>Ticket</th><th>Aging</th><th>Cause</th><th>Clients</th></tr>';
+decoded.forEach(function(row) {
+  html += '<tr><td>' + row.P + '</td><td>' + row.M + '</td><td>' + row.N + '</td><td>' + row.S + '</td><td>' + row.T + '</td><td>' + row.AG + '</td><td>' + row.DC + '</td><td>' + row.CA + '</td></tr>';
+});
+html += '</table>';
+tableDiv.innerHTML = html;
+
+// Display raw
+var rawDiv = document.getElementById('raw');
+rawDiv.style.display = 'block';
+rawDiv.textContent = JSON.stringify(mockData, null, 2);
+</script>
+</body>
+</html>
