@@ -1,0 +1,47 @@
+# ==================== CREDENTIALS — NEVER COMMIT ====================
+#
+# This repo is PUBLIC (github.com/jeremypanaligan-cmd/GVSI-NETWORK-REPORT).
+# Anything committed here is world-readable within minutes of a push (public
+# repos are scanned by bots for exactly these patterns), and it stays readable
+# in the git history even after the file itself is deleted. Removing a file is
+# NOT how a leaked key is handled — the key is revoked in the provider's
+# dashboard, and only then is the file removed.
+#
+# Apps Script sources are plain files that carry their configuration inline, so
+# a key pasted into a .gs file is a key in the repo. Put secrets in
+# PropertiesService.getScriptProperties() instead, and keep any file that holds
+# one out of git by name.
+
+# supabase-sync.gs held a hardcoded Supabase SECRET key (full server-side
+# access, bypasses Row Level Security). File removed 2026-09-17; the entry stays
+# so it cannot reappear by accident.
+supabase-sync.gs
+
+# Any future file whose name says it holds a credential.
+*secret*.gs
+*credentials*.gs
+*-keys.gs
+secrets.*
+.env
+.env.*
+*.env
+
+# ==================== LOCAL SCRATCH ====================
+# Copied to .js for `node --check` (which rejects the .gs extension), plus
+# local server output.
+_chk.js
+_inline_check.js
+serve.log
+*.log
+
+# ==================== PYTHON ====================
+__pycache__/
+*.pyc
+
+# ==================== OS JUNK ====================
+.DS_Store
+Thumbs.db
+
+# NOTE: .vscode/launch.json and .freebuff/project-id are tracked on purpose.
+# Do not add blanket rules for those directories — it would hide them from
+# `git status` while they remain in the index.
