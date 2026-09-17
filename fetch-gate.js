@@ -5,11 +5,11 @@
 // crosses. Two rules:
 //
 //   1. DEDUPE — one network round-trip per module type at a time. Any caller
-//      (tab click, kiosk rotation, prefetch, analytics) that arrives while a
+//      (tab click, prefetch, analytics) that arrives while a
 //      fetch for that type is in flight joins it instead of stacking a
 //      duplicate request on the Apps Script echo endpoint.
 //   2. THROTTLE — background refetches (the cached-path refresh modules fire
-//      on tab switches and kiosk slide changes) run at most once per
+//      on tab switches) run at most once per
 //      minIntervalMs per type. A refetch inside the window is deferred to the
 //      end of the window instead of dropped, so freshness is delayed, never
 //      lost.

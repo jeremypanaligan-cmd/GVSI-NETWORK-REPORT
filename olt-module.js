@@ -125,8 +125,8 @@ function processAndRenderOlt() {
   renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
   renderOltTable();
 
-  // Kiosk derives its own presentation, but expose the normalized aggregation
-  // for the regular dashboard and future consumers without changing the API.
+  // Expose the normalized aggregation for the dashboard and future consumers
+  // without changing the API.
   window.oltDownCauseBreakdown = aggregateOltDownCauses(rawOltData);
 }
 
