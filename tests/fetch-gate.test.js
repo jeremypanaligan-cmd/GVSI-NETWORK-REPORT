@@ -25,13 +25,24 @@ const ACTIVE_TIMERS = [];
 
 // Fresh sandbox per test → isolated gate state.
 function makeSandbox() {
-  const state = { fetchCount: 0, pending: [] };
+  /* `now` pins the gate's clock when set, so ticker granularity can be tested
+     without waiting real minutes. */
+  const state = { fetchCount: 0, pending: [], now: null };
   const tabs = {};
 
+  /* textContent is an accessor, not a plain field, so the sandbox can count
+     writes the way a real browser pays for them: an assignment replaces the
+     text node even when the string is identical. */
   function fakeEl(cls) {
     return {
-      className: cls || '', children: [], textContent: '', _attrs: {},
-      setAttribute(k, v) { this._attrs[k] = v; },
+      className: cls || '', children: [], _text: '', _attrs: {},
+      textWrites: 0, attrWrites: 0,
+      get textContent() { return this._text; },
+      set textContent(v) { this._text = v; this.textWrites++; },
+      getAttribute(k) {
+        return Object.prototype.hasOwnProperty.call(this._attrs, k) ? this._attrs[k] : null;
+      },
+      setAttribute(k, v) { this._attrs[k] = v; this.attrWrites++; },
       appendChild(c) { this.children.push(c); },
       querySelector(sel) {
         /* Recursive — matches real DOM descendant semantics */
@@ -46,8 +57,11 @@ function makeSandbox() {
     };
   }
 
+  const RealDate = Date;
   const sandbox = {
     console,
+    /* The gate only ever calls Date.now(). */
+    Date: { now: () => (state.now === null ? RealDate.now() : state.now) },
     setTimeout, clearTimeout,
     setInterval: (fn, ms) => { const h = setInterval(fn, ms); ACTIVE_TIMERS.push(h); return h; },
     clearInterval: h => {
@@ -88,7 +102,9 @@ function tickerChip(tabs, type) {
 }
 
 let passed = 0;
+let total = 0;
 async function test(name, fn) {
+  total++;
   try {
     await fn();
     passed++;
@@ -305,8 +321,86 @@ async function test(name, fn) {
     assert.strictEqual(state.lastUrl, 'u6', 'latest deferred caller wins (each deferral replaces the last)');
   });
 
+  await test('ticker: repainting an unchanged chip performs ZERO DOM writes', async () => {
+    const { gate, state, tabs } = makeSandbox();
+
+    const q1 = gate.fetchQueued('olt', 'u1', () => {});
+    state.pending[0].resolve([{ A: 1 }]);
+    await q1;
+
+    gate.refreshTicker('olt');
+    const chip = tickerChip(tabs, 'olt');
+    assert.strictEqual(chip.textWrites, 1, 'first paint writes the text once');
+    assert.strictEqual(chip.attrWrites, 1, 'first paint writes data-state once');
+
+    /* The 1s interval calls this every second for as long as the tab lives, and
+       the same text comes back each time. Before the guard, every one of those
+       ticks replaced the text node — a real mutation per second per module. */
+    for (let i = 0; i < 5; i++) gate.refreshTicker('olt');
+    assert.strictEqual(chip.textWrites, 1, 'unchanged text must not be reassigned');
+    assert.strictEqual(chip.attrWrites, 1, 'unchanged data-state must not be reassigned');
+    assert.strictEqual(chip.textContent, 'Updated just now');
+  });
+
+  await test('ticker: a genuine change still reaches the chip (guard is not a swallow)', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    gate.configure({ minIntervalMs: 300 });
+
+    const q1 = gate.fetchQueued('olt', 'u1', () => {});
+    state.pending[0].resolve([{ A: 1 }]);
+    await q1;
+    gate.refreshTicker('olt');
+
+    const chip = tickerChip(tabs, 'olt');
+    const textBefore = chip.textWrites;
+    const attrBefore = chip.attrWrites;
+    assert.strictEqual(chip.getAttribute('data-state'), 'ok');
+
+    await gate.fetchQueued('olt', 'u2', () => {}); // deferred → state flips
+    gate.refreshTicker('olt');
+    assert.strictEqual(chip.getAttribute('data-state'), 'deferred', 'state change is written');
+    assert.ok(chip.textWrites > textBefore, 'countdown text is written');
+    assert.ok(chip.attrWrites > attrBefore, 'data-state write is counted');
+  });
+
+  await test('ticker: age ticks in seconds for one minute, then in minutes', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    state.now = 1000000;
+
+    const q1 = gate.fetchQueued('olt', 'u1', () => {});
+    state.pending[0].resolve([{ A: 1 }]);
+    await q1;
+    gate.refreshTicker('olt');
+    const chip = tickerChip(tabs, 'olt');
+
+    state.now = 1000000 + 3000;
+    gate.refreshTicker('olt');
+    assert.strictEqual(chip.textContent, 'Updated just now');
+
+    state.now = 1000000 + 30000;
+    gate.refreshTicker('olt');
+    assert.strictEqual(chip.textContent, 'Updated 30s ago', 'seconds while it is still fresh');
+
+    /* Past a minute the string stops changing every tick — this is what makes
+       the write guard above pay off for a long-lived tab. */
+    state.now = 1000000 + 90000;
+    gate.refreshTicker('olt');
+    assert.strictEqual(chip.textContent, 'Updated 2m ago');
+
+    const writes = chip.textWrites;
+    for (let i = 0; i < 5; i++) { state.now += 1000; gate.refreshTicker('olt'); }
+    assert.strictEqual(chip.textWrites, writes, 'minute-granularity text is stable within the minute');
+    assert.strictEqual(chip.textContent, 'Updated 2m ago');
+
+    state.now = 1000000 + 3600 * 1000;
+    gate.refreshTicker('olt');
+    assert.strictEqual(chip.textContent, 'Updated 60m ago');
+  });
+
   // Ticker tests leave 1s intervals running — sweep them so node can exit.
   ACTIVE_TIMERS.splice(0).forEach(h => clearInterval(h));
 
-  console.log('\n' + passed + ' passed, ' + (13 - passed) + ' failed\n');
+  /* Derived from the tests that actually ran — the old hardcoded total turned
+     the summary into noise the moment a test was added. */
+  console.log('\n' + passed + ' passed, ' + (total - passed) + ' failed\n');
 })();
