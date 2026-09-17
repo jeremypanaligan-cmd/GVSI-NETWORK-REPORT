@@ -36,7 +36,7 @@ var COL = {
   BB_LINK_COUNT: 25      // Z (Index 25)
 };
 
-function doGet(e) {
+function doGet(e, warmTtlOverride) {
   var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "";
   var type = (e && e.parameter && e.parameter.type) ? e.parameter.type : "nap";
 
@@ -78,6 +78,29 @@ function doGet(e) {
 
   // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
   var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
+
+  /* ---------------- WARM-TTL OVERRIDE (in-process only) ----------------
+
+     A cache entry only helps between builds, so its lifetime has to cover the
+     gap. The warmer runs on a 15-minute trigger, but the 60 s TTL above left
+     the entry it wrote dead for 14 of every 15 minutes — so a user request
+     almost always paid the 11-25 s cold build anyway. The warmer ran, logged
+     success, and bought nothing. (Separate from the 404s, which were a routing
+     and deployment problem, not a cache one.)
+
+     The warmer therefore passes a longer TTL as a SECOND POSITIONAL ARGUMENT.
+     That argument is unreachable from the web app: Apps Script's HTTP entry
+     point calls doGet(e) with the query-string event and nothing else, and
+     `e.parameter.*` is the only channel a caller controls. So a client cannot
+     ask for a long-lived entry, and cannot freeze a stale outage view — the
+     signature enforces it, not a validation check.
+
+     Clamped to 30 minutes so a bad caller cannot pin the cache indefinitely.
+     Applied HERE, before both consumers: the PropertiesService staleness check
+     on the read path below, and the write path further down. */
+  if (warmTtlOverride > 0 && warmTtlOverride <= 1800) {
+    cacheTTL = warmTtlOverride;
+  }
 
   // PropertiesService has no TTL of its own, so a payload stored there is
   // stamped with its write time and expired here by hand.
