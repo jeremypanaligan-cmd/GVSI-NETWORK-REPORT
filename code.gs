@@ -72,8 +72,31 @@ function doGet(e, warmTtlOverride) {
   // silently answer with a full NAP payload. That is the heaviest branch in the app,
   // and a device still holding the previous shell would spend it, once a minute, on a
   // response it never reads.
+  //
+  // `retryable: false` for the same reason the build guard says true: a route that
+  // no longer exists cannot start existing, so the client must spend ONE request on
+  // it rather than the whole retry budget. fetchWithRetry() reads this field and is
+  // the only part of the app that does.
   if (action) {
-    return jsonOut({ error: "Unknown action: " + action });
+    return jsonOut({ error: "Unknown action: " + action, retryable: false });
+  }
+
+  /* The `type` parameter has the same hole the action guard above closes, and it
+     is worth closing the same way.
+
+     `type` defaults to "nap" a few lines up, and the branch chain below ends in
+     an unfiltered `else` — the NAP default. So a typo, or a type that has been
+     renamed (the OLT sheet is called "NLZ OLT Report", which invites
+     ?type=oltreport), is answered with the full NAP payload: the heaviest branch
+     in the app, once a cycle per device, for a response its caller never reads.
+     Because nothing warms a key for a type that does not exist, each of those
+     requests also paid a cold build.
+
+     DATA_TYPES is not a new list. It is the one the invalidation trigger and the
+     rev route already share, so this check cannot drift from them. */
+  if (DATA_TYPES.indexOf(type) === -1) {
+    Logger.log("Unknown type: " + type);
+    return jsonOut({ error: "Unknown type: " + type, type: type, retryable: false });
   }
 
   // ---------------- DATA FETCHING ----------------
@@ -157,13 +180,46 @@ function doGet(e, warmTtlOverride) {
     Logger.log("Cache get error: " + err.message);
   }
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  /* The handle itself can fail, and it is the FIRST thing every build does — so
+     it needs the same net as the reads below it rather than sitting above the
+     guard. When it throws, Apps Script answers with an HTML error page. */
+  var ss;
+  try {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  } catch (handleErr) {
+    return buildFailedOut_(type, handleErr);
+  }
+
   var resultData = null;
 
   /* Revision of this module's data at the moment the build started — captured
      BEFORE the first sheet read, so the write path below can tell whether an
      edit landed while this build was reading. */
   var buildStartRev = dataRevOf_(type);
+
+  /* ---------------- BUILD GUARD ----------------
+
+     Everything from here to the cache write below reads the spreadsheet, and it
+     was the only part of doGet with no net under it: the cache read above is
+     wrapped and the cache write below is wrapped, so a failure in either of
+     those costs a cache — while a failure HERE escaped the function entirely.
+
+     What Apps Script does with an escaped exception is not an error response. It
+     is an HTML error page (measured: ~8 KB of markup, which also arrived as a 404
+     through the googleusercontent echo hop). The app asks for JSON, so res.json()
+     threw on it, and because the shared fetch gate had cut every module down to a
+     single attempt, one transient hiccup was a module with no data at all —
+     the failure mode that was mistaken for a bad deployment URL.
+
+     A Sheets read is exactly what fails transiently here: up to 461 rows behind a
+     filtered QUERY view, racing the triggers that write to the same sheets.
+
+     This guard turns that into an ANSWER instead of a page. Apps Script cannot
+     set an HTTP status on a web app response — every reply is a 200 — so
+     `retryable` is the only channel that can distinguish "this was a hiccup, ask
+     again" from "this request was wrong". It is read in exactly one place:
+     fetchWithRetry() in index.html. */
+  try {
 
 if (type === "backbone") {
     // ---------------- BACKBONE LINKS DATA ----------------
@@ -473,6 +529,10 @@ if (!oltSheet) {
     }
   }
 
+  } catch (buildErr) {
+    return buildFailedOut_(type, buildErr);
+  }
+
 // ---------------- SAVE TO CACHE (Dynamic TTL per Type) ----------------
   var jsonResponse = JSON.stringify(resultData);
   var payloadSize = jsonResponse.length;
@@ -523,6 +583,32 @@ if (!oltSheet) {
 
   return ContentService.createTextOutput(jsonResponse)
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* One shape for "the build could not run", used by both guards in doGet: the
+   spreadsheet handle and the reads that follow it.
+
+   Two callers, one envelope, so the client has a single thing to classify. The
+   field that matters is `retryable`, and it exists because Apps Script CANNOT
+   set an HTTP status on a web app response — every reply is a 200 — so the
+   status line can never carry this. `true` means "a transient condition; the
+   same request can succeed in a moment", and fetchWithRetry() in index.html is
+   the only reader that acts on it.
+
+   The exception text is passed through rather than hidden. The endpoint is
+   already behind the app's session token, and this string is the only thing that
+   separates "Sheets service is temporarily unavailable" from "Cannot read
+   properties of null" in a log — two failures that want different responses from
+   whoever reads it. */
+function buildFailedOut_(type, err) {
+  var msg = String((err && err.message) || err || "unknown");
+  Logger.log("❌ Build failed for " + type + ": " + msg);
+  return jsonOut({
+    error: "build_failed",
+    type: type,
+    message: msg,
+    retryable: true
+  });
 }
 
 /* ==================== DATA FRESHNESS ====================
