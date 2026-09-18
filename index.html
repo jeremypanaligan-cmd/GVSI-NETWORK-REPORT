@@ -963,23 +963,61 @@
     }
   }
 
-  async function fetchWithRetry(url, retries = 0, delay = 500) {
+  // ---- TRANSPORT POLICY ----
+  // Every API call in the app goes through here, so this is the ONE place a retry
+  // budget can be set — and it had quietly become zero.
+  //
+  // 1. DEFAULT 2 RETRIES (3 attempts). Modules used to call this with an explicit
+  //    2. When the shared fetch gate (fetch-gate.js) took over those call sites it
+  //    called fetchWithRetry(url) and the old default of 0 left every module with
+  //    exactly ONE attempt, which is why a single transient origin failure showed
+  //    up as a module with no data at all — the app had no second chance and the
+  //    gate did not add one. Duplicate requests are still impossible: the gate
+  //    dedupes per module type and these retries live INSIDE that one request.
+  //
+  // 2. JITTERED BACKOFF. Failures arrive in bursts — a sheet edit or a deploy
+  //    wakes every module at once — and a fixed delay re-sends them in lockstep,
+  //    straight back into the same transient condition.
+  //
+  // 3. ORIGIN ERROR ENVELOPES COUNT AS FAILURES. Apps Script cannot set an HTTP
+  //    status on a web app response: every reply is a 200, so a failed build
+  //    arrives as a body — {error:"build_failed", retryable:true} from the build
+  //    guard in code.gs. It parses perfectly, so without this it would be rendered
+  //    as data: an empty table with no error on it. `retryable:false` (an unknown
+  //    type) fails identically every time, so it stops the loop rather than
+  //    spending the budget on it.
+  async function fetchWithRetry(url, retries = 2, delay = 500) {
     // Attached in ONE place, so no caller has to remember: any API call made through
     // here carries the session token the deployment issued at login. A call with no
     // token stored goes out exactly as it always did.
     url = withAuthToken(url);
+    let lastErr = null;
+    /* Counted, not derived from the budget: a `retryable:false` envelope breaks out
+       on the first attempt, and a message that reported "3 attempts" for one
+       request would send the next reader looking for two that never happened. */
+    let attempts = 0;
     const logUrl = safeApiUrlForLog(url);
     for (let i = 0; i <= retries; i++) {
       try {
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        const data = await res.json();
+        if (data && typeof data.error === 'string') {
+          const envelopeErr = new Error(`origin: ${data.error}`);
+          envelopeErr.fatal = data.retryable === false;
+          throw envelopeErr;
+        }
+        return data;
       } catch (err) {
         console.warn(`[Retry ${i + 1}/${retries + 1}] ${logUrl}:`, err.message);
-        if (i < retries) await new Promise(r => setTimeout(r, delay * (i + 1)));
+        lastErr = err;
+        attempts = i + 1;
+        if (err.fatal || i >= retries) break;
+        const wait = Math.round(delay * Math.pow(2, i) * (0.5 + Math.random()));
+        await new Promise(r => setTimeout(r, wait));
       }
     }
-    throw new Error(`Failed after ${retries + 1} attempts: ${logUrl}`);
+    throw new Error(`Failed after ${attempts} attempt${attempts === 1 ? '' : 's'}: ${logUrl} (${lastErr ? lastErr.message : 'unknown'})`);
   }
 
   // --- APPS SCRIPT KEEP-ALIVE ---

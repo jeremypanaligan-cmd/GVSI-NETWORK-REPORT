@@ -25,7 +25,14 @@
   'use strict';
 
   var MIN_INTERVAL_MS = 60000; // one successful background fetch per type per minute
-  var TIMEOUT_MS = 30000;      // hard ceiling per request cycle — proxy handles retries server-side
+  /* Hard ceiling per request cycle. This has to cover the retry budget that
+     fetchWithRetry() spends INSIDE the request it is given (index.html: 3 attempts
+     with jittered backoff), because the gate dedupes per type and therefore counts
+     all three attempts as one cycle. Warm build ~1.3 s, cold ~4 s: the worst case
+     that still fits is roughly 4 s + 1 s + 4 s + 2 s + 4 s. An origin that cannot
+     answer inside this is below the retry budget entirely, and the gate times out
+     rather than holding the type busy — its promise is left to settle on its own. */
+  var TIMEOUT_MS = 30000;
 
   var inflight = {};    // type -> raw fetch promise (rejects on failure)
   var lastFetchAt = {}; // type -> timestamp of last successful fetch (any path)

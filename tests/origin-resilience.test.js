@@ -3,15 +3,21 @@
 // Run: node tests/origin-resilience.test.js
 //
 // Zero dependencies. A transient failure on the origin is only survivable if BOTH
-// ends handle it. This file covers the ORIGIN end: a spreadsheet handle or a sheet
-// read that throws must come back as an ANSWER — a JSON envelope that says
-// "hiccup, ask again" — instead of an HTML error page. Apps Script turns an escaped
-// exception into markup, and the app asks for JSON, so res.json() threw on it; that
-// is how a transient Sheets failure came to look like a wrong deployment URL, and
-// why one of them left a module with no data.
+// ends handle it, so this file drives both:
 //
-// The client end — the retry budget, the jitter, and the reading of this envelope —
-// is covered by the commit that restores it.
+//   ORIGIN (code.gs) — a spreadsheet handle or a sheet read that throws must come
+//   back as an ANSWER: a JSON envelope that says "hiccup, ask again". Apps Script
+//   turns an escaped exception into an HTML error page, and the app asks for JSON,
+//   so res.json() threw on it — which is how a transient Sheets failure was read
+//   as a wrong deployment URL, and why a single one left a module with no data.
+//
+//   CLIENT (fetchWithRetry in index.html) — that envelope must count as a failure
+//   instead of parsing as data, must be retried with jitter, must NOT be retried
+//   when the origin says retrying cannot help, must still attach the session
+//   token, and must not spend a second request when the first one works.
+//
+// The client half pulls the real function out of index.html rather than a copy,
+// so the retry policy cannot drift away from this test without failing here.
 
 'use strict';
 
@@ -22,6 +28,7 @@ const assert = require('assert');
 
 const ROOT = path.join(__dirname, '..');
 const CODE_SRC = fs.readFileSync(path.join(ROOT, 'code.gs'), 'utf8');
+const HTML_SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
 const ALL_TYPES = ['nap', 'lcp', 'olt', 'node', 'backbone'];
 
@@ -120,6 +127,82 @@ function bodyOf(out) {
 function logged(s, needle) {
   return s.__logs.join('\n').indexOf(needle) !== -1;
 }
+
+/* ------------------------------------------------------------------ *
+   CLIENT — the real fetchWithRetry, lifted out of index.html
+ * ------------------------------------------------------------------ */
+
+function extractFetchWithRetry() {
+  const lines = HTML_SRC.split('\n');
+  const start = lines.findIndex((l) => l.indexOf('async function fetchWithRetry') !== -1);
+  assert.ok(start !== -1, 'fetchWithRetry is not in index.html');
+
+  /* Line-based, not brace-matched: the function's own closing brace is the first
+     line that is exactly two spaces and a brace, because every brace inside it is
+     indented further. The assertions below then pin what was extracted, so a drift
+     in either direction fails here instead of passing quietly. */
+  const end = lines.findIndex((l, i) => i > start && l.replace(/\r$/, '') === '  }');
+  assert.ok(end > start, 'fetchWithRetry has no closing brace at function indent');
+
+  const src = lines.slice(start, end + 1).join('\n');
+  assert.ok(src.indexOf('retries = 2') !== -1, 'the default retry budget must be 2');
+  assert.ok(src.indexOf('retryable') !== -1, 'the origin envelope must be classified');
+  assert.ok(src.indexOf('lastErr = err') !== -1, 'the last failure must be reported');
+  assert.ok(src.indexOf('withAuthToken') !== -1, 'the token must still be attached');
+  return src;
+}
+
+function clientHarness(responses) {
+  const calls = [];
+  const waits = [];
+  const warnings = [];
+  let i = 0;
+
+  const sandbox = {
+    console: {
+      log: () => {},
+      error: () => {},
+      warn: (...a) => warnings.push(a.join(' '))
+    },
+    /* Immediate timers, recorded: the backoff is what is under test, not the
+       waiting. */
+    setTimeout: (fn, ms) => { waits.push(ms); fn(); return 0; },
+    fetch: (url) => {
+      calls.push(url);
+      const spec = responses[Math.min(i, responses.length - 1)];
+      i++;
+      if (spec.networkError) return Promise.reject(new Error('Failed to fetch'));
+      return Promise.resolve({
+        ok: (spec.status || 200) >= 200 && (spec.status || 200) < 300,
+        status: spec.status || 200,
+        json: () => (spec.html
+          ? Promise.reject(new SyntaxError('Unexpected token < in JSON'))
+          : Promise.resolve(spec.body))
+      });
+    },
+    withAuthToken: (u) => u + (u.indexOf('?') === -1 ? '?' : '&') + 'token=SESSION123',
+    safeApiUrlForLog: (u) => u.replace(/token=[^&]*/, 'token=[redacted]')
+  };
+
+  vm.createContext(sandbox);
+  vm.runInContext(
+    extractFetchWithRetry() + '\n;globalThis.fetchWithRetry = fetchWithRetry;',
+    sandbox,
+    { filename: 'index.html:fetchWithRetry' }
+  );
+
+  return { sandbox, calls, waits, warnings };
+}
+
+async function callFetch(h, url) {
+  try {
+    return { data: await h.sandbox.fetchWithRetry(url, 2, 500) };
+  } catch (error) {
+    return { error };
+  }
+}
+
+const URL_NAP = 'https://script.google.com/macros/s/XXX/exec?type=nap';
 
 /* ------------------------------------------------------------------ *
    Harness
@@ -238,6 +321,112 @@ async function test(name, fn) {
       assert.ok(!(body && body.error && /Unknown type/.test(body.error)),
         type + ' must not be refused by the type guard');
     });
+  });
+
+  /* ==================== CLIENT ==================== */
+
+  console.log('\n-- client: fetchWithRetry spends its budget on transient failures --');
+
+  await test('a non-OK status is retried and then reported', async () => {
+    const h = clientHarness([{ status: 404 }]);   // the echo hop's 404
+    const r = await callFetch(h, URL_NAP);
+
+    assert.strictEqual(h.calls.length, 3, 'three attempts, not one');
+    assert.ok(/HTTP 404/.test(r.error.message), 'the status must survive into the error');
+  });
+
+  await test('a non-JSON body is a failure, never data', async () => {
+    const h = clientHarness([{ html: true }]);    // the ~8 KB error page
+    const r = await callFetch(h, URL_NAP);
+
+    assert.strictEqual(r.data, undefined, 'an error page must not be returned as data');
+    assert.strictEqual(h.calls.length, 3);
+  });
+
+  await test('a retryable origin envelope is retried, not rendered', async () => {
+    const h = clientHarness([{ body: { error: 'build_failed', retryable: true } }]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.strictEqual(r.data, undefined, 'the envelope must not reach the module as data');
+    assert.strictEqual(h.calls.length, 3, 'a hiccup is worth the whole budget');
+    assert.ok(/origin: build_failed/.test(r.error.message));
+  });
+
+  await test('a non-retryable envelope stops after one attempt', async () => {
+    const h = clientHarness([{ body: { error: 'Unknown type: oltt', retryable: false } }]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.strictEqual(h.calls.length, 1, 'the same request cannot start working');
+    assert.ok(/origin: Unknown type: oltt/.test(r.error.message));
+    assert.ok(/Failed after 1 attempt:/.test(r.error.message),
+      'and the message must not claim attempts that never happened');
+  });
+
+  await test('a transient failure recovers inside the request', async () => {
+    const h = clientHarness([
+      { status: 404 },
+      { body: { A: 'AREA-1' } }
+    ]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.deepStrictEqual(r.data, { A: 'AREA-1' }, 'the second attempt must reach the caller');
+    assert.strictEqual(h.calls.length, 2, 'and stop there');
+  });
+
+  await test('a network error is retried like any other transient', async () => {
+    const h = clientHarness([{ networkError: true }, { body: [] }]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.deepStrictEqual(r.data, []);
+    assert.strictEqual(h.calls.length, 2);
+  });
+
+  await test('a working first attempt costs exactly one request', async () => {
+    const h = clientHarness([{ body: { ok: true } }]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.deepStrictEqual(r.data, { ok: true });
+    assert.strictEqual(h.calls.length, 1, 'no speculative extra request');
+    assert.deepStrictEqual(h.waits, [], 'and no backoff at all');
+  });
+
+  await test('the session token is still attached', async () => {
+    const h = clientHarness([{ body: [] }]);
+    await callFetch(h, URL_NAP);
+    assert.ok(/token=SESSION123/.test(h.calls[0]), 'every attempt must carry it');
+  });
+
+  await test('backoff is bounded per attempt and jittered across runs', async () => {
+    for (let n = 0; n < 20; n++) {
+      const h = clientHarness([{ status: 500 }]);
+      await callFetch(h, URL_NAP);
+
+      assert.strictEqual(h.waits.length, 2, 'two waits for three attempts');
+      assert.ok(h.waits[0] >= 250 && h.waits[0] <= 750,
+        'attempt 1 waits half-to-1.5x of 500ms, got ' + h.waits[0]);
+      assert.ok(h.waits[1] >= 500 && h.waits[1] <= 1500,
+        'attempt 2 doubles that, got ' + h.waits[1]);
+    }
+
+    /* Twenty identical draws from a continuous interval would mean the jitter is
+       not being applied — and lockstep retries are what this is here to avoid. */
+    const drawn = new Set();
+    for (let n = 0; n < 20; n++) {
+      const h = clientHarness([{ status: 500 }]);
+      await callFetch(h, URL_NAP);
+      drawn.add(h.waits[0]);
+    }
+    assert.ok(drawn.size >= 5, 'the first backoff must vary between runs, saw ' + drawn.size);
+  });
+
+  await test('the redacted URL reaches the log, never the token', async () => {
+    const h = clientHarness([{ status: 404 }]);
+    await callFetch(h, URL_NAP);
+
+    assert.ok(h.warnings.length === 3, 'one warning per attempt');
+    assert.ok(h.warnings.every((w) => w.indexOf('token=[redacted]') !== -1));
+    assert.ok(h.warnings.every((w) => w.indexOf('SESSION123') === -1),
+      'the session token must never be printed');
   });
 
   /* ------------------------------------------------------------------ */
