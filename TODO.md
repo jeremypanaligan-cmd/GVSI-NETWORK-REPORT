@@ -91,6 +91,48 @@ node scripts/bump-version.mjs patch     # move the generation, the manifest and 
 
 ---
 
+## 🟢 P2 — Freshness: in the repo, waiting on the Apps Script hand-off (Sept 18, 2026)
+
+**The incident that prompted this:** a DOWN ticket was deleted from `OLT DOWN Tickets` at **14:06:09** and the dashboard still showed it at **14:17:09** — 11 minutes, while the app refreshed throughout. The cache HIT path (`code.gs`) returned the stored bytes and never rewrote them, so every one of those refreshes was answered from an entry built at ~13:59 and only its 1080 s TTL ever produced a fresh build. `1080 s = 18 min`, and `14:17:09 − 1080 s = 13:59:09`: the arithmetic and the observed timestamp agree, which is what identified the cache rather than the app.
+
+**What the ceiling is now, per module:**
+
+| | before | after |
+|---|---|---|
+| sheet edit (in-sheet, human) | up to ~19 min | **seconds** (`onEdit`/`onChange` drops the cache; the rev poll makes the app look) |
+| OLT, formula/IMPORTRANGE-driven (no trigger fires) | up to 18 min of HIT | **≤ 5 min** (warm cadence), chip shows the real age |
+| node / backbone | ≤ 60 s + client cadence | unchanged |
+| nap / lcp | ≤ 180 s + client cadence | unchanged |
+| REFRESH button | client cache only | real rebuild, rate-limited to 1/min/type |
+
+**Four `.gs` files to paste** (nothing changes live until then): `code.gs`, `cache-invalidation.gs` **(new)**, `olt-cache-warmer.gs`, `triggers.gs` — then deploy a **new version** to the same deployment (keeps the `/exec` URL) and run `setupAllTriggers()`.
+
+**Three triggers it must end up with** — the plan now declares event types, and `listTriggers()` reports a wrong one as drift:
+
+| handler | type | what it is for |
+|---|---|---|
+| `warmOltCache` | clock, **every 5 min** (was 15) | covers what a trigger cannot see; freshness = cadence now |
+| `handleSheetEdit` | **On edit** (installable) | drops one module's cache, bumps its rev |
+| `handleSheetChange` | **On change** (installable) | structure change: drops every module's cache |
+
+**Verify it landed** (the three checks that would have caught the original incident):
+
+```bash
+# 1. the payload is stamped — proves a hit can report its own age
+curl -sL "$EXEC?type=olt&shape=3" | grep -o '"builtAt":[0-9]*'
+
+# 2. the rev route exists and touches no sheet
+curl -sL "$EXEC?action=rev"          # {"ok":true,"rev":{...}}
+
+# 3. two requests two seconds apart report the SAME stamp — a hit reporting its build time
+```
+
+Then the end-to-end test: edit a cell in `OLT DOWN Tickets` and watch the chip — the rev should move within ~15 s and the OLT tab should repaint by itself, with the honest age on it.
+
+**Deliberately left alone:** the aging writers stay at 15 min (their output is a static value, and `OLT DOWN Tickets` Column X can be up to 15 min behind regardless of how fresh the payload build is); the harder-to-undo decision about whether to give `OLT DOWN Tickets` its own shorter cycle belongs with the OLT UP-rows question below.
+
+---
+
 ## 🟡 P2 — The intermittent 21 s 404
 
 **This is the largest single source of a bad experience in the system.**
@@ -114,9 +156,11 @@ Why it dominates:
 
 The `triggers.gs` safety fix **is in the repo but has not been pasted into Apps Script**, and nothing changes in the live project until `setupAllTriggers()` is run manually once.
 
-1. Paste the current `triggers.gs` (and `olt-cache-warmer.gs`, `code.gs` if not already done).
+1. Paste the current `triggers.gs`, `olt-cache-warmer.gs`, `code.gs` **and the new `cache-invalidation.gs`**.
 2. Run **`listTriggers()` first** — read-only drift report.
 3. Then run `setupAllTriggers()`.
+
+The plan now also installs two **installable** spreadsheet triggers (`handleSheetEdit` → On edit, `handleSheetChange` → On change). `setupAllTriggers()` validates both handlers before it deletes anything, so a forgotten paste is a no-op rather than a trigger wipe — but a missing `cache-invalidation.gs` means the fastest freshness path silently does not exist.
 
 Known drift: `autoExportSheetToExcel` (the daily 6 AM backup) **has no trigger at all**, and `processBackboneTickets` is registered **On-change** rather than hourly — which is how an on-change trigger hides a missing schedule. The previous `triggers.gs` said so itself: it logged `'It does NOT fire on IMPORTRANGE refresh.'` (line 71, before the rewrite in `628ea4c`).
 

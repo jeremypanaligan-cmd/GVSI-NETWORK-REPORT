@@ -125,7 +125,8 @@ denominators — do not use `rows.length` as the OLT total.
   "p": ["BENGUET", "CAGAYAN"],
   "m": ["ITOGON", "KIBUNGAN", "..."],
   "meta": { "total": 461, "up": 457, "down": 0, "lowPower": 0,
-            "uplinkDown": 0, "degradation": 0, "clientsDown": 0 },
+            "uplinkDown": 0, "degradation": 0, "clientsDown": 0,
+            "builtAt": 1789720861701 },
   "r": [ [0, 0, "OLT-NAME", "DOWN", "TICKET", "12h 30m", "remarks", "FIBER", "42"] ]
 }
 ```
@@ -133,7 +134,15 @@ denominators — do not use `rows.length` as the OLT total.
 - `f` is the field order for every row in `r` — read it, don't hardcode it.
 - `P` and `M` in each row are **indices** into the `p` and `m` dictionaries.
 - `v: 2` (no `meta`) is the all-rows compact shape; `shape=1` is the legacy
-  array-of-objects form.
+  array-of-objects form. `shape=2` carries `builtAt` as a **sibling key** of
+  `v`/`f`/`p`/`m`/`r` instead of inside a `meta` block.
+- **`meta.builtAt` (epoch ms) is a build stamp, and it rides INSIDE the cached
+  payload rather than being attached to the response on the way out — so a cache
+  HIT reports the time the data was built, not the time it was asked for. A dashboard that
+  displays age should read this; using its own fetch time instead is what let a
+  deleted ticket look fresh for 11 minutes (Sept 18, 2026). The app's own chip is
+  `fetch-gate.js` (`noteBuiltAt` / `dataBuiltAt`), and it goes amber past
+  10 minutes.
 
 The app's own decoder is `decodeOltCompact()` in `olt-module.js` (27 lines) — worth
 copying rather than rewriting.
