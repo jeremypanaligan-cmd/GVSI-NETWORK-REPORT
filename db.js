@@ -55,6 +55,12 @@ async function saveDailySnapshot() {
     lcpAging.forEach(r => { if ((r.A || '').toUpperCase() !== 'TOTAL') lcpTotal += parseInt(r.T) || 0; });
     lcpImpact.forEach(r => { lcpClients += parseInt(r.C) || 0; });
 
+    /* The rows here are problem rows when the payload was shape=3, which is the
+       shape every loader now asks for — so counting by elimination would record
+       up = 0 and a total of only the problem rows. A snapshot is written once per
+       day and is never corrected, so it has to come from the server's whole-sheet
+       summary when one is available; the row walk stays for a legacy payload. */
+    const oltSummary = (typeof oltMeta !== 'undefined' && oltMeta) ? oltMeta : null;
     let oltUp = 0, oltDown = 0, oltLowPower = 0, oltUplinkDown = 0, oltDegradation = 0, oltClientsDown = 0;
     oltData.forEach(item => {
       const st = (item.S || '').toUpperCase();
@@ -64,6 +70,16 @@ async function saveDailySnapshot() {
       else if (st.includes('DEGRADATION')) oltDegradation++;
       else oltUp++;
     });
+    let oltTotalCount = oltData.length;
+    if (oltSummary) {
+      oltUp = parseInt(oltSummary.up) || 0;
+      oltDown = parseInt(oltSummary.down) || 0;
+      oltLowPower = parseInt(oltSummary.lowPower) || 0;
+      oltUplinkDown = parseInt(oltSummary.uplinkDown) || 0;
+      oltDegradation = parseInt(oltSummary.degradation) || 0;
+      oltClientsDown = parseInt(oltSummary.clientsDown) || 0;
+      oltTotalCount = parseInt(oltSummary.total) || 0;
+    }
 
     let nodeTickets = nodeData.length, nodeEquipment = 0;
     nodeData.forEach(item => { nodeEquipment += parseInt(item.C) || 0; });
@@ -76,7 +92,7 @@ async function saveDailySnapshot() {
       timestamp: Date.now(),
       nap: { total: napTotal, critical: napCritical },
       lcp: { total: lcpTotal, clients: lcpClients },
-      olt: { total: oltData.length, up: oltUp, down: oltDown, lowPower: oltLowPower, uplinkDown: oltUplinkDown, degradation: oltDegradation, clientsDown: oltClientsDown },
+      olt: { total: oltTotalCount, up: oltUp, down: oltDown, lowPower: oltLowPower, uplinkDown: oltUplinkDown, degradation: oltDegradation, clientsDown: oltClientsDown },
       node: { tickets: nodeTickets, equipment: nodeEquipment },
       backbone: { tickets: bbTickets, links: bbTotal }
     };

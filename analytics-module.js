@@ -71,7 +71,10 @@ async function fetchAnalyticsData(forceRefresh = false) {
       await Promise.all([
         fetchGate.run('nap', BASE_API_URL + "?type=nap").then(d => { if (d) dataCache.nap = d; }).catch(() => {}),
         fetchGate.run('lcp', BASE_API_URL + "?type=lcp").then(d => { if (d) dataCache.lcp = d; }).catch(() => {}),
-        fetchGate.run('olt', BASE_API_URL + "?type=olt").then(d => { if (d) dataCache.olt = d; }).catch(() => {}),
+        /* The same shape the OLT tab asks for, decoded by olt-module's own helper.
+           The legacy shape stored raw rows here while oltMeta still held whatever
+           the last shape=3 response said — two answers, one screen. */
+        fetchGate.run('olt', BASE_API_URL + "?type=olt&shape=3").then(d => { if (d) applyOltPayload(d); }).catch(() => {}),
         fetchGate.run('node', BASE_API_URL + "?type=node").then(d => { if (d) dataCache.node = d; }).catch(() => {}),
         fetchGate.run('backbone', BASE_API_URL + "?type=backbone").then(d => { if (d) dataCache.backbone = d; }).catch(() => {})
       ]);
@@ -101,6 +104,15 @@ function renderAnalyticsDashboard() {
   // ==================== CALCULATIONS ====================
 
   // --- OLT Status Counts ---
+  /* The rows in dataCache.olt are PROBLEM ROWS when the payload was shape=3, and
+     that is the shape every loader now asks for. Counting them by elimination —
+     anything that is not DOWN / LOW POWER / UPLINK DOWN / DEGRADATION must be UP —
+     therefore reports up = 0, and `oltData.length` as the total, so the donut
+     would claim no OLT in the fleet is up. The server's own summary carries the
+     whole-sheet counts, so it wins whenever it is present; the row walk below
+     stays as the fallback for a legacy full-row payload, which is the only shape
+     where it is complete. */
+  const oltSummary = (typeof oltMeta !== 'undefined' && oltMeta) ? oltMeta : null;
   let oltUp = 0, oltDown = 0, oltLowPower = 0, oltUplinkDown = 0, oltDegradation = 0, oltTotalClients = 0;
   oltData.forEach(item => {
     const st = (item.S || '').toUpperCase();
@@ -110,7 +122,16 @@ function renderAnalyticsDashboard() {
     else if (st.includes('DEGRADATION')) oltDegradation++;
     else oltUp++;
   });
-  const oltTotal = oltData.length;
+  let oltTotal = oltData.length;
+  if (oltSummary) {
+    oltUp = _si(oltSummary.up);
+    oltDown = _si(oltSummary.down);
+    oltLowPower = _si(oltSummary.lowPower);
+    oltUplinkDown = _si(oltSummary.uplinkDown);
+    oltDegradation = _si(oltSummary.degradation);
+    oltTotalClients = _si(oltSummary.clientsDown);
+    oltTotal = _si(oltSummary.total);
+  }
 
   // --- NAP Aging Totals ---
   let napTotal24 = 0, napTotal13 = 0, napTotal3 = 0, napGrandTotal = 0;
