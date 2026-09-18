@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 18, 2026 · after v3.9.8 (`872e923`, live on `main`)
+**Last updated:** September 18, 2026 · working tree at v3.9.12 (uncommitted; `main` is live at 3.9.10)
 
 ---
 
@@ -231,18 +231,26 @@ Worth remembering **why** it was removed, so it is not re-added for the wrong re
 
 ---
 
-## ❓ Open question — OLT UP rows
+## ✅ Answered — OLT UP rows (Sept 18, 2026)
 
-**Unanswered:** *"If we bring back the UP rows in the OLT module, will it slow the OLT module's data load?"* — the turn investigating this was interrupted.
+**Question:** *"If we bring back the UP rows in the OLT module, will it slow the OLT module's data load?"*
 
-The relevant measurement is already in hand:
+**Answer: no, provided the UP rows stay off the dashboard's request path — and that is what shipped.** Measured against the live deployment:
 
-| shape | payload |
-|---|---|
-| `shape=3` (problem-only, what the app uses) | **643 B** |
-| `shape=1` (legacy, all 461 rows) | **50,137 B** |
+| request | rows | bytes | who asks for it |
+|---|---|---|---|
+| `shape=3` — problem-only | 4 | **629 B** | the dashboard, on every load |
+| `shape=4` — UP-only | 457 | **25,962 B** | only after *View All Healthy OLTs* |
+| `shape=1` — legacy, all rows | 461 | **50,137 B** | nothing (kept as the default for old clients) |
 
-~78×, and 50 KB is close to the 90 KB CacheService threshold that `code.gs` guards with a `PropertiesService` fallback. What is **not** yet established is the client-side cost of rendering 461 rows versus the ~4 problem rows. Answer that before re-enabling UP rows.
+The fleet is 461 OLTs and **457 report UP**, so a single UP-bearing payload is **41× the dashboard's** — the original worry was justified, and serving it eagerly would have put the heaviest response in the app behind the most frequently loaded tab. Two things bound the cost instead:
+
+- **It is lazy.** The dashboard still requests `shape=3`, so its payload and parse are unchanged; `shape=4` is fetched once, on demand, and cached under its own key.
+- **It is paginated** (50 rows a page), so the DOM work is capped at 50 rows no matter how large the fleet grows. This was the half the earlier note flagged as unestablished.
+
+25,962 B also sits well under the 90 KB CacheService threshold, so `shape=4` never needs the `PropertiesService` fallback that `shape=1` was close to.
+
+**Still unmeasured:** wall-clock render time for a 50-row page on a low-end phone, and whether `shape=4`'s cold rebuild is as slow as `shape=3`'s. The live origin returned a valid `shape=4` on **1 of 3 attempts**; the other two were the documented intermittent 404 / Apps Script error page, which the drill-down's retry state is there to absorb.
 
 ---
 

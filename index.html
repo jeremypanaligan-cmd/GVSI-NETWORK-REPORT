@@ -425,6 +425,27 @@
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.12 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Healthy OLT Fleet (New):</strong> The OLT <em>UP</em> card and the <em>UP</em> filter now open a Healthy Fleet drill-down instead of filtering the incident table. The summary is built from counts the dashboard has already loaded, so it opens instantly with no request at all; <strong>View All Healthy OLTs</strong> then loads the full UP-only list only when asked, with search, paging and a retry state if that fetch fails. The list writes its own CSV — every row the search matches, not just the 50 on screen — and holds its own export button, so it does not depend on the incident table's, which steps aside with the table. The <em>UP</em> pill stays lit, so the filter strip always says which of the two OLT views you are in.</li>
+                  <li><strong>OLT UP Payload Split (Performance):</strong> The healthy fleet travels as its own compact response with its own cache entry, separate from the incident-only payload the dashboard uses, and it is deliberately left out of the scheduled warmer — so bringing the UP rows back costs the NOC screen nothing until someone opens the list.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.10 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Resolved Records Clear On Time (Fix):</strong> A deleted or completed row could stay on screen for up to 18 minutes while the module looked like it was refreshing, because the background warm-up wrote a long-lived snapshot and every refresh in between was answered from it without rebuilding. The snapshot now lives 3 minutes instead of 18, the warm-up rebuilds on every run instead of every other one, and the source sheet clears the affected cache within seconds of a change.</li>
+                  <li><strong>Honest "As Of" Stamp (Fix):</strong> The refresh chip reported when your device fetched the data, not when the server built it — so the app could honestly call itself fresh while showing a picture many minutes old. It now shows the build time, and turns amber once the payload is older than its own lifetime.</li>
+                  <li><strong>Changes Appear On Their Own (New):</strong> The app watches the data revision while the tab is open and re-fetches by itself when it moves, and <strong>REFRESH</strong> now genuinely bypasses the server cache it could never touch before.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.9 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Updates Apply On The Same Visit (Fix):</strong> A published version used to wait for a second launch — the page load that triggered the update was still answered by the outgoing service worker, so the new files sat installed and unused. The app now applies them as soon as the new worker takes control, with guards so a first install does not reload and a half-typed login is never discarded.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.5 — What's New:</strong></p>
                 <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
                   <li><strong>Covering Loading Screens (Removed):</strong> The full-cover "Gathering data…&quot; overlay that hid each module while its data was loading is gone. The gathering state is now a small inline chip at the top of the tab, so already-rendered data stays visible during every refresh — no more covered dashboards.</li>
