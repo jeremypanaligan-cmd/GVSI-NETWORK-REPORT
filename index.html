@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.8">
+  <link rel="stylesheet" href="styles.css?v=3.9.9">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -1271,7 +1271,55 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.8').catch(err => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.9').then((reg) => {
+        /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
+
+           The worker is cache-first for the shell, so the navigation that TRIGGERS an
+           update is still answered by the outgoing worker: the new cache is installed and
+           activated in the background (skipWaiting + clients.claim in sw.js) while the page
+           already on screen keeps the old bytes. Nothing noticed that, so a release only
+           reached a device on its NEXT launch — and on a phone, only when the install got
+           far enough to finish before the app was closed, which is why updates seemed to
+           arrive "eventually, sometimes".
+
+           This is the missing half: when the new worker takes control, reload once. Every
+           module script and `?v=` asset then comes from the new cache in the same launch.
+
+           Both guards matter:
+             - hadController is false on a device's FIRST install. clients.claim() fires
+               controllerchange there too, and reloading would throw away the load that just
+               happened.
+             - the reload waits for a focused form field to blur, so it can never discard a
+               half-typed login. */
+        var hadController = !!navigator.serviceWorker.controller;
+        var applyingUpdate = false;
+        function applyShellUpdate() {
+          if (applyingUpdate) return;
+          var el = document.activeElement;
+          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
+            el.addEventListener('blur', applyShellUpdate, { once: true });
+            return;
+          }
+          applyingUpdate = true;
+          window.location.reload();
+        }
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!hadController) return;
+          applyShellUpdate();
+        });
+
+        /* A standalone PWA resumed from the background is not navigated, so nothing runs
+           the update check and a release can sit unseen indefinitely. Ask on every return
+           to the foreground (throttled like the data refresh above), and a changed sw.js
+           installs and then triggers the reload. */
+        var lastSwCheck = Date.now();
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState !== 'visible') return;
+          if (Date.now() - lastSwCheck < 5 * 60 * 1000) return;
+          lastSwCheck = Date.now();
+          reg.update().catch(() => {});
+        });
+      }).catch(err => {
         console.log('SW registration failed: ', err);
       });
     });
