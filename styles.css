@@ -2,6 +2,18 @@
    GVSI NetPulse - Main Stylesheet    Version 3.8.2
    ============================ */
 
+/* The `hidden` attribute is the single source of truth for "not on screen".
+
+   The browser's own rule is `[hidden] { display: none }`, and any author rule the
+   least bit more specific beats it. `.filter-toolbar` and `.export-toolbar` are both
+   `display: flex`, so `el.hidden = true` in JS left them fully visible — the OLT
+   filter strip and its export buttons stayed on screen above a view that had
+   replaced them, with the wrong filter still highlighted. `!important` is what makes
+   the attribute win, so this stays fixed for every future caller too. */
+[hidden] {
+  display: none !important;
+}
+
 :root {
   --primary-teal: #0d8a80;
   --primary-dark: #085f58;
@@ -1428,6 +1440,15 @@ body.dark-mode .remarks-paragraph-box {
   align-items: center;
   gap: 4px;
   transition: all 0.2s ease;
+}
+/* An export button with nothing to write goes quiet instead of producing an empty
+   file: the healthy fleet disables its own when the search matches no rows. */
+.export-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.export-btn:disabled:hover {
+  background: var(--card-bg);
 }
 .export-btn:hover {
   background: var(--row-hover);
@@ -3154,6 +3175,75 @@ body:not(.dark-mode) .ticker-separator {
 .login-form *:focus-visible {
   outline: 2px solid var(--primary-teal);
   outline-offset: 2px;
+}
+
+/* ── HEALTHY OLT DRILL-DOWN ──
+   Reached only from the UP stat card or the UP filter; the fleet itself is fetched
+   lazily by "View All Healthy OLTs" (Shape 4). Styled from the same tokens as every
+   other card, and it re-uses .stat-card, .search-input and .bar-chart-* rather than
+   defining a second visual language — so light and dark both come from the theme. */
+.healthy-olt-panel {
+  margin-bottom: 16px;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+}
+.healthy-olt-heading { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.healthy-olt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.healthy-olt-heading h2 { margin: 2px 0 6px; color: var(--dark-charcoal); font-size: 22px; }
+.healthy-olt-lede { margin: 0; color: var(--text-muted); font-size: 13px; }
+.healthy-olt-eyebrow { margin: 0; color: var(--badge-green-text); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+/* No max-width: the tiles stretch like .olt-stats-grid and the bar like
+   .bar-chart-row, so the summary keeps the same proportions as the rest of the tab. */
+.healthy-olt-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 18px 0 14px; }
+.healthy-olt-share { margin-bottom: 20px; }
+.healthy-olt-share-label { margin: 8px 0 0; color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.healthy-olt-share-label strong { color: var(--badge-green-text); font-weight: 800; }
+.healthy-olt-panel .search-bar-container { max-width: 520px; margin-top: 18px; }
+/* White on --badge-green-text clears 5:1 in light (#15803d) but only 1.5:1 in dark,
+   where that token is bright mint (#6ee7b7). The fill is therefore stated per mode
+   instead of borrowed from a TEXT token, which keeps white above 4.5:1 in both. */
+.healthy-olt-cta {
+  border: 0;
+  border-radius: 8px;
+  padding: 11px 18px;
+  background: #15803d;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(21, 128, 61, 0.25);
+  transition: all 0.2s ease;
+}
+.healthy-olt-cta:hover { filter: brightness(1.08); }
+.healthy-olt-cta:active { transform: scale(0.98); }
+.healthy-olt-cta:focus-visible { outline: 2px solid var(--primary-teal); outline-offset: 2px; }
+.healthy-olt-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; color: var(--text-muted); font-size: 12px; font-weight: 600; flex-wrap: wrap; }
+.healthy-olt-pagination > div { display: flex; align-items: center; gap: 8px; }
+.healthy-olt-pageof { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.healthy-olt-pagination .filter-btn:disabled { opacity: .45; cursor: not-allowed; }
+.healthy-olt-empty { text-align: center; color: var(--text-muted); padding: 18px 0; }
+.healthy-olt-error { color: var(--badge-red-text) !important; margin: 14px 0 !important; }
+/* Without this the panel would be the one flat, opaque card in a screen of blurred
+   ones. Same treatment as body.dark-mode .table-card. */
+body.dark-mode .healthy-olt-panel {
+  background: rgba(14, 22, 34, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+body.dark-mode .healthy-olt-cta { background: #047857; box-shadow: 0 2px 4px rgba(4, 120, 87, 0.35); }
+@media (max-width: 600px) {
+  .healthy-olt-panel { padding: 18px; }
+  .healthy-olt-heading { flex-direction: column; }
+  .healthy-olt-pagination > div { width: 100%; justify-content: space-between; }
 }
 
 /* ================================================================

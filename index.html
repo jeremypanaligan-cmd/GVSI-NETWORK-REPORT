@@ -316,7 +316,7 @@
           <div class="label">TOTAL OLT</div>
           <div class="value" id="oltCardTotal">0</div>
         </div>
-        <div class="stat-card c-green clickable" onclick="setOltFilter('UP')">
+        <div class="stat-card c-green clickable" onclick="showHealthyOltFleet()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showHealthyOltFleet();}">
           <div class="label">UP</div>
           <div class="value" id="oltCardUp">0</div>
         </div>
@@ -363,11 +363,13 @@
         <button class="filter-btn" id="btnFilterLowPower" onclick="setOltFilter('LOW POWER')">LOW POWER</button>
         <button class="filter-btn" id="btnFilterUplinkDown" onclick="setOltFilter('UPLINK DOWN')">UPLINK DOWN</button>
         <button class="filter-btn" id="btnFilterDegradation" onclick="setOltFilter('DEGRADATION')">DEGRADATION</button>
-        <button class="filter-btn" id="btnFilterUp" onclick="setOltFilter('UP')">UP</button>
+        <button class="filter-btn" id="btnFilterUp" onclick="showHealthyOltFleet()">UP</button>
       </div>
 
+      <div id="oltHealthyFleetPanel" hidden></div>
+
       <!-- OLT Status Details Table -->
-      <div class="table-card">
+      <div class="table-card" id="oltIssuesTableCard">
         <div class="table-wrapper">
           <table class="data-table">
             <thead>
