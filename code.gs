@@ -183,6 +183,9 @@ function doGet(e, warmTtlOverride) {
   /* The handle itself can fail, and it is the FIRST thing every build does — so
      it needs the same net as the reads below it rather than sitting above the
      guard. When it throws, Apps Script answers with an HTML error page. */
+  /* Opens the build: records where it is, before anything can throw. */
+  beginBuild_(type);
+
   var ss;
   try {
     ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -195,7 +198,11 @@ function doGet(e, warmTtlOverride) {
   /* Revision of this module's data at the moment the build started — captured
      BEFORE the first sheet read, so the write path below can tell whether an
      edit landed while this build was reading. */
+  buildStage_("revision");
+  /* dataRevOf_ swallows its own failure and answers 0, so this read cannot throw
+     — it only records the revision the build started against. */
   var buildStartRev = dataRevOf_(type);
+  buildCtx_.rev = buildStartRev;
 
   /* ---------------- BUILD GUARD ----------------
 
@@ -223,7 +230,7 @@ function doGet(e, warmTtlOverride) {
 
 if (type === "backbone") {
     // ---------------- BACKBONE LINKS DATA ----------------
-    var bbSheet = ss.getSheetByName("Backbone Tickets");
+    var bbSheet = openSheet_(ss, "backbone", "Backbone Tickets");
     if (!bbSheet) {
       resultData = [];
     } else {
@@ -271,7 +278,7 @@ if (type === "backbone") {
 
   } else if (type === "node") {
     // ---------------- NODE DOWN DATA ----------------
-    var nodeSheet = ss.getSheetByName("Node DOWN Tickets");
+    var nodeSheet = openSheet_(ss, "node", "Node DOWN Tickets");
     if (!nodeSheet) {
       resultData = [];
     } else {
@@ -308,7 +315,7 @@ if (type === "backbone") {
   
   } else if (type === "lcp") {
     // ---------------- LCP DATA ----------------
-    var lcpSheet = ss.getSheetByName("NLZ LCP Report");
+    var lcpSheet = openSheet_(ss, "lcp", "NLZ LCP Report");
     if (!lcpSheet) {
       resultData = { lcpAging: [], lcpImpact: [] };
     } else {
@@ -349,7 +356,7 @@ if (type === "backbone") {
 
   } else if (type === "olt") {
 // ---------------- OLT DATA ----------------
-var oltSheet = ss.getSheetByName("NLZ OLT Report");
+var oltSheet = openSheet_(ss, "olt", "NLZ OLT Report");
 if (!oltSheet) {
   resultData = [];
 } else {
@@ -366,7 +373,7 @@ if (!oltSheet) {
     var clientsMap = {}; // Fallback: total clients per ticket
     var oltClientsMap = {}; // NEW: per-OLT client lookup { ticketKey: { oltName: count } }
     
-    var ticketSheet = ss.getSheetByName("OLT DOWN Tickets");
+    var ticketSheet = openSheet_(ss, "olt-tickets", "OLT DOWN Tickets");
     if (ticketSheet) {
       var lastRowTix = ticketSheet.getLastRow();
       if (lastRowTix >= 2) {
@@ -504,7 +511,7 @@ if (!oltSheet) {
 
   } else {
     // ---------------- NAP DATA (DEFAULT) ----------------
-    var napSheet = ss.getSheetByName("NLZ NAP Report");
+    var napSheet = openSheet_(ss, "nap", "NLZ NAP Report");
     if (!napSheet) {
       resultData = [];
     } else {
@@ -585,6 +592,63 @@ if (!oltSheet) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+/* ==================== BUILD DIAGNOSTICS ====================
+
+   What a caught exception in a build does NOT carry: which sheet was being read,
+   which branch was running, how long it had been running, and which revision the
+   data was at. Those four are what turn "a build failed" into "look at this read
+   on this sheet", and the Executions log is the only place they can be seen — so
+   they are recorded as the build goes, and spent in one line when it fails.
+
+   A module-level object rather than an argument threaded through six branches. An
+   execution is single-threaded, and the one entry point that can build resets it
+   first (beginBuild_), so a value can only ever describe the current build. */
+
+var buildCtx_ = { type: "", stage: "", sheet: "", rev: 0, startedAt: 0 };
+
+function beginBuild_(type) {
+  buildCtx_.type = type;
+  buildCtx_.stage = "spreadsheet";
+  buildCtx_.sheet = "";
+  buildCtx_.rev = 0;
+  buildCtx_.startedAt = Date.now();
+}
+
+function buildStage_(stage) {
+  buildCtx_.stage = stage;
+}
+
+/* Every sheet lookup in the build goes through here, so each one both records
+   where the build is and reports a sheet that is not there.
+
+   A MISSING SHEET IS NOT AN EXCEPTION. Each branch answers [] for it, which is
+   byte-for-byte what it answers when the sheet exists and holds no rows — so a
+   renamed tab reads exactly like "no incidents today", and nothing said
+   otherwise. That is not a build failure and never reached the failure log; it is
+   logged here, because "which sheet is this module reading" is the same question
+   in both cases.
+
+   `stage` names the branch (or the part of one) the read belongs to, so the log
+   can point at a read rather than at a module. */
+function openSheet_(ss, stage, name) {
+  buildCtx_.stage = stage;
+  buildCtx_.sheet = name;
+  /* A missing HANDLE is not a missing sheet. It means the build can read nothing
+     at all, so it must not be reported as an empty payload for this one module —
+     that is the silent-empty answer this helper exists to remove. Thrown, with
+     the sheet that could not be reached named, rather than left to surface as
+     "Cannot read properties of null" three frames deeper. */
+  if (!ss) throw new Error("No spreadsheet handle while opening \"" + name + "\"");
+
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    Logger.log("⚠️ Sheet not found: \"" + name + "\" (type=" + buildCtx_.type +
+               ", stage=" + stage + ") — answering with an empty payload, exactly" +
+               " as it would if the sheet were there and empty.");
+  }
+  return sheet;
+}
+
 /* One shape for "the build could not run", used by both guards in doGet: the
    spreadsheet handle and the reads that follow it.
 
@@ -599,10 +663,35 @@ if (!oltSheet) {
    already behind the app's session token, and this string is the only thing that
    separates "Sheets service is temporarily unavailable" from "Cannot read
    properties of null" in a log — two failures that want different responses from
-   whoever reads it. */
+   whoever reads it.
+
+   What is LOGGED is deliberately richer than what is SENT. The response carries
+   only what the client classifies on; everything that pins a failure to a place —
+   the stage, the sheet, the revision, the elapsed time, the first stack frames —
+   goes to the Executions log, where the next reader is looking for the cause. The
+   envelope is a contract with fetchWithRetry() in index.html and does not grow
+   fields for diagnostics. */
 function buildFailedOut_(type, err) {
   var msg = String((err && err.message) || err || "unknown");
-  Logger.log("❌ Build failed for " + type + ": " + msg);
+  var elapsedMs = buildCtx_.startedAt ? (Date.now() - buildCtx_.startedAt) : 0;
+
+  Logger.log("❌ Build failed" +
+             " | type=" + type +
+             " | stage=" + (buildCtx_.stage || "unknown") +
+             " | sheet=\"" + (buildCtx_.sheet || "(none)") + "\"" +
+             " | rev=" + (buildCtx_.rev || "(unread)") +
+             " | after " + elapsedMs + "ms" +
+             " | " + msg);
+
+  /* The message says what broke; the first stack frames say WHERE, which is the
+     difference between "Cannot read properties of null" on a sheet read and the
+     same words on a row loop. Three frames is enough to tell those apart, and
+     short enough to stay one log entry. */
+  if (err && err.stack) {
+    var frames = String(err.stack).split("\n").slice(1, 4).join(" | ").replace(/\s+/g, " ").trim();
+    if (frames) Logger.log("   frames: " + frames);
+  }
+
   return jsonOut({
     error: "build_failed",
     type: type,

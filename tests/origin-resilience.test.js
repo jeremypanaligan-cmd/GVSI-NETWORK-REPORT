@@ -241,7 +241,72 @@ async function test(name, fn) {
     assert.strictEqual(body.retryable, true, 'a Sheets hiccup is worth retrying');
     assert.strictEqual(body.type, 'nap', 'the client must know which module failed');
     assert.ok(/temporarily unavailable/.test(body.message), 'the cause travels with it');
-    assert.ok(logged(s, 'Build failed for nap'), 'and it is logged on the origin too');
+    assert.ok(logged(s, 'Build failed'), 'and it is logged on the origin too');
+  });
+
+  console.log('\n-- origin: a failure log names the place, not just the module --');
+
+  await test('the failure log carries type, stage, sheet, rev and elapsed time', () => {
+    const s = originSandbox({ readThrows: true, props: { data_rev_nap: '7' } });
+    s.doGet(NAP());
+
+    const line = s.__logs.find((l) => l.indexOf('Build failed') !== -1) || '';
+    assert.ok(/type=nap/.test(line), 'which module: ' + line);
+    assert.ok(/stage=nap/.test(line), 'which branch, not just which module: ' + line);
+    assert.ok(/sheet="NLZ NAP Report"/.test(line),
+      'the sheet being read, which is the whole point: ' + line);
+    assert.ok(/rev=7/.test(line), 'the revision the build started against: ' + line);
+    assert.ok(/after \d+ms/.test(line), 'and how long it had been running: ' + line);
+    assert.ok(/temporarily unavailable/.test(line), 'the cause stays too');
+  });
+
+  await test('the stage survives a failure that happens after the lookup', () => {
+    /* The read throws inside getValues(), which is past openSheet_ — so this is the
+       case where a bare exception would name nothing at all. */
+    const s = originSandbox({ readThrows: true });
+    s.doGet(NAP());
+    const line = s.__logs.find((l) => l.indexOf('Build failed') !== -1) || '';
+    assert.ok(/stage=nap/.test(line) && /sheet="NLZ NAP Report"/.test(line),
+      'the record has to be written BEFORE the read it describes: ' + line);
+  });
+
+  await test('a handle that cannot be opened names the sheet it could not reach', () => {
+    const s = originSandbox({ handleNull: true });
+    s.doGet(NAP());
+
+    const line = s.__logs.find((l) => l.indexOf('Build failed') !== -1) || '';
+    assert.ok(/stage=nap/.test(line), line);
+    assert.ok(/sheet="NLZ NAP Report"/.test(line), line);
+    assert.ok(/No spreadsheet handle/.test(line),
+      'and says what actually happened, not "Cannot read properties of null": ' + line);
+  });
+
+  await test('a missing sheet is logged, not silently answered with nothing', () => {
+    /* The question this answers: ?type=node returning [] is the same answer whether
+       the sheet is missing, empty, or renamed — and until this log, nothing said
+       which. */
+    const s = originSandbox({});
+    const body = bodyOf(s.doGet({ parameter: { type: 'node' } }));
+
+    assert.deepStrictEqual(body, [], 'the payload is unchanged — still an empty list');
+    const line = s.__logs.find((l) => l.indexOf('Sheet not found') !== -1) || '';
+    assert.ok(/"Node DOWN Tickets"/.test(line), 'the sheet is named: ' + line);
+    assert.ok(/type=node/.test(line) && /stage=node/.test(line), line);
+  });
+
+  await test('a sheet that exists and is empty logs nothing', () => {
+    const s = originSandbox({});
+    s.doGet(NAP());
+    assert.strictEqual(s.__logs.filter((l) => l.indexOf('Sheet not found') !== -1).length, 0,
+      'the warning has to stay rare enough to mean something');
+  });
+
+  await test('the diagnostics stay in the log and out of the response', () => {
+    const s = originSandbox({ readThrows: true, props: { data_rev_nap: '7' } });
+    const body = bodyOf(s.doGet(NAP()));
+
+    assert.deepStrictEqual(Object.keys(body).sort(), ['error', 'message', 'retryable', 'type'],
+      'the envelope is a contract with fetchWithRetry() and does not grow fields');
   });
 
   await test('a spreadsheet handle that throws is covered by the same guard', () => {
