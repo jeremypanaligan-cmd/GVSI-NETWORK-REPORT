@@ -885,7 +885,7 @@
      One value to turn it back on: set NETPULSE_PROXY below and set API_PROXY_HOST in
      sw.js in the same step. Both, or the service worker starts caching API responses
      (it is cache-first for everything that is not a known API host). */
-    window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxkIueic43_t792kofBTSK31w_0X_LelgVWJZOH2MmU8J_bepVa8hMRr8QhhzpPoN6r_Q/exec";
+    window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby4y2cFYIYvwldcGk2l9FfV7Vd3Bka7ec3tk40h5z7Gb6QjShtVE8BkYw-T_wQMy4h5IA/exec";
     window.NETPULSE_PROXY = "";  // TEMP: disabled while origin is down — re-enable when stable
   window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
@@ -1168,7 +1168,7 @@ function closeNodeModal(event) {
   // Same host as the data path — Apps Script directly now that NETPULSE_PROXY is blank
   // (see the application-variables block). When the worker is switched back on, auth
   // follows it automatically because both derive from BASE_API_URL.
-  window.APP_URL = window.BASE_API_URL || window.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxkIueic43_t792kofBTSK31w_0X_LelgVWJZOH2MmU8J_bepVa8hMRr8QhhzpPoN6r_Q/exec';
+  window.APP_URL = window.BASE_API_URL || window.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycby4y2cFYIYvwldcGk2l9FfV7Vd3Bka7ec3tk40h5z7Gb6QjShtVE8BkYw-T_wQMy4h5IA/exec';
   var APP_URL = window.APP_URL;
   var SESSION_KEY = 'netpulse_session';
   var SESSION_EXPIRY_KEY = 'netpulse_session_expiry';
