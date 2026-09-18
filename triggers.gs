@@ -13,10 +13,24 @@
  *
  * SCHEDULE
  *   updateAgingDurationStatic   every 15 min    OLT aging            (AgingDurationColX.gs)
- *   warmOltCache                every 15 min    OLT cache pre-warm   (olt-cache-warmer.gs)
+ *   warmOltCache                every 5 min     OLT cache pre-warm   (olt-cache-warmer.gs)
  *   updateAgingDurationColP     every 30 min    Node/Backbone aging  (AgingDurationColP(BBxNODE).gs)
  *   processBackboneTickets      every hour      Backbone link extract(ExtractLinksinBB.gs)
  *   autoExportSheetToExcel      daily 06:00 PHT Excel backup         (autoBackupsheet.gs)
+ *
+ * EVENT-DRIVEN (not on a clock — the Apps Script UI shows these as
+ * "From spreadsheet / On edit" and "On change", which is why they are listed
+ * here too):
+ *   handleSheetEdit             on edit         drop the edited sheet's data cache
+ *   handleSheetChange           on change       drop EVERY data cache (structure)
+ *                                               (both: cache-invalidation.gs)
+ *
+ *   These two are what make freshness near-real-time instead of TTL-shaped: an
+ *   edit clears the affected module's cache entries, so the next reader rebuilds
+ *   from the sheet rather than being served the previous build. They are also
+ *   why the warm cadence above could be raised: the trigger handles edits, and
+ *   the warmer only has to cover what a trigger CANNOT see (formula and
+ *   IMPORTRANGE recalculations, and writes made by a script).
  *
  * SAFETY — why setupAllTriggers() validates before it deletes:
  * removeAllTriggers() runs first, and ScriptApp.newTrigger(unknownName).create()
@@ -57,28 +71,60 @@
 var TRIGGER_PLAN = [
   {
     fn: 'updateAgingDurationStatic',
+    event: 'clock',
     schedule: 'every 15 minutes',
     apply: function (t) { return t.timeBased().everyMinutes(15); }
   },
   {
+    /* Freshness is the cadence: the warm override now rebuilds unconditionally
+       (code.gs), so every run overwrites the entry and the snapshot a user can
+       be shown is at most one interval old. 5 min = 288 runs/day ≈ 19 min/day of
+       trigger runtime against the 90 min/day consumer budget. The TTL it writes
+       is deliberately SHORTER than this interval — see olt-cache-warmer.gs for
+       why that is now the right way round, and
+       tests/olt-warm-ttl.test.js asserts this number and that file agree. */
     fn: 'warmOltCache',
-    schedule: 'every 15 minutes (same cadence as the aging writer)',
-    apply: function (t) { return t.timeBased().everyMinutes(15); }
+    event: 'clock',
+    schedule: 'every 5 minutes',
+    apply: function (t) { return t.timeBased().everyMinutes(5); }
   },
   {
     fn: 'updateAgingDurationColP',
+    event: 'clock',
     schedule: 'every 30 minutes',
     apply: function (t) { return t.timeBased().everyMinutes(30); }
   },
   {
     fn: 'processBackboneTickets',
+    event: 'clock',
     schedule: 'every hour',
     apply: function (t) { return t.timeBased().everyHours(1); }
   },
   {
     fn: 'autoExportSheetToExcel',
+    event: 'clock',
     schedule: 'daily at 06:00 Asia/Manila',
     apply: function (t) { return t.timeBased().atHour(6).everyDays(1).inTimezone('Asia/Manila'); }
+  },
+  {
+    /* Fires for every user with edit access, unlike a simple onEdit() which
+       only runs in the editing user's own session — and the analyst deleting a
+       ticket is usually not this script's owner. The spreadsheet is resolved
+       here rather than passed in, so the creation loop stays one call per entry;
+       a missing container makes this throw, and the loop already reports that
+       per entry instead of aborting the whole setup. */
+    fn: 'handleSheetEdit',
+    event: 'edit',
+    schedule: 'on edit of a mapped sheet',
+    apply: function (t) { return t.forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet()).onEdit(); }
+  },
+  {
+    /* Structure changes (a removed row, a removed column) carry no sheet name,
+       so this is the one handler that clears every module's cache. */
+    fn: 'handleSheetChange',
+    event: 'change',
+    schedule: 'on change of the spreadsheet',
+    apply: function (t) { return t.forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet()).onChange(); }
   }
 ];
 
@@ -98,6 +144,17 @@ function triggerHandlerExists_(name) {
   } catch (e) {
     return false;
   }
+}
+
+/* The event type a plan entry expects, as the string ScriptApp reports. Read
+   from the enum when it is available and fall back to the literal, so this keeps
+   working either way — and so the drift report can compare like with like now
+   that the plan holds both clock and spreadsheet-event triggers. */
+function triggerPlanEventType_(event) {
+  var types = (typeof ScriptApp !== 'undefined' && ScriptApp.EventType) ? ScriptApp.EventType : {};
+  if (event === 'edit')   return String(types.ON_EDIT   || 'ON_EDIT');
+  if (event === 'change') return String(types.ON_CHANGE || 'ON_CHANGE');
+  return String(types.CLOCK || 'CLOCK');
 }
 
 function setupAllTriggers() {
@@ -187,35 +244,36 @@ function listTriggers() {
   Logger.log('=== Live Triggers ===');
   Logger.log('Total: ' + triggers.length);
 
-  // Handler names the plan expects.
+  // Handler names the plan expects, with the schedule and the event type.
   var planned = {};
+  var plannedEvent = {};
   for (var i = 0; i < TRIGGER_PLAN.length; i++) {
     planned[TRIGGER_PLAN[i].fn] = TRIGGER_PLAN[i].schedule;
+    plannedEvent[TRIGGER_PLAN[i].fn] = triggerPlanEventType_(TRIGGER_PLAN[i].event);
   }
 
-  // A time-driven trigger reports itself as CLOCK. Read the enum when it is
-  // available and fall back to the literal, so this keeps working either way.
-  var clockType = (ScriptApp.EventType && ScriptApp.EventType.CLOCK) ? ScriptApp.EventType.CLOCK : 'CLOCK';
-
-  var live = {};           // fn -> true, whatever the event type
-  var liveTimeDriven = {}; // fn -> true, CLOCK only
+  var live = {};        // fn -> true, whatever the event type
+  var liveEvent = {};   // fn -> the event type ScriptApp reports
 
   triggers.forEach(function(trigger, index) {
     var fn = trigger.getHandlerFunction();
     var eventType = String(trigger.getEventType());
     live[fn] = true;
-    if (eventType === String(clockType)) liveTimeDriven[fn] = true;
+    liveEvent[fn] = eventType;
     Logger.log((index + 1) + '. ' + fn);
-    Logger.log('   Event: ' + eventType + (planned[fn] ? '  (planned: ' + planned[fn] + ')' : ''));
+    Logger.log('   Event: ' + eventType +
+               (planned[fn] ? '  (planned: ' + plannedEvent[fn] + ' — ' + planned[fn] + ')' : ''));
   });
 
   // ---- Drift report ----
   var notLive = [];    // planned, but no trigger installed at all
-  var wrongType = [];  // installed, but not on a clock
+  var wrongType = [];  // installed, but the event type is not the planned one
   for (var key in planned) {
     if (!planned.hasOwnProperty(key)) continue;
     if (!live[key]) notLive.push(key);
-    else if (!liveTimeDriven[key]) wrongType.push(key);
+    else if (liveEvent[key] !== plannedEvent[key]) {
+      wrongType.push(key + ' (live: ' + liveEvent[key] + ', planned: ' + plannedEvent[key] + ')');
+    }
   }
 
   var notPlanned = [];
@@ -233,9 +291,8 @@ function listTriggers() {
     Logger.log('❌ Planned but NOT live (run setupAllTriggers): ' + notLive.join(', '));
   }
   if (wrongType.length > 0) {
-    Logger.log('❌ Planned but NOT time-driven — it has a trigger, just not on a clock ' +
-               '(this is how an on-change trigger hides a missing schedule): ' +
-               wrongType.join(', '));
+    Logger.log('❌ Planned but with the WRONG event type — the handler exists and reports ' +
+               'success, so nothing else would surface this: ' + wrongType.join('; '));
   }
   if (notPlanned.length > 0) {
     Logger.log('⚠️ Live but not in the plan (legacy/manual — add it to TRIGGER_PLAN or remove it): ' +

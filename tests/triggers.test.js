@@ -29,23 +29,51 @@ const ROOT = path.join(__dirname, '..');
    a change to the plan has to be a deliberate change here too. */
 const EXPECTED_PLAN = [
   { fn: 'updateAgingDurationStatic', cadence: 'everyMinutes(15)' },
-  { fn: 'warmOltCache',              cadence: 'everyMinutes(15)' },
+  { fn: 'warmOltCache',              cadence: 'everyMinutes(5)' },
   { fn: 'updateAgingDurationColP',   cadence: 'everyMinutes(30)' },
   { fn: 'processBackboneTickets',    cadence: 'everyHours(1)' },
-  { fn: 'autoExportSheetToExcel',    cadence: 'atHour(6)+everyDays(1)+tz(Asia/Manila)' }
+  { fn: 'autoExportSheetToExcel',    cadence: 'atHour(6)+everyDays(1)+tz(Asia/Manila)' },
+  /* The two event-driven handlers: what makes an edit show up in seconds
+     instead of at the next warm cadence. They are part of the plan for the same
+     reason everything else is — the Apps Script UI shows the event type but not
+     the cadence, so this table is the only record of what is supposed to exist. */
+  { fn: 'handleSheetEdit',           cadence: 'forSpreadsheet+onEdit()' },
+  { fn: 'handleSheetChange',         cadence: 'forSpreadsheet+onChange()' }
 ];
 
 const ALL_HANDLERS = EXPECTED_PLAN.map((e) => e.fn);
 
+/* What each planned handler should be installed AS, read from the plan itself so
+   the drift tests cannot disagree with triggers.gs about it. */
+function expectedEventTypes(sandbox) {
+  const byFn = {};
+  sandbox.TRIGGER_PLAN.forEach((entry) => {
+    byFn[entry.fn] = sandbox.triggerPlanEventType_(entry.event);
+  });
+  return byFn;
+}
+
 /* A builder that records the schedule calls made on it, so a plan entry's
-   `apply` can be run without Apps Script. */
-function recordingClock(spec) {
+   `apply` can be run without Apps Script. It carries BOTH chains — a clock
+   trigger goes through timeBased(), an installable spreadsheet trigger through
+   forSpreadsheet() — because TRIGGER_PLAN now holds one of each and a recorder
+   that only understood clocks would silently mis-report the other kind. */
+function recordingBuilder(spec, onCreate) {
   const b = {
+    timeBased() { return b; },
     everyMinutes(n) { spec.push('everyMinutes(' + n + ')'); return b; },
     everyHours(n)   { spec.push('everyHours(' + n + ')');   return b; },
     atHour(n)       { spec.push('atHour(' + n + ')');       return b; },
     everyDays(n)    { spec.push('everyDays(' + n + ')');    return b; },
-    inTimezone(tz)  { spec.push('tz(' + tz + ')');          return b; }
+    inTimezone(tz)  { spec.push('tz(' + tz + ')');          return b; },
+    forSpreadsheet(ss) {
+      spec.push('forSpreadsheet');
+      assert.ok(ss, 'forSpreadsheet() needs the spreadsheet object');
+      return b;
+    },
+    onEdit()   { spec.push('onEdit()');   return b; },
+    onChange() { spec.push('onChange()'); return b; },
+    create()   { if (onCreate) onCreate(spec); return b; }
   };
   return b;
 }
@@ -73,21 +101,24 @@ function freshSandbox(opts) {
   const sandbox = {
     console,
     Logger: { log: (m) => logs.push(String(m)) },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ({ __spreadsheet: true })
+    },
     ScriptApp: {
-      EventType: { CLOCK: 'CLOCK', ON_CHANGE: 'ON_CHANGE' },
+      EventType: { CLOCK: 'CLOCK', ON_EDIT: 'ON_EDIT', ON_CHANGE: 'ON_CHANGE' },
       newTrigger: (fn) => {
         const spec = [];
-        const clock = recordingClock(spec);
-        return {
-          timeBased: () => {
-            // .create() is called on the builder the plan's apply() returns.
-            clock.create = () => {
-              created.push({ fn, cadence: spec.join('+') });
-              return { getHandlerFunction: () => fn, getEventType: () => 'CLOCK' };
-            };
-            return clock;
-          }
-        };
+        // The plan's apply() receives this and returns a configured builder;
+        // .create() is called on whatever comes back.
+        return recordingBuilder(spec, () => {
+          created.push({
+            fn,
+            cadence: spec.join('+'),
+            type: spec.indexOf('onEdit()') !== -1 ? 'ON_EDIT'
+                : spec.indexOf('onChange()') !== -1 ? 'ON_CHANGE'
+                : 'CLOCK'
+          });
+        });
       },
       getProjectTriggers: () => live.slice(),
       deleteTrigger: (t) => {
@@ -176,7 +207,7 @@ test('TRIGGER_PLAN matches the documented schedule exactly', () => {
   const s = freshSandbox();
   const actual = s.TRIGGER_PLAN.map((e) => {
     const spec = [];
-    e.apply({ timeBased: () => recordingClock(spec) });
+    e.apply(recordingBuilder(spec));
     return { fn: e.fn, cadence: spec.join('+') };
   });
   // JSON, not deepStrictEqual: TRIGGER_PLAN comes from the vm realm, so its
@@ -191,6 +222,16 @@ test('setupAllTriggers creates exactly the planned triggers with their cadences'
   const actual = s.__created.map((c) => ({ fn: c.fn, cadence: c.cadence }));
   assert.deepStrictEqual(actual, EXPECTED_PLAN);
   assert.ok(s.__logs.some((l) => l.indexOf('All ' + EXPECTED_PLAN.length + ' triggers created') !== -1));
+});
+
+test('the plan installs each handler under the event type it declares', () => {
+  const s = freshSandbox();
+  s.setupAllTriggers();
+  const expected = expectedEventTypes(s);
+  s.__created.forEach((c) => {
+    assert.strictEqual(c.type, expected[c.fn],
+      c.fn + ' was installed as ' + c.type + ' but the plan declares ' + expected[c.fn]);
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -238,9 +279,9 @@ test('listTriggers reports a live trigger that is not planned', () => {
 });
 
 test('listTriggers flags a planned trigger installed on the WRONG event type', () => {
-  // This is the real live situation: processBackboneTickets exists, so a
-  // name-only comparison sees no drift — but it is an ON_CHANGE trigger, so the
-  // hourly schedule the plan intends is not actually running.
+  // This was a real live situation: processBackboneTickets existed, so a
+  // name-only comparison saw no drift — but it was installed as an ON_CHANGE
+  // trigger, so the hourly schedule the plan intends was not actually running.
   const s = freshSandbox({
     live: ALL_HANDLERS.map((fn) => ({
       fn,
@@ -249,13 +290,31 @@ test('listTriggers flags a planned trigger installed on the WRONG event type', (
   });
   s.listTriggers();
   const out = s.__logs.join('\n');
-  assert.ok(out.indexOf('NOT time-driven') !== -1, 'should flag the wrong event type');
+  assert.ok(out.indexOf('WRONG event type') !== -1, 'should flag the wrong event type');
   assert.ok(out.indexOf('processBackboneTickets') !== -1, 'should name it');
   assert.ok(out.indexOf('In sync') === -1, 'must not claim it is in sync');
 });
 
+test('listTriggers flags an invalidation handler installed on a clock', () => {
+  /* The inverse mistake, and the one this release makes possible: a handler that
+     IS in the plan, IS installed, and is therefore invisible to a name-only
+     check — while serving no edits at all because it runs every hour. */
+  const expected = expectedEventTypes(freshSandbox());
+  const s = freshSandbox({
+    live: ALL_HANDLERS.map((fn) => ({
+      fn,
+      type: (fn === 'handleSheetEdit' || fn === 'handleSheetChange') ? 'CLOCK' : expected[fn]
+    }))
+  });
+  s.listTriggers();
+  const out = s.__logs.join('\n');
+  assert.ok(out.indexOf('WRONG event type') !== -1, 'should flag it');
+  assert.ok(out.indexOf('handleSheetEdit') !== -1, 'should name it');
+});
+
 test('listTriggers says so when there is no drift', () => {
-  const s = freshSandbox({ live: ALL_HANDLERS.slice() });
+  const expected = expectedEventTypes(freshSandbox());
+  const s = freshSandbox({ live: ALL_HANDLERS.map((fn) => ({ fn, type: expected[fn] })) });
   s.listTriggers();
   assert.ok(s.__logs.some((l) => l.indexOf('In sync') !== -1));
 });

@@ -61,6 +61,11 @@ function doGet(e, warmTtlOverride) {
   if (action === "keepalive")      return handleKeepAlive();
   if (action === "getSettings")    return handleGetSettings(e);
   if (action === "setMaintenance") return handleSetMaintenance(e);
+  // Data-freshness revision. One PropertiesService read, no sheet access, no
+  // build — cheap enough for the app to poll, and the only thing it can learn
+  // from it is that the sheet changed, which is already public in the data
+  // routes below.
+  if (action === "rev")            return handleGetRev();
   // An action we do NOT recognise must never fall through to the data branch below:
   // `type` defaults to "nap" there, so a typo — or a route that has been RETIRED, as
   // the presence routes were (heartbeat / getActiveUsers / removeActiveUser) — would
@@ -79,27 +84,40 @@ function doGet(e, warmTtlOverride) {
   // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
   var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
 
-  /* ---------------- WARM-TTL OVERRIDE (in-process only) ----------------
+  /* ---------------- REBUILD INTENT ----------------
 
-     A cache entry only helps between builds, so its lifetime has to cover the
-     gap. The warmer runs on a 15-minute trigger, but the 60 s TTL above left
-     the entry it wrote dead for 14 of every 15 minutes — so a user request
-     almost always paid the 11-25 s cold build anyway. The warmer ran, logged
-     success, and bought nothing. (Separate from the 404s, which were a routing
-     and deployment problem, not a cache one.)
+     A cache HIT returns the stored bytes and never rewrites them, so nothing
+     that arrives while an entry is alive can shorten its life. That is the
+     whole of the 2026-09-18 lag: a DOWN ticket was deleted from the sheet at
+     14:06:09 and the dashboard still showed it at 14:17:09. The warmer had
+     written a 1080 s entry at ~13:59, every app refresh in between was a hit,
+     and only the TTL running out produced a fresh build — the app was asking
+     more often than the server was allowed to answer differently.
 
-     The warmer therefore passes a longer TTL as a SECOND POSITIONAL ARGUMENT.
-     That argument is unreachable from the web app: Apps Script's HTTP entry
-     point calls doGet(e) with the query-string event and nothing else, and
-     `e.parameter.*` is the only channel a caller controls. So a client cannot
-     ask for a long-lived entry, and cannot freeze a stale outage view — the
-     signature enforces it, not a validation check.
+     Freshness therefore needs a way to say "do not read the cache this time",
+     and exactly two callers are allowed to say it:
 
-     Clamped to 30 minutes so a bad caller cannot pin the cache indefinitely.
-     Applied HERE, before both consumers: the PropertiesService staleness check
-     on the read path below, and the write path further down. */
+     1. THE WARMER, through the second positional argument. That argument is
+        unreachable over HTTP: Apps Script's entry point calls doGet(e) with the
+        query-string event and nothing else, so `e.parameter.*` is the only
+        channel a caller controls. The override now means BOTH "write with this
+        longer TTL" AND "rebuild now". Without the second half a warm run that
+        arrives while the previous entry is still alive does nothing at all —
+        it returns the hit and exits — so a warmer whose interval is shorter
+        than the TTL it sets would refresh on every OTHER run, and the schedule
+        the header promises would quietly not be the schedule in force.
+        Clamped to 30 minutes so a bad caller cannot pin the cache indefinitely.
+
+     2. ?fresh=1, for the app's REFRESH button, rate-limited per type by
+        claimForcedRebuild() — see the note there for why the worst case this
+        admits is the behaviour the app had before the warmer existed. */
+  var rebuildNow = false;
+
   if (warmTtlOverride > 0 && warmTtlOverride <= 1800) {
     cacheTTL = warmTtlOverride;
+    rebuildNow = true;
+  } else if (String((e && e.parameter && e.parameter.fresh) || "") === "1") {
+    rebuildNow = claimForcedRebuild(type);
   }
 
   // PropertiesService has no TTL of its own, so a payload stored there is
@@ -108,7 +126,10 @@ function doGet(e, warmTtlOverride) {
 
   try {
     // Try CacheService first (100KB limit)
-    var cachedData = cache.get(cacheKey);
+    // A rebuild intent must reach the sheet: both reads below are skipped for it,
+    // which is what lets the warmer and the REFRESH button produce a genuinely
+    // fresh payload instead of another hit.
+    var cachedData = rebuildNow ? null : cache.get(cacheKey);
     if (cachedData) {
       return ContentService.createTextOutput(cachedData)
         .setMimeType(ContentService.MimeType.JSON);
@@ -119,7 +140,7 @@ function doGet(e, warmTtlOverride) {
     // as expired and anything older than cacheTTL is dropped — otherwise one
     // oversized payload would be served forever and silently freeze a module.
     var props = PropertiesService.getScriptProperties();
-    var propData = props.getProperty(cacheKey);
+    var propData = rebuildNow ? null : props.getProperty(cacheKey);
     if (propData) {
       var cachedAt = Number(props.getProperty(PROP_TS_KEY)) || 0;
       var ageSeconds = (Date.now() - cachedAt) / 1000;
@@ -138,6 +159,11 @@ function doGet(e, warmTtlOverride) {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var resultData = null;
+
+  /* Revision of this module's data at the moment the build started — captured
+     BEFORE the first sheet read, so the write path below can tell whether an
+     edit landed while this build was reading. */
+  var buildStartRev = dataRevOf_(type);
 
 if (type === "backbone") {
     // ---------------- BACKBONE LINKS DATA ----------------
@@ -385,6 +411,19 @@ if (!oltSheet) {
       else if (os && os.indexOf("DEGRADATION") !== -1) oltMeta.degradation++;
     }
 
+    /* When this payload was built. It rides INSIDE the cached bytes, so a cache
+       HIT reports the original build time instead of the time of the hit — the
+       only way a client can tell how old the picture it is looking at really
+       is. Without it, a stale snapshot is indistinguishable from a fresh one,
+       which is how a deleted ticket stayed on screen for 11 minutes with a
+       "just updated" chip under it.
+
+       Deliberately NOT a per-request stamp on the response envelope: that would
+       have to be added outside the cached string and would therefore report the
+       hit, not the build — exactly backwards. */
+    var builtAtMs = Date.now();
+    oltMeta.builtAt = builtAtMs;
+
     if (oltShape === 3) {
       // Problem-only rows: filter out UP OLTs, return compact with meta summary
       var problemRows = oltList.filter(function(row) { return row.S !== "UP"; });
@@ -392,6 +431,8 @@ if (!oltSheet) {
       resultData = { v: 3, f: compact.f, p: compact.p, m: compact.m, meta: oltMeta, r: compact.r };
     } else if (oltShape === 2) {
       resultData = compactOltRows(oltList);
+      // Sibling key on the compact envelope: decodeOltCompact reads only f/p/m/r.
+      resultData.builtAt = builtAtMs;
     } else {
       resultData = oltList;
     }
@@ -430,9 +471,24 @@ if (!oltSheet) {
   var payloadSize = jsonResponse.length;
   
   try {
+    /* A build can race an edit. Reading the sheet takes ~3-4 s, and an
+       invalidation can land in the middle of it — and by then the cache is
+       already empty, so writing this payload would put a pre-edit snapshot into
+       a cache that was just cleared and the app would serve it for the full TTL.
+       That is the 2026-09-18 failure re-created in a narrower window, so a build
+       whose revision moved is not cached at all: this request still returns what
+       it built (its caller is waiting), and the next reader rebuilds against a
+       sheet that has stopped moving.
+
+       Two property reads per build, against a 50,000/day quota. */
+    var revMovedDuringBuild = dataRevOf_(type) !== buildStartRev;
+
     // CacheService limit: 100KB per key
     // PropertiesService limit: 500KB per property (fallback for large payloads)
-    if (payloadSize <= 90000) {
+    if (revMovedDuringBuild) {
+      Logger.log("Cache write skipped for " + type +
+                 ": the data revision moved while this build was reading (an edit landed mid-build).");
+    } else if (payloadSize <= 90000) {
       cache.put(cacheKey, jsonResponse, cacheTTL);
 
       // If this module previously overflowed into PropertiesService it may have
@@ -460,6 +516,144 @@ if (!oltSheet) {
 
   return ContentService.createTextOutput(jsonResponse)
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ==================== DATA FRESHNESS ====================
+
+   Freshness for a cache-first read path is not a TTL problem, it is a
+   notification problem. The TTL only decides how often a MISS can happen; what
+   the app sees is "the last build", and nothing tells it when that build went
+   out of date. Three pieces make it observable:
+
+     1. cache-invalidation.gs drops the cache for a module as soon as the sheet
+        it reads is edited, so the NEXT request rebuilds. That is the real
+        near-real-time path, and it costs one trigger run per edit.
+     2. ?action=rev exposes a per-type counter that the same trigger bumps, so
+        the app can learn that something changed without asking for 26 KB of
+        data (or paying a cold build) to find out. One PropertiesService read,
+        no spreadsheet access at all.
+     3. meta.builtAt travels INSIDE the cached payload, so a hit can still be
+        honest about its age. See the note where it is set, in the OLT branch.
+
+   What the trigger cannot see, and why the warmer and the TTL still matter:
+   Apps Script does not fire onEdit/onChange for its OWN writes ("Script
+   executions and API requests don't cause triggers to run"), and it never fired
+   for IMPORTRANGE recalculations — see the old note in triggers.gs. So a value
+   that arrives by formula or by script has no invalidation at all, and is
+   bounded only by the warm cadence. Both paths are needed; neither is enough.
+*/
+
+/* Every module the app can ask for, in one list. The invalidation trigger, the
+   rev route and the rev payload all read it, so registering a module is one
+   line here rather than three string lists that can drift apart. */
+var DATA_TYPES = ["nap", "lcp", "olt", "node", "backbone"];
+
+/* Cache keys a type can live under. OLT is the only type with variants: the
+   legacy shape keeps the base key and shape=2 / shape=3 get one each. A stale
+   variant left behind is still served to whichever client asks for it, so
+   invalidation has to clear all three. */
+function dataCacheKeysFor_(type) {
+  return [
+    "cache_v2_" + type,
+    "cache_v2_" + type + "_c2",
+    "cache_v2_" + type + "_c3"
+  ];
+}
+
+/* How long one type must wait between forced rebuilds. */
+var FORCE_FRESH_MIN_MS = 60000;
+
+function forceFreshClaimKey_(type) {
+  return "force_fresh_at_" + type;
+}
+
+/**
+ * May this ?fresh=1 request skip the cache?
+ *
+ * The REFRESH button has to be able to mean it — a 3 s rebuild is a good trade
+ * for an operator who is looking at an outage and wants the current picture.
+ * What it must not become is a way to turn the dashboard into a rebuild loop,
+ * so the claim is taken at most once per type per minute.
+ *
+ * The ceiling on abuse is therefore the behaviour the app had BEFORE the warmer
+ * existed: one cold build per minute per type, on demand. The warmer never made
+ * that impossible to reach — it only made it unnecessary — so this cannot be
+ * worse than a state that already ran in production.
+ *
+ * Failures resolve to false (serve the cache), because the cost of refusing a
+ * forced rebuild is a slightly stale view, and the cost of throwing inside
+ * doGet is no view at all.
+ */
+function claimForcedRebuild(type) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var key = forceFreshClaimKey_(type);
+    var last = Number(props.getProperty(key)) || 0;
+    var now = Date.now();
+    if (now - last < FORCE_FRESH_MIN_MS) return false;
+    props.setProperty(key, String(now));
+    return true;
+  } catch (err) {
+    Logger.log("Forced rebuild claim failed (" + type + "): " + err.message);
+    return false;
+  }
+}
+
+/* ---------------- Revision counters ----------------
+
+   One counter per type, bumped whenever that module's cache is invalidated.
+   The app only has to notice that a number moved, which is why the poll route
+   can stay free of sheet access.
+
+   Cost of the poll, against the documented quota of 50,000 Properties
+   read/write calls per day (consumer accounts): currentDataRev_() uses ONE read
+   (getProperties returns them all). At a 30 s poll while the tab is visible —
+   and none at all while it is hidden — that is ~1,440 reads per device per 12 h
+   day, so a 10-device dashboard spends ~14,000 of the 50,000. If the estate
+   ever grows past ~30 permanently-open devices, raise the poll interval before
+   raising the device count. */
+var REV_PREFIX = "data_rev_";
+
+function bumpDataRev_(types) {
+  var props = PropertiesService.getScriptProperties();
+  var revs = {};
+  for (var i = 0; i < types.length; i++) {
+    var key = REV_PREFIX + types[i];
+    var next = (Number(props.getProperty(key)) || 0) + 1;
+    props.setProperty(key, String(next));
+    revs[types[i]] = next;
+  }
+  return revs;
+}
+
+/**
+ * The revision of one module's data, as a number.
+ *
+ * Used as a build-time witness: the read path captures it BEFORE touching the
+ * sheet and compares it again before caching, so a build that raced an edit
+ * cannot install the pre-edit snapshot it just read. An unreadable revision
+ * resolves to 0 on both sides, which compares equal and lets the build cache
+ * normally — a bookkeeping failure must never stop the dashboard.
+ */
+function dataRevOf_(type) {
+  try {
+    return Number(PropertiesService.getScriptProperties().getProperty(REV_PREFIX + type)) || 0;
+  } catch (err) {
+    return 0;
+  }
+}
+
+function currentDataRev_() {
+  var all = PropertiesService.getScriptProperties().getProperties() || {};
+  var rev = {};
+  for (var i = 0; i < DATA_TYPES.length; i++) {
+    rev[DATA_TYPES[i]] = Number(all[REV_PREFIX + DATA_TYPES[i]]) || 0;
+  }
+  return rev;
+}
+
+function handleGetRev() {
+  return jsonOut({ ok: true, rev: currentDataRev_() });
 }
 
 /* The response fields of an OLT row, in the order the compact shape positions
