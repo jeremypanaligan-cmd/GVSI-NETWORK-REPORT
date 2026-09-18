@@ -72,13 +72,22 @@ This removes the **whole first-load wait**. It does **not** recover the 1.5–2.
 3. Manual REFRESH still clears and refetches; logout clears the persisted key.
 4. Auth ordering is unchanged — `loadInitialData()` is only reached from `showApp()` (`index.html:1662`), which is gated on `isLoggedIn()`. **Restored data must never be visible before login.**
 
-### ⚠️ Delivery condition — this has flipped since planning
+### ⚠️ Delivery condition — never name a version by hand
 
-When this was planned, `origin/main` was `b0c6563` (`gvsi-shell-v3.9.7`) and v3.9.8 was unpublished, so no generation bump was needed.
+When this was planned, `origin/main` was `b0c6563` (`gvsi-shell-v3.9.7`) and v3.9.8 was unpublished, so no generation bump was needed. **That note then said "this change MUST move the cache generation to `gvsi-shell-v3.9.9`" — and v3.9.9 has since been published for other work** (the auto-apply fix and the deployment swap). A hardcoded version in a plan is a bug waiting for its moment: following it now would re-install under a generation devices already hold, and deliver nothing.
 
-**v3.9.8 is now published** (`872e923` is live on `main`; the deployed `sw.js` reads `gvsi-shell-v3.9.8`). Devices therefore hold that generation. `index.html`, `fetch-gate.js`, and the new `cache-store.js` are all **unversioned precache entries**, so:
+`index.html`, `fetch-gate.js`, and the new `cache-store.js` are all **unversioned precache entries**, delivered only by `install` re-fetching every entry — so this change still needs a generation move, but the number comes from the tree, not from this document.
 
-> **This change MUST move the cache generation to `gvsi-shell-v3.9.9`** — with the label and `?v=` tokens to match. Without it, `install` never re-runs, `activate` never evicts, and installed devices keep the old bytes forever while the repo says otherwise.
+The release version now lives in exactly one place, `version.json`, and every label is moved by one command:
+
+```bash
+node scripts/bump-version.mjs --check   # exit 1 if any label disagrees with version.json
+node scripts/bump-version.mjs patch     # move the generation, the manifest and every ?v= token together
+```
+
+`tests/version-sync.test.js` fails on drift, and `--check` also warns when the delivery set has changed while the release has not — the failure that produces no error anywhere at runtime.
+
+> **This change MUST move the release version together with the bytes it describes, in the same push.** Without it, `install` reuses the same generation, `activate` evicts nothing, and installed devices keep the old bytes forever while the repo says otherwise.
 
 ---
 
