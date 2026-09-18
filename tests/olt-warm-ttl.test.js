@@ -179,6 +179,7 @@ function freshSandbox(opts) {
 }
 
 const OLT_HTTP = () => ({ parameter: { type: 'olt', shape: '3' } });
+const OLT_UP_HTTP = () => ({ parameter: { type: 'olt', shape: '4' } });
 const COLD = () => ({ parameter: { type: 'olt', shape: '3', fresh: '1' } });
 
 function skipLogPresent(s) {
@@ -468,6 +469,19 @@ test('shape=2 carries the stamp as a sibling key, leaving the rows untouched', (
     ['builtAt', 'f', 'm', 'p', 'r', 'v'],
     'decodeOltCompact reads only f/p/m/r, so an extra sibling key is compatible');
   assert.strictEqual(payload.r.length, 3, 'all three OLTs, not just the problem rows');
+});
+
+test('shape=4 contains only UP rows and has an isolated compact cache entry', () => {
+  const s = freshSandbox();
+  const payload = JSON.parse(s.doGet(OLT_UP_HTTP()).getContent());
+
+  assert.strictEqual(payload.v, 4);
+  assert.strictEqual(payload.meta.total, 3, 'meta remains the whole-fleet summary');
+  assert.strictEqual(payload.meta.up, 2);
+  assert.strictEqual(payload.r.length, 2, 'only the two UP OLT rows are transferred');
+  assert.ok(payload.r.every((row) => row[payload.f.indexOf('S')] === 'UP'),
+    'a problem status must never leak into the healthy-fleet payload');
+  assert.strictEqual(s.__puts[0].key, 'cache_v2_olt_c4', 'shape=4 must not share shape=3 cache bytes');
 });
 
 /* ------------------------------------------------------------------ *

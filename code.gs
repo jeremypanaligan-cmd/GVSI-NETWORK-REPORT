@@ -52,7 +52,7 @@ function doGet(e, warmTtlOverride) {
   // before anything else looks at `shape`. Drop the legacy branch once every client
   // sends shape=2.
   var oltShapeParam = (type === "olt" && e && e.parameter && e.parameter.shape) ? parseInt(e.parameter.shape, 10) : 1;
-  var oltShape = (oltShapeParam === 2 || oltShapeParam === 3) ? oltShapeParam : 1;
+  var oltShape = (oltShapeParam === 2 || oltShapeParam === 3 || oltShapeParam === 4) ? oltShapeParam : 1;
 
   // ---------------- ROUTING: Login, Admin, Keep-Alive ----------------
   // All handled by admin.gs functions
@@ -424,7 +424,14 @@ if (!oltSheet) {
     var builtAtMs = Date.now();
     oltMeta.builtAt = builtAtMs;
 
-    if (oltShape === 3) {
+    if (oltShape === 4) {
+      /* Lazy healthy-fleet drill-down. The ordinary dashboard remains shape=3,
+         so UP rows move over the wire only after an operator asks for them. */
+      var upRows = oltList.filter(function(row) { return row.S === "UP"; });
+      var upCompact = compactOltRows(upRows);
+      resultData = { v: 4, f: upCompact.f, p: upCompact.p, m: upCompact.m,
+                     meta: oltMeta, r: upCompact.r };
+    } else if (oltShape === 3) {
       // Problem-only rows: filter out UP OLTs, return compact with meta summary
       var problemRows = oltList.filter(function(row) { return row.S !== "UP"; });
       var compact = compactOltRows(problemRows);
@@ -549,14 +556,15 @@ if (!oltSheet) {
 var DATA_TYPES = ["nap", "lcp", "olt", "node", "backbone"];
 
 /* Cache keys a type can live under. OLT is the only type with variants: the
-   legacy shape keeps the base key and shape=2 / shape=3 get one each. A stale
+   legacy shape keeps the base key and compact shapes get one each. A stale
    variant left behind is still served to whichever client asks for it, so
    invalidation has to clear all three. */
 function dataCacheKeysFor_(type) {
   return [
     "cache_v2_" + type,
     "cache_v2_" + type + "_c2",
-    "cache_v2_" + type + "_c3"
+    "cache_v2_" + type + "_c3",
+    "cache_v2_" + type + "_c4"
   ];
 }
 

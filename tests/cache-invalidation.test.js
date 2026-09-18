@@ -33,7 +33,7 @@ const ROOT = path.join(__dirname, '..');
 const ALL_TYPES = ['nap', 'lcp', 'olt', 'node', 'backbone'];
 
 function oltsKeys() {
-  return ['cache_v2_olt', 'cache_v2_olt_c2', 'cache_v2_olt_c3'];
+  return ['cache_v2_olt', 'cache_v2_olt_c2', 'cache_v2_olt_c3', 'cache_v2_olt_c4'];
 }
 
 function freshSandbox(opts) {
@@ -170,7 +170,7 @@ console.log('\nCache invalidation on sheet edit\n');
    Narrowness: one sheet, one module
  * ------------------------------------------------------------------ */
 
-test('an OLT sheet edit clears all three OLT shapes and their stamps', () => {
+test('an OLT sheet edit clears all OLT shapes and their stamps', () => {
   const s = load(freshSandbox({ props: loadedStamps() }));
   s.handleSheetEdit(editEvent('OLT DOWN Tickets'));
 
@@ -178,6 +178,7 @@ test('an OLT sheet edit clears all three OLT shapes and their stamps', () => {
   assert.ok(left.indexOf('cache_v2_olt') === -1, 'the legacy key must go too');
   assert.ok(left.indexOf('cache_v2_olt_c2') === -1, 'shape=2 must go too');
   assert.ok(left.indexOf('cache_v2_olt_c3') === -1, 'the shape users request must go');
+  assert.ok(left.indexOf('cache_v2_olt_c4') === -1, 'the lazy healthy-fleet shape must go too');
   assert.ok(s.__deleted.indexOf('cache_v2_olt_c3_cached_at') !== -1,
     'the PropertiesService staleness stamp must go with it');
   assert.ok(left.indexOf('cache_v2_node') !== -1,
