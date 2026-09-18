@@ -27,6 +27,22 @@ const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const SCRIPT = path.join('scripts', 'bump-version.mjs');
 
+/* Read from the tree, never written down here.
+
+   This file used to hardcode the release it was written against, so the first
+   real bump broke 13 of its own tests — which is the same "a version named by
+   hand is a bug waiting for its moment" failure that the tool it tests exists to
+   prevent. The constants below move with the release instead. */
+const TRUTH = JSON.parse(fs.readFileSync(path.join(ROOT, 'version.json'), 'utf8'));
+const CURRENT = TRUTH.version;
+const GUARD = TRUTH.guard;
+const NEXT = (() => {
+  const parts = String(CURRENT).split('.').map(Number);
+  parts[2] += 1;
+  return parts.join('.');
+})();
+const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /* Only what the script reads or writes. A full copy would drag the whole app
    into a temp directory for no reason — and it would find a .git, which the
    sandboxes deliberately do not have. */
@@ -108,7 +124,7 @@ function gitSandbox() {
   const init = git('init', '-q');
   assert.ok(!init.error && init.status === 0, 'git init failed: ' + (init.stderr || init.error));
   git('add', '.');
-  const commit = git('commit', '-q', '-m', 'publish 3.9.9');
+  const commit = git('commit', '-q', '-m', 'publish ' + CURRENT);
   assert.strictEqual(commit.status, 0, 'git commit failed: ' + commit.stderr);
   return { dir, git };
 }
@@ -144,7 +160,7 @@ test('the real tree has exactly 6 release labels and 2 guard sites', () => {
 
 test('a stale cache generation is drift', () => {
   const dir = sandbox();
-  edit(dir, 'sw.js', "gvsi-shell-v3.9.9", "gvsi-shell-v3.8.2");
+  edit(dir, 'sw.js', 'gvsi-shell-v' + CURRENT, 'gvsi-shell-v3.8.2');
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'must fail');
   assert.ok(r.out.indexOf('sw.js:') !== -1, 'should name the file and line');
@@ -153,7 +169,7 @@ test('a stale cache generation is drift', () => {
 
 test('one stale ?v= token is drift', () => {
   const dir = sandbox();
-  edit(dir, 'index.html', 'styles.css?v=3.9.9', 'styles.css?v=3.9.1');
+  edit(dir, 'index.html', 'styles.css?v=' + CURRENT, 'styles.css?v=3.9.1');
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'must fail on a single token');
   assert.ok(r.out.indexOf('index.html:') !== -1, 'should name the file and line');
@@ -162,7 +178,8 @@ test('one stale ?v= token is drift', () => {
 
 test('a stale manifest start_url is drift', () => {
   const dir = sandbox();
-  edit(dir, 'manifest.json', '"start_url": "./index.html?v=3.9.9"', '"start_url": "./index.html?v=3.9.7"');
+  edit(dir, 'manifest.json', '"start_url": "./index.html?v=' + CURRENT + '"',
+       '"start_url": "./index.html?v=3.9.7"');
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'must fail');
   assert.ok(r.out.indexOf('"start_url"') !== -1, 'should name the field');
@@ -170,7 +187,7 @@ test('a stale manifest start_url is drift', () => {
 
 test('a stale manifest version is drift', () => {
   const dir = sandbox();
-  edit(dir, 'manifest.json', '"version": "3.9.9"', '"version": "3.9.0"');
+  edit(dir, 'manifest.json', '"version": "' + CURRENT + '"', '"version": "3.9.0"');
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'must fail');
 });
@@ -190,13 +207,14 @@ test('a ?v= token inside a third-party URL is left alone', () => {
   assert.strictEqual(run(dir, 'patch').code, 0);
   const after = read(dir, 'index.html');
   assert.ok(after.indexOf('widget.js?v=1.2.3') !== -1, 'the URL must survive the bump untouched');
-  assert.strictEqual((after.match(/\?v=3\.9\.10/g) || []).length, 2, 'while our own two still move');
+  assert.strictEqual((after.match(new RegExp('\\?v=' + esc(NEXT), 'g')) || []).length, 2,
+    'while our own two still move');
 });
 
 test('a missing label is drift, not a silent no-op', () => {
   const dir = sandbox();
   const text = read(dir, 'index.html');
-  write(dir, 'index.html', text.replace(/\?v=3\.9\.9/g, '')); // both tokens gone
+  write(dir, 'index.html', text.replace(new RegExp('\\?v=' + esc(CURRENT), 'g'), '')); // both tokens gone
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'must fail');
   assert.ok(r.out.indexOf('expected at least 2') !== -1, 'should say how many it wanted: ' + r.out);
@@ -208,7 +226,8 @@ test('a missing label is drift, not a silent no-op', () => {
 
 test('a moved REQUIRED_APP_VERSION is drift', () => {
   const dir = sandbox();
-  edit(dir, 'index.html', 'const REQUIRED_APP_VERSION = "3.10.0"', 'const REQUIRED_APP_VERSION = "3.9.9"');
+  edit(dir, 'index.html', 'const REQUIRED_APP_VERSION = "' + GUARD + '"',
+       'const REQUIRED_APP_VERSION = "' + CURRENT + '"');
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'the guard must never drift unnoticed');
   assert.ok(r.out.indexOf('guard') !== -1, 'should explain which value drifted');
@@ -217,7 +236,7 @@ test('a moved REQUIRED_APP_VERSION is drift', () => {
 
 test('a moved login footer is drift', () => {
   const dir = sandbox();
-  edit(dir, 'index.html', 'GVSI NetPulse v3.10.0', 'GVSI NetPulse v3.9.9');
+  edit(dir, 'index.html', 'GVSI NetPulse v' + GUARD, 'GVSI NetPulse v' + CURRENT);
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'the footer mirrors the guard and must move with it');
   assert.ok(r.out.indexOf('login footer') !== -1, 'should name the site');
@@ -225,7 +244,7 @@ test('a moved login footer is drift', () => {
 
 test('a guard that drifted in version.json is caught too', () => {
   const dir = sandbox();
-  write(dir, 'version.json', JSON.stringify({ version: '3.9.9', guard: '3.8.0' }, null, 2) + '\n');
+  write(dir, 'version.json', JSON.stringify({ version: CURRENT, guard: '0.0.1' }, null, 2) + '\n');
   const r = run(dir, '--check');
   assert.strictEqual(r.code, 1, 'version.json is the record of the frozen value');
 });
@@ -239,22 +258,23 @@ test('patch moves the generation, both tokens, all three manifest fields and ver
   const r = run(dir, 'patch');
   assert.strictEqual(r.code, 0, 'expected exit 0\n' + r.out);
 
-  assert.ok(read(dir, 'sw.js').indexOf("gvsi-shell-v3.9.10") !== -1, 'generation must move');
-  assert.strictEqual(read(dir, 'sw.js').indexOf('gvsi-shell-v3.9.9'), -1, 'and not linger');
+  assert.ok(read(dir, 'sw.js').indexOf('gvsi-shell-v' + NEXT) !== -1, 'generation must move');
+  assert.strictEqual(read(dir, 'sw.js').indexOf('gvsi-shell-v' + CURRENT), -1, 'and not linger');
 
   const html = read(dir, 'index.html');
-  assert.strictEqual((html.match(/\?v=3\.9\.10/g) || []).length, 2, 'both tokens must move');
-  assert.strictEqual(html.indexOf('?v=3.9.9'), -1, 'no token may stay behind');
-  assert.strictEqual(html.indexOf('gvsi-shell-v3.9.10'), -1, 'the generation string belongs in sw.js only');
+  assert.strictEqual((html.match(new RegExp('\\?v=' + esc(NEXT), 'g')) || []).length, 2,
+    'both tokens must move');
+  assert.strictEqual(html.indexOf('?v=' + CURRENT), -1, 'no token may stay behind');
+  assert.strictEqual(html.indexOf('gvsi-shell-v' + NEXT), -1, 'the generation string belongs in sw.js only');
 
   const manifest = JSON.parse(read(dir, 'manifest.json'));
-  assert.strictEqual(manifest.version, '3.9.10');
-  assert.strictEqual(manifest.id, '/index.html?v=3.9.10');
-  assert.strictEqual(manifest.start_url, './index.html?v=3.9.10');
+  assert.strictEqual(manifest.version, NEXT);
+  assert.strictEqual(manifest.id, '/index.html?v=' + NEXT);
+  assert.strictEqual(manifest.start_url, './index.html?v=' + NEXT);
 
   const truth = JSON.parse(read(dir, 'version.json'));
-  assert.strictEqual(truth.version, '3.9.10', 'the source of truth moves last');
-  assert.strictEqual(truth.guard, '3.10.0', 'the guard is not a release label');
+  assert.strictEqual(truth.version, NEXT, 'the source of truth moves last');
+  assert.strictEqual(truth.guard, GUARD, 'the guard is not a release label');
 });
 
 test('a bumped sandbox passes its own check', () => {
@@ -269,9 +289,9 @@ test('the guard is byte-identical after a bump', () => {
   const before = read(dir, 'index.html');
   run(dir, 'patch');
   const after = read(dir, 'index.html');
-  const guardLine = /const REQUIRED_APP_VERSION = "3\.10\.0";/;
+  const guardLine = new RegExp('const REQUIRED_APP_VERSION = "' + esc(GUARD) + '";');
   assert.ok(guardLine.test(before) && guardLine.test(after), 'the guard must be untouched');
-  assert.ok(/GVSI NetPulse v3\.10\.0/.test(after), 'the footer must be untouched');
+  assert.ok(new RegExp('GVSI NetPulse v' + esc(GUARD)).test(after), 'the footer must be untouched');
   void before;
 });
 
@@ -283,7 +303,7 @@ test('only the version spans change in index.html', () => {
   const changed = changedLines(before, after);
   assert.strictEqual(changed.length, 2, 'expected exactly the two ?v= lines, got ' + changed.length);
   for (const i of changed) {
-    assert.strictEqual(after.split('\r\n')[i], before.split('\r\n')[i].replace('3.9.9', '3.9.10'),
+    assert.strictEqual(after.split('\r\n')[i], before.split('\r\n')[i].replace(CURRENT, NEXT),
       'line ' + (i + 1) + ' must differ only in the version');
   }
 });
@@ -318,14 +338,18 @@ test('a bump keeps every line ending exactly as it was', () => {
   }
 });
 
-test('a bump changes the byte length by exactly one byte per label', () => {
+test('a bump changes the byte length by exactly the label delta, per label', () => {
   const dir = sandbox();
   const before = {};
   for (const f of ['index.html', 'sw.js', 'manifest.json']) before[f] = read(dir, f);
-  run(dir, 'patch'); // 3.9.9 -> 3.9.10 is one byte longer, on every label
-  assert.strictEqual(read(dir, 'index.html').length - before['index.html'].length, 2);
-  assert.strictEqual(read(dir, 'sw.js').length - before['sw.js'].length, 1);
-  assert.strictEqual(read(dir, 'manifest.json').length - before['manifest.json'].length, 3);
+  run(dir, 'patch');
+  /* Derived, not assumed to be 1: 3.9.9 -> 3.9.10 grows a label by one byte, but
+     3.9.10 -> 3.9.11 does not, and a test that hardcoded "one byte" would fail on
+     the next release for a reason that has nothing to do with the script. */
+  const perLabel = NEXT.length - CURRENT.length;
+  assert.strictEqual(read(dir, 'index.html').length - before['index.html'].length, 2 * perLabel);
+  assert.strictEqual(read(dir, 'sw.js').length - before['sw.js'].length, 1 * perLabel);
+  assert.strictEqual(read(dir, 'manifest.json').length - before['manifest.json'].length, 3 * perLabel);
 });
 
 test('major resets minor and patch, minor advances the middle number', () => {
@@ -356,22 +380,25 @@ test('an explicit version works like a bump kind', () => {
 
 test('bumping to the version already published is refused', () => {
   const dir = sandbox();
-  const r = run(dir, '3.9.9');
+  const r = run(dir, CURRENT);
   assert.strictEqual(r.code, 2, 'nothing to do is not success');
-  assert.ok(r.out.indexOf('already 3.9.9') !== -1, r.out);
+  assert.ok(r.out.indexOf('already ' + CURRENT) !== -1, r.out);
 });
 
 test('a bump that would collide with the frozen guard is refused', () => {
   const dir = sandbox();
-  const r = run(dir, 'minor'); // 3.9.9 -> 3.10.0, which IS the guard
+  /* Asked for explicitly rather than via `minor`, so the test keeps testing the
+     rule instead of the arithmetic of whatever version the tree happens to be on
+     (3.9.x -> `minor` lands on the guard, 3.11.x -> it does not). */
+  const r = run(dir, GUARD);
   assert.notStrictEqual(r.code, 0, 'must not silently hand the guard number to a release');
   assert.ok(r.out.indexOf('--allow-guard-collision') !== -1, 'should name the override');
-  assert.strictEqual(JSON.parse(read(dir, 'version.json')).version, '3.9.9', 'and must not have written');
+  assert.strictEqual(JSON.parse(read(dir, 'version.json')).version, CURRENT, 'and must not have written');
 });
 
 test('the collision override is accepted, and warned about afterwards', () => {
   const dir = sandbox();
-  const r = run(dir, 'minor', '--allow-guard-collision');
+  const r = run(dir, GUARD, '--allow-guard-collision');
   assert.strictEqual(r.code, 0, r.out);
   const check = run(dir, '--check');
   assert.strictEqual(check.code, 0, 'a collision is a warning, not drift\n' + check.out);
@@ -393,18 +420,19 @@ test('--check and a version contradict each other', () => {
 
 test('a bump refuses to run when the guard is already inconsistent', () => {
   const dir = sandbox();
-  edit(dir, 'index.html', 'const REQUIRED_APP_VERSION = "3.10.0"', 'const REQUIRED_APP_VERSION = "3.8.2"');
+  edit(dir, 'index.html', 'const REQUIRED_APP_VERSION = "' + GUARD + '"',
+       'const REQUIRED_APP_VERSION = "0.0.1"');
   const swBefore = read(dir, 'sw.js');
   const r = run(dir, 'patch');
   assert.strictEqual(r.code, 1, 'a bump would bury the problem behind a correct-looking version');
   assert.strictEqual(read(dir, 'sw.js'), swBefore, 'nothing may be written');
-  assert.strictEqual(JSON.parse(read(dir, 'version.json')).version, '3.9.9', 'not the source of truth either');
+  assert.strictEqual(JSON.parse(read(dir, 'version.json')).version, CURRENT, 'not the source of truth either');
 });
 
 test('a missing label refuses the whole bump, leaving every file untouched', () => {
   const dir = sandbox();
   const html = read(dir, 'index.html');
-  write(dir, 'index.html', html.replace(/\?v=3\.9\.9/g, ''));
+  write(dir, 'index.html', html.replace(new RegExp('\\?v=' + esc(CURRENT), 'g'), ''));
   const before = {};
   for (const f of SANDBOX_FILES) before[f] = read(dir, f);
 
@@ -422,7 +450,7 @@ test('a dry run writes nothing', () => {
   for (const f of SANDBOX_FILES) before[f] = read(dir, f);
   const r = run(dir, 'patch', '--dry-run');
   assert.strictEqual(r.code, 0, r.out);
-  assert.ok(r.out.indexOf('3.9.10') !== -1, 'should still report the move');
+  assert.ok(r.out.indexOf(NEXT) !== -1, 'should still report the move');
   for (const f of SANDBOX_FILES) {
     assert.strictEqual(read(dir, f), before[f], f + ' must not be touched by --dry-run');
   }

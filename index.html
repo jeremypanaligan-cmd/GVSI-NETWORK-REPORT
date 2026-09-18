@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.9">
+  <link rel="stylesheet" href="styles.css?v=3.9.10">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -782,6 +782,9 @@
 
 <script src="db.js"></script>
 <script src="fetch-gate.js"></script>
+<!-- After fetch-gate.js: it reads that gate's build stamps, and uses the shared
+     fetchWithRetry/BASE_API_URL from the page script above. -->
+<script src="rev-watch.js"></script>
 <script src="notifications.js"></script>
 <script src="nap-module.js"></script>
 <script src="lcp-module.js"></script>
@@ -1048,7 +1051,11 @@ function refreshCurrentTab() {
     }
     if (currentTab === 'nap') fetchNapData(true);
     else if (currentTab === 'lcp') fetchLcpData(true);
-    else if (currentTab === 'olt') fetchOltData(true);
+    /* OLT escalates to ?fresh=1 as well: the ONLY place that asks the server to
+       skip its cache (rate-limited there to once a minute per type). Tab clicks
+       and prefetches must not ask for it, or the minute would always be spent by
+       ordinary navigation and the button would have nothing left to spend. */
+    else if (currentTab === 'olt') fetchOltData(true, true);
     else if (currentTab === 'node') fetchNodeData(true);
     else if (currentTab === 'backbone') fetchBackboneData(true);
     else if (currentTab === 'analytics') fetchAnalyticsData(true);
@@ -1062,8 +1069,15 @@ function refreshCurrentTab() {
   // simultaneous burst — Apps Script's echo endpoint intermittently 404s when
   // hammered with parallel hits. The gate also dedupes against any fetch the
   // user's own tab clicks already put in flight.
-  const allModules = ['lcp', 'olt', 'node', 'backbone'];
-  
+  /* OLT is prefetched through its own loader instead of this sweep, because it is
+     the only module whose payload is a compact envelope rather than a row array:
+     a plain "?type=" + type fetch here asked for the wrong shape AND stored the
+     raw envelope where a decoded array belongs, with `oltMeta` still holding the
+     previous response's summary — so the OLT tables and its summary cards could
+     describe two different payloads. Same stagger, same shared gate, right shape,
+     and the route still gets warmed. */
+  const allModules = ['lcp', 'node', 'backbone'];
+
   allModules.forEach((type, i) => {
     if (!dataCache[type]) {
       setTimeout(() => {
@@ -1073,6 +1087,10 @@ function refreshCurrentTab() {
       }, i * 400);
     }
   });
+
+  if (!dataCache.olt) {
+    setTimeout(() => fetchOltData(false), allModules.length * 400);
+  }
 
   // Save daily snapshot after initial data is loaded
   setTimeout(() => {
@@ -1218,9 +1236,26 @@ function closeNodeModal(event) {
     // I-refresh ang BAWAT tab sa sarili nitong interval
     setInterval(() => backgroundRefresh('nap'),  60 * 60 * 1000);
     setInterval(() => backgroundRefresh('lcp'),  30 * 60 * 1000);
-    setInterval(() => backgroundRefresh('olt'),  15 * 60 * 1000);
+    /* OLT: 5 min, matching the warm cadence in olt-cache-warmer.gs. This interval
+       is the fallback for what the rev watch CANNOT see (formula and IMPORTRANGE
+       recalculations, script writes), so it is deliberately the same number as the
+       server's: shorter would re-fetch an unchanged snapshot, longer would leave a
+       gap nothing else covers. */
+    setInterval(() => backgroundRefresh('olt'),  5 * 60 * 1000);
     setInterval(() => backgroundRefresh('node'), 10 * 60 * 1000);
     setInterval(() => backgroundRefresh('backbone'), 10 * 60 * 1000);
+
+    /* Ask the server whether anything changed, rather than waiting for the
+       intervals above. This is what turns a sheet edit into an on-screen update
+       in seconds; the intervals stay as the safety net. Started here, once, and
+       only for a loaded app — a login screen has nothing to refresh. */
+    if (typeof startRevWatch === 'function') {
+      startRevWatch({
+        url: BASE_API_URL + '?action=rev',
+        types: ['nap', 'lcp', 'olt', 'node', 'backbone'],
+        refresh: backgroundRefresh
+      });
+    }
   }
 
   // Check maintenance mode before anything else
@@ -1271,7 +1306,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.9').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.10').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
