@@ -58,10 +58,15 @@ function makeSandbox() {
   }
 
   const RealDate = Date;
+  /* The gate reads the clock (Date.now) and, for a build stamp, formats one
+     (new Date(ms)) — so the stub has to be a real constructor with a pinned
+     now(), not just an object carrying a now() method. */
+  function SandboxDate(...args) { return new RealDate(...args); }
+  SandboxDate.now = () => (state.now === null ? RealDate.now() : state.now);
+
   const sandbox = {
     console,
-    /* The gate only ever calls Date.now(). */
-    Date: { now: () => (state.now === null ? RealDate.now() : state.now) },
+    Date: SandboxDate,
     setTimeout, clearTimeout,
     setInterval: (fn, ms) => { const h = setInterval(fn, ms); ACTIVE_TIMERS.push(h); return h; },
     clearInterval: h => {
@@ -395,6 +400,109 @@ async function test(name, fn) {
     state.now = 1000000 + 3600 * 1000;
     gate.refreshTicker('olt');
     assert.strictEqual(chip.textContent, 'Updated 60m ago');
+  });
+
+  /* -------------------- the honest chip (server build stamp) -------------------- */
+
+  function clockOf(ms) {
+    const d = new Date(ms);
+    const hh = (d.getHours() < 10 ? '0' : '') + d.getHours();
+    const mm = (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+    return hh + ':' + mm;
+  }
+
+  await test('ticker: a build stamp makes the chip report the DATA age, not the request age', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    state.now = 1700000000000;
+    const builtAt = state.now - 65000;   // the payload is just over a minute old
+
+    gate.noteBuiltAt('olt', builtAt);
+    gate.refreshTicker('olt');
+    const chip = tickerChip(tabs, 'olt');
+
+    assert.strictEqual(chip.textContent, 'Data as of ' + clockOf(builtAt) + ' · 1m ago',
+      'the wall clock keeps it meaningful when it is minutes old, not seconds');
+    assert.strictEqual(chip.getAttribute('data-state'), 'ok', 'a minute old is not stale');
+  });
+
+  await test('ticker: the stamp beats a successful fetch — the 11-minute lie, refused', async () => {
+    /* The exact incident shape: the app fetched a moment ago (so the old chip
+       would say "just now"), and the server answered from a cached snapshot built
+       long before. The chip has to report the snapshot, because that is what is
+       on screen. */
+    const { gate, state, tabs } = makeSandbox();
+    state.now = 1700000000000;
+    const builtAt = state.now - 11 * 60 * 1000;   // built 11 minutes before the fetch
+
+    const q1 = gate.fetchQueued('olt', 'u1', () => {});
+    state.pending[0].resolve([{ A: 1 }]);
+    await q1;
+    gate.noteBuiltAt('olt', builtAt);      // ... the payload it returned said this
+    gate.refreshTicker('olt');
+
+    const chip = tickerChip(tabs, 'olt');
+    assert.strictEqual(chip.textContent, 'Data as of ' + clockOf(builtAt) + ' · 11m ago');
+    assert.strictEqual(chip.getAttribute('data-state'), 'stale',
+      'eleven minutes of staleness must look like a warning, not a countdown');
+  });
+
+  await test('ticker: the staleness threshold is configurable and slightly tolerant', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    gate.configure({ staleAfterMs: 60000 });
+    state.now = 1700000000000;
+
+    gate.noteBuiltAt('olt', state.now - 59000);
+    gate.refreshTicker('olt');
+    assert.strictEqual(tickerChip(tabs, 'olt').getAttribute('data-state'), 'ok');
+
+    gate.noteBuiltAt('olt', state.now - 61000);
+    gate.refreshTicker('olt');
+    assert.strictEqual(tickerChip(tabs, 'olt').getAttribute('data-state'), 'stale');
+  });
+
+  await test('ticker: a stamp that is not a usable time is ignored, not trusted', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    state.now = 1700000000000;
+
+    gate.noteBuiltAt('olt', 0);
+    gate.noteBuiltAt('olt', NaN);
+    gate.noteBuiltAt('olt', undefined);
+    gate.noteBuiltAt('olt', 'later');
+
+    const q1 = gate.fetchQueued('olt', 'u1', () => {});
+    state.pending[0].resolve([{ A: 1 }]);
+    await q1;
+    gate.refreshTicker('olt');
+
+    assert.strictEqual(tickerChip(tabs, 'olt').textContent, 'Updated just now',
+      'no usable stamp means the old fetch-time wording, which is what an older ' +
+      'server deserves rather than a broken chip');
+    assert.strictEqual(gate.dataBuiltAt('olt'), 0);
+  });
+
+  await test('ticker: a stable stamp keeps the chip quiet (no per-second repaint)', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    state.now = 1700000000000;
+    gate.noteBuiltAt('olt', state.now - 120000);
+    gate.refreshTicker('olt');
+    const chip = tickerChip(tabs, 'olt');
+
+    const writes = chip.textWrites;
+    const attrs = chip.attrWrites;
+    for (let i = 0; i < 5; i++) { state.now += 1000; gate.refreshTicker('olt'); }
+
+    assert.strictEqual(chip.textWrites, writes,
+      'minute-granularity text must stay stable within the minute, stamp or no stamp');
+    assert.strictEqual(chip.attrWrites, attrs, 'and the stale flag must not flicker');
+  });
+
+  await test('ticker: dataBuiltAt() exposes the stamp rev-watch verifies against', async () => {
+    const { gate, state } = makeSandbox();
+    assert.strictEqual(gate.dataBuiltAt('olt'), 0, 'no stamp before one is reported');
+    gate.noteBuiltAt('olt', 1700000000123);
+    assert.strictEqual(gate.dataBuiltAt('olt'), 1700000000123);
+    state.now = 1700000000123;
+    assert.strictEqual(gate.dataBuiltAt('nap'), 0, 'per type, not global');
   });
 
   // Ticker tests leave 1s intervals running — sweep them so node can exit.

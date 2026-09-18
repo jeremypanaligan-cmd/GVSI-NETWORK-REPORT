@@ -3339,9 +3339,16 @@ body.dark-mode .admin-tab-btn:hover {
 }
 
 /* ==================== MODULE REFRESH TICKER ====================
-   "Updated Xs ago / Refreshing in Ys" chip. Rendered by fetch-gate.js
-   into each tab's .page-title-row, re-created after every module render
-   (self-healing). States: ok (muted) / deferred (amber pulse). */
+   "Data as of HH:MM · Xm ago / Refreshing in Ys" chip. Rendered by
+   fetch-gate.js into each tab's .page-title-row, re-created after every module
+   render (self-healing). States: ok (muted) / deferred (amber pulse) /
+   stale (red, no pulse).
+
+   "deferred" and "stale" mean different things and are styled differently on
+   purpose. Deferred is the gate holding a refetch for a moment — expected, and
+   it resolves itself. Stale is the DATA being old by the server's own stamp: it
+   does not resolve itself, nobody is told to wait, and the chip has to look
+   like a warning rather than a countdown. */
 .module-refresh-ticker {
   margin-left: auto;
   font-size: 10px;
@@ -3361,6 +3368,13 @@ body.dark-mode .admin-tab-btn:hover {
   background: var(--badge-yellow);
   border-color: transparent;
   animation: tickerPulse 2s ease-in-out infinite;
+}
+
+.module-refresh-ticker[data-state="stale"] {
+  color: var(--badge-red-text);
+  background: var(--badge-red);
+  border-color: transparent;
+  font-weight: 700;
 }
 
 @keyframes tickerPulse {

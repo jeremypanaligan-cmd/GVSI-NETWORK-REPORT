@@ -17,21 +17,59 @@ function decodeOltCompact(compact) {
 // Server-provided meta summary for shape=3 compact responses
 var oltMeta = null;
 
-async function fetchOltData(forceRefresh = false) {
+/* The ONE place a response becomes what this module renders.
+
+   There used to be two copies of this (a background callback and the foreground
+   path), and two copies of a three-branch decision is how `dataCache.olt`,
+   `oltMeta` and `rawOltData` end up describing different things — the failure
+   mode is silent, because the tables read the array and the summary cards read
+   the meta, so a mismatch shows up as numbers that quietly disagree with the
+   list under them.
+
+   It is also the only place that sees the server's build stamp, which is why the
+   ticker is told from here: every caller that renders gets the age for free. */
+function applyOltPayload(data) {
+  if (data && data.meta) {
+    dataCache.olt = decodeOltCompact(data);
+    oltMeta = data.meta;
+  } else if (Array.isArray(data) && data.length > 0) {
+    /* Legacy full-row shape: no meta, so the cards fall back to computing from
+       the rows. Still handled, because a client that has not reloaded yet can
+       only ask for this. */
+    dataCache.olt = data;
+    oltMeta = null;
+  } else {
+    return false; /* nothing usable: leave every store exactly as it was */
+  }
+
+  rawOltData = dataCache.olt;
+
+  /* The age of the picture we are about to draw. It rides inside the cached
+     bytes, so a cache HIT reports the build time rather than the hit time — and a
+     chip that reports the hit time is what made a deleted ticket look fresh for
+     11 minutes on 2026-09-18. Untrusted values fall through to the previous
+     stamp, and fetch-gate keeps the fetch-time fallback for callers that never
+     send one. */
+  var builtAt = (data.meta && data.meta.builtAt) || data.builtAt;
+  if (builtAt) fetchGate.noteBuiltAt('olt', builtAt);
+
+  return true;
+}
+
+/* ?fresh=1 is the only thing a client can say that makes the server skip its
+   cache, and the server rate-limits it (once per minute per type, see
+   claimForcedRebuild in code.gs). Only an explicit REFRESH asks for it. */
+function oltDataUrl(forceServerFresh) {
+  return BASE_API_URL + "?type=olt&shape=3" + (forceServerFresh ? "&fresh=1" : "");
+}
+
+async function fetchOltData(forceRefresh = false, forceServerFresh = false) {
   if (!forceRefresh && dataCache.olt) {
     rawOltData = dataCache.olt;
     processAndRenderOlt();
     // Deduped + throttled background refresh via the shared gate
-    fetchGate.fetchQueued('olt', BASE_API_URL + "?type=olt&shape=3", data => {
-      if (data && data.meta) {
-        dataCache.olt = decodeOltCompact(data);
-        oltMeta = data.meta;
-      } else if (Array.isArray(data) && data.length > 0) {
-        dataCache.olt = data;
-        oltMeta = null;
-      }
-      rawOltData = dataCache.olt;
-      processAndRenderOlt();
+    fetchGate.fetchQueued('olt', oltDataUrl(false), data => {
+      if (applyOltPayload(data)) processAndRenderOlt();
     });
     return;
   }
@@ -40,17 +78,9 @@ async function fetchOltData(forceRefresh = false) {
   showModuleLoading('olt');
 
   try {
-    const data = await fetchGate.run('olt', BASE_API_URL + "?type=olt&shape=3");
+    const data = await fetchGate.run('olt', oltDataUrl(forceServerFresh));
 
-    if (data && data.meta) {
-      dataCache.olt = decodeOltCompact(data);
-      oltMeta = data.meta;
-    } else if (Array.isArray(data) && data.length > 0) {
-      dataCache.olt = data;
-      oltMeta = null;
-    }
-    rawOltData = dataCache.olt;
-    if (rawOltData && rawOltData.length > 0) {
+    if (applyOltPayload(data) && rawOltData && rawOltData.length > 0) {
       processAndRenderOlt();
     }
   } catch (error) {

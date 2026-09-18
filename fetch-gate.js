@@ -146,11 +146,49 @@
   var _tickerTimers = {};   /* type -> interval handle driving the countdown */
   var _tickerDeferred = {}; /* type -> timestamp when the deferred refetch fires */
 
+  /* How old the DATA shown may get before the chip says so. Two warm intervals
+     (see olt-cache-warmer.gs): late enough that a normal cycle never trips it,
+     early enough to name a real problem — a missed trigger, a failed rebuild,
+     or a revision the app was never told about. */
+  var STALE_AFTER_MS = 10 * 60 * 1000;
+
+  /* When the payload a module is showing was BUILT on the server, if the server
+     said. Deliberately separate from lastFetchAt, which is when we ASKED: those
+     two were the same thing only while every answer was a fresh build, and the
+     11-minute incident on 2026-09-18 was eleven minutes of them being different
+     while the chip reported the fetch. */
+  var dataBuiltAt = {};
+
+  function noteBuiltAt(type, ms) {
+    var n = Number(ms);
+    if (isFinite(n) && n > 0) dataBuiltAt[type] = n;
+  }
+
   function tickerNoteDeferred(type, atMs) { _tickerDeferred[type] = atMs; }
   function tickerClearDeferred(type) { delete _tickerDeferred[type]; }
 
   function tickerState(type) {
-    return _tickerDeferred[type] ? 'deferred' : 'ok';
+    if (_tickerDeferred[type]) return 'deferred';
+    var built = dataBuiltAt[type];
+    if (built && (nowMs() - built) > STALE_AFTER_MS) return 'stale';
+    return 'ok';
+  }
+
+  /* Wall clock, HH:MM. Minutes stop being useful exactly when staleness starts
+     to matter — "Data as of 09:12" is actionable where "Data 41m ago" needs
+     arithmetic — and the string still only changes once a minute, so the
+     zero-write discipline in paintTicker is unaffected. */
+  function clockLabel_(ms) {
+    var d = new Date(ms);
+    var hh = d.getHours(), mm = d.getMinutes();
+    return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  function ageText_(ms) {
+    var sec = Math.max(0, Math.round((nowMs() - ms) / 1000));
+    if (sec < 5) return 'just now';
+    if (sec < 60) return sec + 's ago';
+    return Math.round(sec / 60) + 'm ago';
   }
 
   function tickerText(type) {
@@ -159,6 +197,19 @@
       var inSec = Math.max(1, Math.round((at - nowMs()) / 1000));
       return 'Refreshing in ' + inSec + 's';
     }
+
+    /* Preferred form: the age of the DATA rather than of the request. The server
+       stamps its payload (meta.builtAt), and because the stamp rides inside the
+       cached bytes, a cache HIT reports the original build time — so this stays
+       true through any number of refreshes, which is the whole point. */
+    var built = dataBuiltAt[type];
+    if (built) return 'Data as of ' + clockLabel_(built) + ' · ' + ageText_(built);
+
+    /* No stamp (an older server, or a module that does not carry one): fall back
+       to the fetch time, which is what this chip always reported. That is the
+       weaker claim — "we asked recently" is not "what you see is recent" — and
+       it is exactly how a deleted ticket sat on screen with a fresh-looking chip
+       under it, so prefer the stamp wherever it exists. */
     var last = lastFetchAt[type] || 0;
     if (!last) return 'No data yet';
     var agoSec = Math.max(0, Math.round((nowMs() - last) / 1000));
@@ -226,9 +277,14 @@
     fetchQueued: fetchQueued,
     refreshTicker: refreshTicker,
 
+    /* Server build time for the payload a module is showing. Modules call this
+       with meta.builtAt from the response they just rendered. */
+    noteBuiltAt: noteBuiltAt,
+
     /* Introspection / tuning */
     isBusy: function (type) { return !!inflight[type]; },
     lastFetch: function (type) { return lastFetchAt[type] || 0; },
+    dataBuiltAt: function (type) { return dataBuiltAt[type] || 0; },
     shouldDefer: function (type) {
       return (nowMs() - (lastFetchAt[type] || 0)) < MIN_INTERVAL_MS;
     },
@@ -238,6 +294,9 @@
       }
       if (opts && typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) {
         TIMEOUT_MS = opts.timeoutMs;
+      }
+      if (opts && typeof opts.staleAfterMs === 'number' && opts.staleAfterMs > 0) {
+        STALE_AFTER_MS = opts.staleAfterMs;
       }
     }
   };
