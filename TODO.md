@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 19, 2026 · `main` is live at 3.9.14 (the OLT zero state — see P2)
+**Last updated:** September 20, 2026 · `main` is live at 3.9.15 (the Lucide icon set — see P2)
 
 ---
 
@@ -88,6 +88,47 @@ node scripts/bump-version.mjs patch     # move the generation, the manifest and 
 `tests/version-sync.test.js` fails on drift, and `--check` also warns when the delivery set has changed while the release has not — the failure that produces no error anywhere at runtime.
 
 > **This change MUST move the release version together with the bytes it describes, in the same push.** Without it, `install` reuses the same generation, `activate` evicts nothing, and installed devices keep the old bytes forever while the repo says otherwise.
+
+---
+
+## 🟢 P2 — The Lucide icon migration shipped in 3.9.15 (Sept 20, 2026)
+
+**Built, tested and released.** Every icon in the app — the eight bottom-nav glyphs, both
+export toolbars in all five modules, the header, the login panel, the zero-state cards and
+the sorted-column chevrons — is now drawn from the installed `lucide@1.47.0` instead of 47
+hand-written inline svgs. **192 tests pass, 19 of them new in `tests/icons.test.js`, and all
+21 mutations of the change are caught by them.**
+
+**How a package reaches a static app, since there is no bundler.** `scripts/build-icons.mjs`
+reads `node_modules/lucide` and writes `lucide-icons.js`, which is committed and precached:
+**30 icons in 12 KB**, against the shipped UMD bundle's **436 KB** — a precache list is
+handed to every device again on every generation, so the difference is not cosmetic.
+`node_modules/` stays gitignored and is only needed to regenerate; `npm run icons:check`
+fails if the committed file drifts from the package.
+
+**Two shapes of the same trap, both avoided by choice:**
+
+| the risk | the choice |
+|---|---|
+| an icon that needs a second pass after the paint, in a table that repaints on every refresh | the modules get `lucide.icon()` **inline in the template string**; only the shell's static markup uses placeholders |
+| a typo or a stale name rendering as a silent empty gap | `icon()` returns `''` for an unknown name, and the test walks call sites against the table **in both directions** |
+
+**The sort indicator had no markup to swap.** It is a `::after` on `th.sortable`, so 38
+headers carry it from CSS. It is now a Lucide mask painted with `background-color:
+currentColor`, injected once at boot, with the original text glyphs left in `styles.css` as
+the no-JS fallback — measured at `rgb(255,255,255)` in the dark theme and `rgb(13,138,128)`
+in the teal headers in light.
+
+**Delivery, again the same rule.** `lucide-icons.js` is an unversioned precache entry **and
+a file no installed device holds**, so it arrives only with a new generation:
+`bump-version --check` said so itself (`delivery set changed, release did not`) before the
+bump, and all six labels moved to 3.9.15 with the bytes in one commit. The guard stayed at
+**3.10.0** — no device is sent to the wipe overlay.
+
+**Left behind, deliberately:** the GALLOPVISION mark in the login panel is still a
+hand-drawn svg — it is the brand, not an interface glyph, and `tests/icons.test.js` asserts
+it is the *only* one left, so a future inline icon fails the suite instead of quietly
+passing review.
 
 ---
 
