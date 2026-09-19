@@ -127,12 +127,22 @@ test('every [data-lucide] placeholder names an icon that exists', () => {
   });
 });
 
+/* One glyph per module, read out of index.html rather than restated here: the point of the
+   test is that the map and the markup agree, which it cannot check if it carries its own
+   copy of the map. */
+const MODULE_ICONS = (function parseModuleIcons() {
+  const src = read('index.html');
+  const m = src.match(/const MODULE_ICONS = (\{[\s\S]*?\n\};)/);
+  assert.ok(m, 'MODULE_ICONS is not defined in index.html');
+  return vm.runInNewContext('(' + m[1].replace(/;$/, '') + ')');
+})();
+
 test('every iconMarkup() call names an icon that exists', () => {
   const names = loadRuntime().names;
   let total = 0;
   APP_FILES.forEach((file) => {
     const src = read(file);
-    const re = /iconMarkup\(\s*'([^']+)'/g;
+    const re = /(?<!Module)iconMarkup\(\s*'([^']+)'/g;
     let m;
     while ((m = re.exec(src)) !== null) {
       total++;
@@ -142,7 +152,143 @@ test('every iconMarkup() call names an icon that exists', () => {
       );
     }
   });
-  assert.ok(total >= 26, 'only ' + total + ' iconMarkup calls found — did the scan break?');
+  assert.ok(total >= 20, 'only ' + total + ' iconMarkup calls found — did the scan break?');
+});
+
+test('every moduleIconMarkup() call names a module in MODULE_ICONS', () => {
+  const names = loadRuntime().names;
+  let total = 0;
+  APP_FILES.forEach((file) => {
+    const src = read(file);
+    const re = /moduleIconMarkup\(\s*'([^']+)'/g;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      total++;
+      const icon = MODULE_ICONS[m[1]];
+      assert.ok(icon, `${file} calls moduleIconMarkup('${m[1]}'), which is not a module`);
+      assert.ok(names.indexOf(icon) !== -1, `module ${m[1]} maps to \"${icon}\", not in the table`);
+    }
+  });
+  assert.ok(total >= 5, 'only ' + total + ' moduleIconMarkup calls found — did the scan break?');
+});
+
+test('both nav bars show the glyph MODULE_ICONS gives that module', () => {
+  /* The two bars are static markup and cannot call the map, so they carry placeholders by
+     hand. That is the whole reason this test exists: a module named with one glyph in the
+     bottom bar and another in the tab row is exactly the failure the map prevents, and
+     nothing else in the app would notice it. */
+  const html = read('index.html');
+
+  /* The tab row identifies its tab by label (it has no data-tab), the bottom bar by
+     data-tab. Both spellings are mapped to the same module keys. */
+  const LABEL_TO_KEY = {
+    NAP: 'nap', LCP: 'lcp', OLT: 'olt', NODE: 'node',
+    BACKBONE: 'backbone', 'BACKBONE LINKS': 'backbone',
+    CHARTS: 'analytics', ANALYTICS: 'analytics', ABOUT: 'about', ADMIN: 'admin'
+  };
+
+  const bottom = {};
+  const tabRow = {};
+  let m;
+
+  /* The whole attribute blob is captured, not just the glyph, so data-module can be read off
+     the SAME element the glyph came from — reading the two attributes with separate regexes
+     would let a button borrow another module's colour without borrowing its glyph. */
+  const bottomRe = /<button class="bottom-nav-btn[^"]*"([^>]*)>[\s\S]{0,140}?<i data-lucide="([^"]+)"/g;
+  while ((m = bottomRe.exec(html)) !== null) {
+    const tab = /\bdata-tab="([a-z]+)"/.exec(m[1]);
+    assert.ok(tab, 'a bottom nav button has no data-tab: ' + m[1]);
+    bottom[tab[1]] = { icon: m[2], module: (/\bdata-module="([a-z]+)"/.exec(m[1]) || [])[1] || null };
+  }
+
+  const tabRowRe = /<button class="tab-btn[^"]*"([^>]*)>\s*<span class="tab-icon"><i data-lucide="([^"]+)"[^>]*><\/i><\/span>([A-Z ]+)</g;
+  while ((m = tabRowRe.exec(html)) !== null) {
+    const key = LABEL_TO_KEY[m[3].trim()];
+    assert.ok(key, 'the tab row has a tab whose label maps to no module: ' + m[3].trim());
+    tabRow[key] = { icon: m[2], module: (/\bdata-module="([a-z]+)"/.exec(m[1]) || [])[1] || null };
+  }
+
+  /* The UNION, not just the map's keys: driven off the map alone, a module dropped from it
+     would simply stop being checked, and the two bars would keep rendering whatever they
+     were told by hand. Every name seen anywhere has to exist in the map and agree with it. */
+  const keys = [...Object.keys(MODULE_ICONS), ...Object.keys(bottom), ...Object.keys(tabRow)]
+    .filter((key, i, all) => all.indexOf(key) === i);
+
+  assert.ok(keys.length >= 8, 'only ' + keys.length + ' modules found — did the scan break?');
+  keys.forEach((key) => {
+    const expected = MODULE_ICONS[key];
+    assert.ok(expected, `MODULE_ICONS has no entry for "${key}"`);
+    assert.ok(bottom[key], `the bottom bar has no button for data-tab="${key}"`);
+    assert.strictEqual(bottom[key].icon, expected, `bottom bar: ${key} shows "${bottom[key].icon}", the map says "${expected}"`);
+    assert.ok(tabRow[key], `the tab row has no button for ${key}`);
+    assert.strictEqual(tabRow[key].icon, expected, `tab row: ${key} shows "${tabRow[key].icon}", the map says "${expected}"`);
+
+    /* Same key in both bars, because styles.css colours the glyph off data-module: a bar
+       whose key is missing or misspelled draws its icon in the muted fallback, which looks
+       deliberate and is therefore the hardest kind of wrong to notice. */
+    if (key === 'admin') {
+      assert.strictEqual(bottom[key].module, null, 'the admin chip paints its own gradient and must not take a hue');
+      assert.strictEqual(tabRow[key].module, null, 'the admin chip paints its own gradient and must not take a hue');
+      return;
+    }
+    assert.strictEqual(bottom[key].module, key, `bottom bar: ${key} carries data-module="${bottom[key].module}"`);
+    assert.strictEqual(tabRow[key].module, key, `tab row: ${key} carries data-module="${tabRow[key].module}"`);
+  });
+});
+
+test('every module hue is declared once, for both themes, and reaches both nav bars', () => {
+  /* A module's colour is the thing that makes its glyph readable at a glance, so it has to
+     exist in light AND dark (a light-mode hue on the dark header is close to invisible), and
+     it has to reach both bars through the one rule that sets it — not through two rules that
+     can be edited apart. */
+  const css = read('styles.css');
+
+  const themeBlock = (header) => {
+    const at = css.indexOf(header);
+    assert.ok(at !== -1, 'no ' + header.trim() + ' block in styles.css');
+    const open = css.indexOf('{', at);
+    return css.slice(open, css.indexOf('\n}', open));
+  };
+  const declared = (block) => {
+    const out = [];
+    const re = /--module-([a-z]+):/g;
+    let m;
+    while ((m = re.exec(block)) !== null) out.push(m[1]);
+    return out.sort();
+  };
+
+  const light = declared(themeBlock('\n:root {'));
+  const dark = declared(themeBlock('\nbody.dark-mode {'));
+
+  /* The admin chip has no resting hue: it is a filled gradient with `color: white
+     !important`. Every other module in the map must have one, so adding a module and
+     forgetting its colour fails here rather than shipping a grey glyph nobody notices. */
+  const expected = Object.keys(MODULE_ICONS).filter((key) => key !== 'admin').sort();
+
+  assert.deepStrictEqual(light, expected, 'light-mode module hues: ' + light.join(', '));
+  assert.deepStrictEqual(dark, expected, 'dark-mode module hues: ' + dark.join(', '));
+
+  expected.forEach((key) => {
+    const rule = new RegExp('\\[data-module="' + key + '"\\]\\s*\\{\\s*--module-hue:\\s*var\\(--module-' + key + '\\);');
+    assert.ok(rule.test(css), `no [data-module="${key}"] rule naming --module-${key}`);
+  });
+
+  /* Both wrappers in ONE selector list. Two rules would be the same bug the glyph test is
+     about, one layer down: the tab row violet and the bottom bar teal for the same module. */
+  assert.ok(
+    /\.tab-icon,\n\.bottom-nav-icon \{\n  color: var\(--module-hue, inherit\);/.test(css),
+    'the module hue is not applied to .tab-icon and .bottom-nav-icon in a single rule, with `inherit` as the fallback'
+  );
+
+  /* The active pill has to paint with currentColor. The moment it goes back to a fixed
+     colour, six of the seven tabs are marked in a hue that is not theirs — which is what
+     this whole change was about. */
+  assert.ok(/background: currentColor;/.test(css), 'the active pill no longer paints with currentColor');
+  assert.ok(
+    /box-shadow: inset 0 0 0 1px currentColor;/.test(css),
+    'the active pill ring no longer paints with currentColor'
+  );
+  assert.strictEqual(css.indexOf('--nav-pill'), -1, 'the fixed teal pill tokens are back');
 });
 
 test('the table carries no dead weight — every icon is used or is a sort chevron', () => {
