@@ -18,7 +18,9 @@ const { pathToFileURL } = require('url');
 
 const ROOT = path.join(__dirname, '..');
 const GENERATED = 'lucide-icons.js';
-const onDisk = fs.readFileSync(path.join(ROOT, GENERATED), 'utf8');
+/* Normalized on read for the same reason as read() below: git hands a Windows checkout
+   CRLF, and nothing here is about newlines. */
+const onDisk = fs.readFileSync(path.join(ROOT, GENERATED), 'utf8').replace(/\r\n/g, '\n');
 
 let passed = 0;
 let failed = 0;
@@ -44,9 +46,20 @@ const RUNTIME_ONLY = ['chevron-down', 'chevron-up', 'chevrons-up-down'];
    app's own markup — everything else is emitted from the table at runtime. */
 const BRAND_MARK = '<div class="brand-logo">';
 
+/* Git stores these files with LF and, under `core.autocrlf`, checks them out with CRLF.
+   Every check here is about CONTENT — a name, a rule, a path — so newlines are normalized
+   on read rather than allowed to decide whether the suite is green on one platform. */
 function read(file) {
-  return fs.readFileSync(path.join(ROOT, file), 'utf8');
+  return fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\r\n/g, '\n');
 }
+
+/* The drift check needs the package the file was generated from, and node_modules is
+   gitignored: a fresh clone is runnable and testable WITHOUT it, because the generated
+   file is committed. So its absence skips that one check with a reason, rather than
+   failing the suite and training the reader to ignore red. Everything that does not need
+   the package — every call-site scan below — still runs. */
+const ICON_PACKAGE = path.join(ROOT, 'node_modules', 'lucide', 'package.json');
+const hasPackage = fs.existsSync(ICON_PACKAGE);
 
 function loadRuntime() {
   const box = { window: {} };
@@ -61,22 +74,21 @@ function loadRuntime() {
 
 console.log('\nLucide icons\n');
 
-test('lucide-icons.js is byte-for-byte what the generator produces', async () => {
+test('lucide-icons.js is what the generator produces from the installed package', async () => {
+  if (!hasPackage) {
+    console.log('        skipped: node_modules/lucide is not installed (npm install)');
+    return;
+  }
   let mod;
   try {
     mod = await import(pathToFileURL(path.join(ROOT, 'scripts', 'build-icons.mjs')).href);
   } catch (err) {
     throw new Error('cannot load scripts/build-icons.mjs: ' + err.message);
   }
-  let expected;
-  try {
-    expected = await mod.generate();
-  } catch (err) {
-    throw new Error('generator failed (is node_modules installed?): ' + err.message);
-  }
+  const expected = await mod.generate();
   assert.strictEqual(
     onDisk,
-    expected,
+    mod.normalizeNewlines(expected),
     'lucide-icons.js is out of date — run: npm run icons:build'
   );
 });
@@ -95,7 +107,7 @@ test('the subset stays a subset — the shipped bundle would be ten times this',
 
 test('node_modules stays out of git, so the icon tree cannot be committed by accident', () => {
   const ignore = read('.gitignore');
-  assert.ok(/\nnode_modules\/\n/.test(ignore), 'no node_modules/ rule in .gitignore');
+  assert.ok(ignore.indexOf('\nnode_modules/') !== -1, 'no node_modules/ rule in .gitignore');
 });
 
 /* ------------------------------------------------------------------ *

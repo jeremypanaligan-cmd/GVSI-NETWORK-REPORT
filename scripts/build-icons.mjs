@@ -21,6 +21,18 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * Git stores this file with LF and, under `core.autocrlf`, hands the working copy back
+ * with CRLF. Comparing raw bytes would therefore call a clean checkout out of date on
+ * every Windows machine. Newlines are the one difference that is not a difference, so
+ * both sides are compared normalized.
+ * The generator always WRITES LF; the blob it is committed as is LF; only the working
+ * copy varies.
+ */
+export function normalizeNewlines(text) {
+  return text === null || text === undefined ? text : String(text).replace(/\r\n/g, '\n');
+}
 const LUCIDE_PKG = path.join(ROOT, 'node_modules', 'lucide', 'package.json');
 const ICON_DIR = path.join(ROOT, 'node_modules', 'lucide', 'dist', 'esm', 'icons');
 const OUT_FILE = path.join(ROOT, 'lucide-icons.js');
@@ -273,7 +285,7 @@ async function main() {
   }
 
   if (check) {
-    if (current === next) {
+    if (normalizeNewlines(current) === normalizeNewlines(next)) {
       console.log(`✓ lucide-icons.js matches lucide in node_modules (${ICONS.length} icons)`);
       process.exit(0);
     }
@@ -283,7 +295,7 @@ async function main() {
     process.exit(1);
   }
 
-  if (current === next) {
+  if (normalizeNewlines(current) === normalizeNewlines(next)) {
     console.log(`✓ lucide-icons.js already up to date (${ICONS.length} icons)`);
     return;
   }
