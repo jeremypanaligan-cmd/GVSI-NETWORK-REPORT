@@ -45,6 +45,8 @@
     <div class="login-brand-panel">
       <div class="brand-content">
         <div class="brand-logo">
+          <!-- Drawn by hand on purpose: this is the GALLOPVISION brand mark, not an
+               interface glyph, so there is no Lucide icon to stand in for it. -->
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
             <circle cx="24" cy="24" r="22" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
             <path d="M16 24L22 30L32 18" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -54,15 +56,15 @@
         <p class="brand-tagline">Network Operations Dashboard</p>
         <div class="brand-features">
           <div class="feature-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <i data-lucide="activity" data-size="20"></i>
             <span>Real-time monitoring</span>
           </div>
           <div class="feature-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <i data-lucide="shield" data-size="20"></i>
             <span>Incident management</span>
           </div>
           <div class="feature-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <i data-lucide="clock" data-size="20"></i>
             <span>24/7 availability</span>
           </div>
         </div>
@@ -94,8 +96,10 @@
             <label for="loginPassword">Password</label>
             <div class="input-highlight"></div>
             <button type="button" class="password-toggle" id="togglePwdBtn" aria-label="Toggle password visibility" onclick="togglePasswordVisibility()">
-              <svg id="eyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg id="eyeOffIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              <!-- The ids are load-bearing: togglePasswordVisibility() flips these two by
+                   id. createIcons carries the id across when it swaps the placeholder. -->
+              <i id="eyeIcon" data-lucide="eye" data-size="20"></i>
+              <i id="eyeOffIcon" data-lucide="eye-off" data-size="20" style="display:none;"></i>
             </button>
           </div>
 
@@ -116,7 +120,7 @@
           <button type="submit" class="login-btn" id="loginBtn" aria-live="polite" aria-busy="false">
             <span class="btn-content">
               <span id="loginBtnText">Sign In</span>
-              <svg class="btn-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <i class="btn-arrow" data-lucide="arrow-right" data-size="20"></i>
             </span>
             <span class="login-btn-spinner" id="loginBtnSpinner" aria-hidden="true" hidden></span>
           </button>
@@ -142,14 +146,12 @@
   <span class="brand-gallop">GALLOPVISION</span>
 </div>
   <div class="header-actions">
-    <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme">
-      <!-- Default Moon SVG Icon -->
-      <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-      </svg>
+    <button class="theme-toggle-btn" onclick="toggleDarkMode()" id="themeBtn" title="Switch Theme" aria-label="Switch Theme">
+      <!-- Replaced on theme change by toggleDarkMode() via MOON_ICON/SUN_ICON below. -->
+      <i id="themeIcon" data-lucide="moon" data-size="16"></i>
     </button>
     <button class="logout-btn" id="logoutBtn" onclick="handleLogout()">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <i data-lucide="log-out" data-size="12"></i>
       LOGOUT
     </button>
     <button class="refresh-btn" onclick="refreshCurrentTab()">REFRESH</button>
@@ -658,35 +660,35 @@
   <!-- Bottom Navigation (Mobile only) -->
   <nav class="bottom-nav" id="bottomNav">
     <button class="bottom-nav-btn active" onclick="switchTab('nap', event)" data-tab="nap">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <i data-lucide="monitor"></i>
       <span>NAP</span>
     </button>
     <button class="bottom-nav-btn" onclick="switchTab('lcp', event)" data-tab="lcp">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <i data-lucide="layers"></i>
       <span>LCP</span>
     </button>
     <button class="bottom-nav-btn" onclick="switchTab('olt', event)" data-tab="olt">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="12" rx="2"/><path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/></svg>
+      <i data-lucide="server"></i>
       <span>OLT</span>
     </button>
     <button class="bottom-nav-btn" onclick="switchTab('node', event)" data-tab="node">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <i data-lucide="shield"></i>
       <span>NODE</span>
     </button>
     <button class="bottom-nav-btn" onclick="switchTab('backbone', event)" data-tab="backbone">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      <i data-lucide="link"></i>
       <span>BACKBONE</span>
     </button>
     <button class="bottom-nav-btn" onclick="switchTab('analytics', event)" data-tab="analytics">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <i data-lucide="chart-column"></i>
       <span>CHARTS</span>
     </button>
     <button class="bottom-nav-btn" onclick="switchTab('about', event)" data-tab="about">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <i data-lucide="info"></i>
       <span>ABOUT</span>
     </button>
     <button class="bottom-nav-btn admin-bottom-nav-btn" onclick="switchTab('admin', event)" data-tab="admin" style="display: none;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <i data-lucide="settings"></i>
       <span>ADMIN</span>
     </button>
   </nav>
@@ -819,6 +821,10 @@
   </div>
 </div>
 
+<!-- First: every module below draws its icons as inline svg markup through
+     window.lucide.icon(), and this is what defines it. Generated by
+     scripts/build-icons.mjs from the lucide package — do not hand-edit that file. -->
+<script src="lucide-icons.js"></script>
 <script src="db.js"></script>
 <script src="fetch-gate.js"></script>
 <!-- After fetch-gate.js: it reads that gate's build stamps, and uses the shared
@@ -895,7 +901,7 @@
     var overlay = document.createElement('div');
     overlay.id = 'updateOverlay';
     overlay.className = 'update-prompt-overlay';
-    overlay.innerHTML = '<div style="margin-bottom: 16px; color: #2dd4bf;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.71 1.26-1.5 1.63-2.32L5.82 13.8c-.82.37-1.61.92-2.32 1.63z"></path><path d="M12 15l-3-3 7.5-7.5c1.33-1.33 3.5-1.33 4.83 0 1.33 1.33 1.33 3.5 0 4.83L12 15z"></path><path d="M9 12l-2 2"></path><path d="M15 9l-2 2"></path></svg></div><h1 style="color:#2dd4bf; font-size:20px; margin-bottom:8px; font-weight:800;">App Update Available</h1><p style="color:#94a3b8; font-size:13px; max-width:340px; margin-bottom:20px; line-height:1.5;">A new version of NetPulse is ready. Tap below to sync the latest improvements and continue seamlessly.</p><button onclick="finishUpdate()" class="update-sync-btn" style="background:#0d8a80; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow: 0 4px 12px rgba(13,138,128,0.4);">Refresh & Sync App</button>';
+    overlay.innerHTML = '<div style="margin-bottom: 16px; color: #2dd4bf;">' + iconMarkup('rocket', { size: 56, strokeWidth: 1.8 }) + '</div><h1 style="color:#2dd4bf; font-size:20px; margin-bottom:8px; font-weight:800;">App Update Available</h1><p style="color:#94a3b8; font-size:13px; max-width:340px; margin-bottom:20px; line-height:1.5;">A new version of NetPulse is ready. Tap below to sync the latest improvements and continue seamlessly.</p><button onclick="finishUpdate()" class="update-sync-btn" style="background:#0d8a80; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow: 0 4px 12px rgba(13,138,128,0.4);">Refresh & Sync App</button>';
     document.body.appendChild(overlay);
   }
   function finishUpdate() {
@@ -1057,9 +1063,21 @@
     backboneTableBody: { col: 0, asc: true, isNum: false }
   };
 
-// SVG Icon Strings
-const MOON_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`;
-const SUN_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
+/* The one way a glyph reaches a template string anywhere in the app: lucide-icons.js is
+   generated, so the geometry lives there and never here. Guarded rather than bare because
+   the two consts below are evaluated while this file loads — without the guard, an
+   index.html that outlived its script would throw on the first line and take the rest of
+   the page script with it. An unknown name returns '', so decoration can never break the
+   screen it decorates. */
+function iconMarkup(name, options) {
+  return (window.lucide && typeof window.lucide.icon === 'function')
+    ? window.lucide.icon(name, options)
+    : '';
+}
+
+// Theme toggle glyphs (the header button paints one of these instead of a moon/sun path)
+const MOON_ICON = iconMarkup('moon', { size: 16 });
+const SUN_ICON = iconMarkup('sun', { size: 16 });
 
 function initTheme() {
   const savedTheme = localStorage.getItem('theme');
@@ -1563,7 +1581,7 @@ function closeNodeModal(event) {
 
   function getAlertBadge(value, threshold) {
     if (value > threshold) {
-      return `<span class="alert-badge"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg> HIGH</span>`;
+      return `<span class="alert-badge">${iconMarkup('triangle-alert', { size: 12 })} HIGH</span>`;
     }
     return '';
   }
@@ -2068,6 +2086,19 @@ function closeNodeModal(event) {
   } else {
     initTicker();
   }
+
+  /* One upgrade pass for this file's static icons. The markup above holds placeholder
+     <i> elements carrying data-lucide, because the geometry lives in the generated
+     table; this is the single place they become svgs. Markup built inside the modules
+     does NOT go through here — those call lucide.icon() in the template string, because
+     a table that repaints would otherwise wipe its own icons on every refresh. */
+  (function initStaticIcons() {
+    if (!window.lucide) return;
+    if (typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+    // The sorted-header indicator lives in CSS, so it is upgraded by injected rules rather
+    // than by markup — 38 headers decorate themselves with no JS at the call site.
+    if (typeof window.lucide.sortIndicator === 'function') window.lucide.sortIndicator();
+  })();
 </script>
 
 </body>
