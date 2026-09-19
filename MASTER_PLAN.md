@@ -2,7 +2,8 @@
 
 ## Product Goal
 
-Give the OLT module an honest zero state, and give the whole app one icon language.
+Give the OLT module an honest zero state, and give the whole app one icon language in
+which each module is recognisable at a glance — by shape and by colour.
 
 ## Product Scenarios
 
@@ -31,6 +32,29 @@ second initialisation pass, and keep the size, alignment and colour the theme gi
 ### SCN-006: The swap is provable, and it ships
 Outcome: A hand-edited or stale icon file, an unknown icon name, and a leftover
 hand-drawn SVG all fail a test; the new bytes reach an installed device.
+
+### SCN-007: A module is named the same way everywhere
+Outcome: NAP, LCP, OLT, NODE, BACKBONE, the Dashboard and About each own one glyph, and
+that glyph is identical in the phone bar, the desktop tab row and the Module Snapshot
+cards — a module that looks like two things at once is unreadable at a glance.
+
+### SCN-008: The tab you are on says so without looking pressed
+Outcome: The current module is marked by a pill behind its glyph and by its own label,
+not by a tint across the whole button — a full-button fill is what a press looks like.
+
+### SCN-009: The desktop tab row still fits
+Outcome: The tab row is `overflow-x: auto` with non-shrinking tabs, so anything added to
+a tab must not push eight of them past a 747px window and make the header scroll.
+
+### SCN-010: A module is identifiable without being the one you are on
+Outcome: Every module carries its own hue on its glyph at rest — the module you are
+looking for is found by colour, not by reading eight small outlines at 22px, which is the
+step that shape alone cannot carry.
+
+### SCN-011: The module hue never makes a claim it cannot make
+Outcome: The hues are categorical and never read as status: a module's colour at rest is
+the same whether it is healthy or failing, and the admin chip keeps the treatment its own
+filled gradient needs.
 
 ## Phase 1: OLT zero state
 
@@ -84,6 +108,37 @@ hand-drawn SVG all fail a test; the new bytes reach an installed device.
 **Two deviations, both recorded in `PLAN_EVIDENCE.md`:** the allowlist is 30 icons rather
 than the 27 sketched here (the sort chevrons and `shield-check` were found while mapping the
 sites), and `arrow-left-right` was dropped after the usage test proved nothing drew it.
+
+## Phase 3: module identity — COMPLETE (released 3.9.16)
+
+**Why this phase exists.** Phase 2 replaced 47 icons with the matching Lucide drawing and
+kept the appearance deliberately — which is what "tumutugma" asked for, and it also meant the
+migration was nearly invisible: about 40 of the 47 are the same drawing. The user's report was
+"hindi kapansin pansin ang pagbabago sa mga icons", which is a correct reading of Phase 2 rather
+than a fault in it. Asked how far to go, they chose module identity plus an active state.
+
+- [x] Part 9: Read `plans/PART9_PLAN.ai.md`
+  - Scenario: SCN-007, SCN-008, SCN-009
+  - Outcome: One glyph per module everywhere, larger, with a pill on the active tab
+  - Evidence: PART-009 in `PLAN_EVIDENCE.md` — a shared `MODULE_ICONS` map read by both nav
+    bars and the analytics cards, the two bars' placeholders reconciled against it by test,
+    194 tests, and 27/27 mutations caught
+
+**The user's verdict on Part 9 was "hindi kapansin pansin ang pagbabago sa mga icons"** —
+and it was correct, for a reason no test could see: at rest every module's glyph was the same
+`#64748b` at 22px, so shape was the only carrier of identity and shape alone does not survive
+that size. Measured before answering, `git rev-list --left-right --count origin/main...HEAD`
+was `0 4` and the live site was still on 3.9.15, so the parity is: two causes, and the bigger
+one was that none of it had been delivered yet.
+
+## Phase 4: module colour — COMPLETE (released 3.9.16)
+
+- [x] Part 10: Read `plans/PART10_PLAN.ai.md`
+  - Scenario: SCN-010, SCN-011
+  - Outcome: One hue per module on the glyph at rest, in both bars, in both themes, with the
+    active pill painted from the same value
+  - Evidence: PART-010 in `PLAN_EVIDENCE.md` — 7 hues declared once and read by three
+    surfaces, 195 tests, 38/38 mutations caught, the admin chip proved still white in the DOM
 
 ## Notes
 

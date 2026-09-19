@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 20, 2026 · `main` is live at 3.9.15 (the Lucide icon set — see P2)
+**Last updated:** September 20, 2026 · `main` is live at 3.9.16 (module identity + module colour — see P2)
 
 ---
 
@@ -88,6 +88,77 @@ node scripts/bump-version.mjs patch     # move the generation, the manifest and 
 `tests/version-sync.test.js` fails on drift, and `--check` also warns when the delivery set has changed while the release has not — the failure that produces no error anywhere at runtime.
 
 > **This change MUST move the release version together with the bytes it describes, in the same push.** Without it, `install` reuses the same generation, `activate` evicts nothing, and installed devices keep the old bytes forever while the repo says otherwise.
+
+---
+
+## 🟢 P2 — Module identity and module colour shipped in 3.9.16 (Sept 20, 2026)
+
+**Why it exists.** 3.9.15 was a faithful swap — each old glyph replaced by the matching
+Lucide drawing — and the report back was *"hindi kapansin pansin ang pagbabago sa mga
+icons"*. That reading is correct and it is not a fault in 3.9.15: measured by rendering all
+45 replaced sites side by side, **about 40 are the same drawing in a different pen** (the old
+ones were already Feather/Lucide lineage). Only seven changed shape. So this release changes
+what the icons *mean*, not how they are stroked.
+
+**The same report had a second cause, and it was the bigger one.** Measured before answering
+it: `git rev-list --left-right --count origin/main...HEAD` → `0 4`, live `version.json` **3.9.15**,
+live `sw.js` `gvsi-shell-v3.9.15`, live `styles.css` with **0** occurrences of `bottom-nav-icon`
+against local's, live `olt-module.js` byte-identical to local. The module-identity change had
+never been pushed, so what was being judged was the 1:1 swap. Then, in the DOM, every resting
+glyph measured `rgb(100, 116, 139)` at 22px — all seven the same colour, so shape was the only
+carrier of identity, and seven small outlines do not separate at that size.
+
+**One glyph per module, and one place that says so.** `MODULE_ICONS` in `index.html` maps
+every module to its drawing, and three surfaces read it: the desktop tab row, the mobile
+bottom bar, and the analytics **Module Snapshot** cards. The old set had NODE wearing the same
+plain `shield` as the login panel, and NAP/LCP/BACKBONE drawn from shapes shared with
+unrelated screens.
+
+| module | was | now |
+|---|---|---|
+| NAP | `monitor` | `radio-tower` |
+| LCP | `layers` | `boxes` — the enclosure that fans a fibre out |
+| OLT | `server` | `server` (unchanged) |
+| NODE | `shield` | `shield-check` |
+| BACKBONE | `link` | `cable` |
+| CHARTS / ABOUT / ADMIN | `chart-column` / `info` / `settings` | unchanged, and the ADMIN tab's ⚙️ emoji is now a real icon |
+
+**One colour per module.** Every module now carries its own hue on its glyph **at rest** — the
+state seven of the eight tabs are always in — so a module is found by colour instead of by
+reading seven outlines. NAP `#0d8a80` · LCP `#4338ca` · OLT `#c026d3` · NODE `#1d4ed8` ·
+BACKBONE `#b45309` · CHARTS `#e11d48` · ABOUT `#64748b`, with lighter values in dark mode
+because a hue that passes contrast on white disappears on `#0f172a`. Declared once on the
+button as `[data-module] { --module-hue: … }` and read by three surfaces: the resting glyph,
+the active tab's label and underline, and the active pill.
+
+The hues are **categorical, and deliberately not the `--badge-*` tokens**. Those already mean
+*how many are down* on the analytics cards, and a nav tab cannot make that claim — a
+permanently red OLT tab would read as "OLT is down right now" on every screen, forever.
+
+**The active tab.** A 10% wash across the whole button became a **pill behind the glyph**, and
+the pill now paints in the module's own hue rather than a fixed teal: two pseudo layers using
+`currentColor` at 14% and 32%, which is the only way to get hue-and-alpha without `color-mix()`
+(too new for the installed devices) or a hand-written rgba pair per module per theme. The old
+`--nav-pill` / `--nav-pill-ring` pair is gone — it was one fixed teal, the wrong hue under six
+of the seven tabs. Phone glyphs went 20 → 22px.
+
+**Verified.** **195 tests, 0 failed** (3 new in `tests/icons.test.js`), **38/38 mutations
+caught** — including the eleven that attack identity and colour specifically — and measured in
+the browser in both themes: every glyph resolves its own hue, the active pill is
+`rgb(13,138,128)` at `0.14` in light and `rgb(52,211,153)` at `0.14` in dark, and the bars and
+the cards still agree on a module's glyph (bar 360/360 at 360px, tab row 747/747 at 747px).
+
+**One defect the browser caught that no test would have.** The shared wrapper rule first used
+`color: var(--module-hue, var(--text-muted))`. The ADMIN tab row chip is white on a filled
+gradient via `color: white !important` on the *button* and carries no hue, so a literal
+fallback repainted its glyph `#64748b` on that gradient. The fallback is `inherit` now, the
+chip measures `rgb(255, 255, 255)` in the DOM, and a mutation pins it there.
+
+**Two things the measurements changed.** The first chip (26×22 with a 6px gap) pushed the tab
+row to 776px against a 747px window and made it scroll for the sake of padding; 22×22 fits.
+And the new test originally iterated `Object.keys(MODULE_ICONS)`, so a module **removed** from
+the map stopped being checked — the mutation proved it (dropping `about` survived). It now
+walks the union of the map's keys and the names found in the bars, so both directions fail.
 
 ---
 

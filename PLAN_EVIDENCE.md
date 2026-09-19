@@ -85,7 +85,69 @@ null and it contains no `<td>`, so the `data-label` / card-view rules cannot def
   therefore taken against the bytes on disk (a cache-busted stylesheet URL inside the
   page), and no release was made: `TODO.md` records the command.
 
-### PART-004 — the generated subset, wired into the shell and the precache
+## Phase 3 — module identity
+
+### PART-009 — one glyph per module, and an active tab that says so
+
+**How this phase started.** The Phase 2 migration preserved every drawing, because that is
+what "tumutugma" asked for — and the user's next message was "hindi kapansin pansin ang
+pagbabago sa mga icons". Both are true at once, and the honest answer was a measurement: I
+rendered all 45 replaced sites side by side at 48px and read them. Roughly 40 are the same
+drawing in a different pen: `activity`, `clock`, `eye`, `eye-off`, `arrow-right`, `moon`,
+`sun`, `info`, `settings`, `monitor`, `link`, `shield`, `wrench`, `ban`, `file-text` and
+`circle-check-big` are indistinguishable at a glance. The seven that DID change shape are the
+OLT tab (`server`), CHARTS and analytics (`chart-column`), LCP (`layers`), every export button
+(the arrow), the notification bell (filled to outline), the HIGH badge (filled to outline) and
+the update overlay (`rocket`).
+
+**Summary.** The glyph is no longer per-site but per-module, and there is one place that
+says what it is. `MODULE_ICONS` in `index.html` maps every module to its drawing, and three
+surfaces read it: the desktop tab row, the mobile bottom bar and the analytics snapshot cards.
+NAP is a `radio-tower`, LCP is `boxes` (the enclosure that fans a fibre out), OLT stays
+`server`, NODE is `shield-check`, BACKBONE is `cable`. NODE stopped borrowing the plain
+`shield` the login panel uses, which is the case that made the map worth having. Glyphs are
+22px in the phone bar (was 20), each sitting in a `.bottom-nav-icon` element so the active
+tab can carry a **pill** behind it instead of a 10% tint across the whole button — a tint that
+read as "pressed", not as "this is where you are". The desktop tab row got the same glyph in a
+22×22 chip, and its ADMIN gear **emoji** is now a placeholder like every other icon.
+
+**Files.** `index.html` (`MODULE_ICONS`, `moduleIconMarkup()`, both nav bars, the map comment)
+· `scripts/build-icons.mjs` (+`radio-tower`, `boxes`, `cable`; −`monitor`, `layers`, `link`) ·
+`lucide-icons.js` (regenerated, 30 icons, 12,911 bytes) · `analytics-module.js` (5 cards) ·
+`styles.css` (`.tab-icon`, `.bottom-nav-icon`, `--nav-pill` / `--nav-pill-ring` per theme,
+22px nav glyphs, `.admin-bottom-nav-btn svg`) · `tests/icons.test.js`.
+
+**Checks.** Full suite **194 passed, 0 failed** (`icons.test.js` 19 → 21).
+
+**Mutation check — 27 mutations, 27 caught, 0 missed, 0 broken anchors**, baseline re-verified
+green. The five new ones are the ones this phase could get wrong:
+
+```
+the bottom bar shows a different glyph than the map      caught
+the tab row shows a different glyph than the map         caught
+the map points a module at a glyph not in the table      caught
+a module is dropped from the map                         caught
+the map gains a module with no button anywhere           caught
+a card asks for something that is not a module           caught
+```
+
+**In the browser** (preview, service worker cleared): the two bars and the five module cards
+agree — the same innerHTML length for a module's glyph in the nav and in its card, which is
+what "one identity" means in bytes. Active pill measured `rgba(13,138,128,.13)` with
+`rgba(13,138,128,.3)` ring in light and `rgba(20,184,166,.16)` / `.34` in dark, so the two-teal
+token pair does what it was added for. Layout measured rather than eyeballed: the bottom bar
+is 360/360 with no overflow at 360px (7 buttons, 48–66px each), the tab row 747/747 at 747px.
+
+**Two things the measurements changed, both worth keeping.**
+
+- The first chip was 26×22 with a 6px gap, which pushed the tab row to 776px against a 747px
+  window — the row is `overflow-x: auto` with non-shrinking tabs, so it started scrolling for
+  the sake of padding. At 22×22 with a 5px gap it fits again.
+- The fake-data test for the bars first drove itself off `Object.keys(MODULE_ICONS)`, which
+  means a module **removed** from the map would simply stop being checked — the mutation
+  proves it: dropping `about` survived. It now iterates the union of the map's keys and the
+  names actually found in the two bars, so both directions fail.
+ — the generated subset, wired into the shell and the precache
 
 **Summary.** `scripts/build-icons.mjs` reads the icon modules out of the installed
 `lucide@1.47.0` and writes `lucide-icons.js`: 30 icons in **12,264 bytes**, against the
@@ -248,3 +310,82 @@ survives longest unnoticed. Fixed in `c030239`.
   before the bump (`delivery set changed, release did not`), which is the warning this repo
   added for exactly this mistake.
 - The guard stayed at **3.10.0** — no device is sent to the wipe overlay.
+
+## Phase 4 — module colour
+
+**The report that started it: "hindi kapansin pansin ang pagbabago sa mga icons".** It was a
+correct reading, and the useful part was finding out there were two causes rather than one.
+
+**Cause one, and the bigger one: none of it had been delivered.** Measured before answering:
+`git rev-list --left-right --count origin/main...HEAD` → `0 4`; live `version.json` **3.9.15**;
+live `sw.js` label `gvsi-shell-v3.9.15`; live `styles.css` **0** occurrences of
+`bottom-nav-icon` against local's; live `index.html` 17 `data-lucide` against local's 26;
+live `olt-module.js` 36,948 bytes, byte-identical to local. So the only files that differed
+were the two Part 9 touched — meaning the module-identity change existed only on this machine,
+and what was being judged was 3.9.15: the release where roughly 40 of 47 icons are the same
+drawing, deliberately, because "tumutugma" asked for exactly that.
+
+**Cause two: identity was carried by shape alone.** Read from the DOM before changing
+anything — every resting glyph, all seven, was `rgb(100, 116, 139)` at 22px. Seven small
+monochrome outlines do not separate at that size; the module you want cannot be found without
+reading them one by one.
+
+**What the phase does.** One hue per module, declared once as a token in both themes and read
+by three surfaces: the resting glyph, the active tab's label and underline, and the active
+pill. The last of those is why no per-module rgba value exists anywhere — the two pseudo
+layers paint `currentColor` at 14% and 32%, so the alpha lives in the CSS and the hue is
+declared once. That the hues are **categorical** is the design decision worth recording: the
+app already has green/yellow/red/purple/orange on the analytics cards, and they mean *how many
+are down*. A nav tab cannot make that claim — a permanently red OLT tab would read as "OLT is
+down right now" on every screen, forever — so the badges were deliberately not reused.
+
+**Files.** `styles.css` (`--module-*` × 7 in both themes, the `[data-module]` hue rules, the
+one wrapper rule, the pill's two pseudo layers, `--nav-pill`/`--nav-pill-ring` deleted) ·
+`index.html` (`data-module` on both bars, 7 + 7, and a comment on the map saying why the hue
+is not in it) · `tests/icons.test.js` (one new test).
+
+**Checks.** Full suite **195 passed, 0 failed** (`icons.test.js` 21 → 22).
+
+**Mutation check — 38 mutations, 38 caught, 0 missed, 0 broken anchors**, baseline re-verified
+green. Ten are new, and they are the ten ways this can rot:
+
+```
+a module gets no hue in dark mode                                   caught
+dark mode names a module something light mode does not              caught
+a module's hue rule points at another module's token                caught
+a module never names a hue at all                                   caught
+the hue reaches the tab row but not the bottom bar                  caught
+the active pill goes back to a fixed teal                           caught
+the fixed teal pill tokens come back                                caught
+a bottom bar button loses the key its colour is read from           caught
+a tab row button borrows another module's colour                    caught
+the admin chip takes a resting hue it must not have                 caught
+a literal fallback repaints the admin chip grey on its gradient     caught
+```
+
+**In the browser** (service worker cleared, both themes measured through `getComputedStyle`):
+the bottom bar resolves `--module-hue` per button — nap `#0d8a80`, lcp `#4338ca`, olt `#c026d3`,
+node `#1d4ed8`, backbone `#b45309`, analytics `#e11d48`, about `#64748b` — and every glyph
+paints in its own. Labels stay `rgb(100, 116, 139)` at rest, so the tab you are on is still
+the only one whose **label** moves. Active NAP: pill `rgb(13, 138, 128)` at `0.14` with
+`rgb(13, 138, 128)` ring, in dark `rgb(52, 211, 153)` at `0.14`. Magnified 2.2×, no two hues
+collide at nav size.
+
+**The one thing the browser caught that no test would have.** The first version of the shared
+wrapper rule used `color: var(--module-hue, var(--text-muted))`. The ADMIN tab row chip is white
+on a filled indigo/violet gradient via `color: white !important` on the *button*, and carries no
+hue — so a literal fallback repainted its glyph `#64748b` on that gradient. The fallback is
+`inherit` now, the admin chip measures **`rgb(255, 255, 255)`** in the DOM, and a mutation pins
+it there. Its class name was never the problem; the fallback was, which is exactly the kind of
+defect that ships looking deliberate.
+
+**Two documentation defects found while doing this, both mine, both fixed.** `MASTER_PLAN.md`
+Phase 3 cited `SCN-007`, `SCN-008` and `SCN-009` while the scenario list stopped at SCN-006 — a
+plan naming scenarios it never states. They are defined now, together with SCN-010 and SCN-011
+for this phase.
+
+**Released as 3.9.16 rather than as a new version.** The four commits holding Part 9 and the
+release label had not been pushed, so folding the colour in costs nothing and avoids two
+What's New entries describing one user-visible change. The rewrite was local-only, taken after
+`git branch -f backup/3.9.16-icons-identity`, and every stage was re-verified in a clone before
+pushing.
