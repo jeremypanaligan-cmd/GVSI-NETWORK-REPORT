@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.16">
+  <link rel="stylesheet" href="styles.css?v=3.9.17">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -429,6 +429,13 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.17 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>All Clear, And Nothing To Do (Improvement):</strong> The card that appears when no OLT is down used to offer a <em>View All Healthy OLTs</em> button — pointing at the same list the <em>UP</em> card and the <em>UP</em> filter already open, from the strip right above it. On the one screen with nothing wrong to report, the last thing it should do is hand you a chore. The button is gone, and the fleet is still one tap away.</li>
+                  <li><strong>A Steady Signal, Not A Tick (Improvement):</strong> The all-clear mark was a tick inside a circle, drawn inside the card's own circle — two rings fighting each other. It is now the steady signal line, the same one the login screen uses for real-time monitoring, and it pulses slowly so the card reads as <em>being watched, and fine</em> rather than <em>checked once</em>. It is the only thing moving on that screen, so it is deliberately unhurried. If your device asks for reduced motion, the ring stays still — and it never pulses on the <em>no data arrived</em> card, because a heartbeat over missing data would suggest something is being watched when nothing is.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.16 — What's New:</strong></p>
@@ -1452,7 +1459,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.16').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.17').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
