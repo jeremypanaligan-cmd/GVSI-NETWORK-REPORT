@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 20, 2026 · `main` is live at 3.9.16 (module identity + module colour — see P2)
+**Last updated:** September 20, 2026 · `main` is live at 3.9.17 (module identity + module colour — see P2; OLT all-clear rework — see P3)
 
 ---
 
@@ -88,6 +88,36 @@ node scripts/bump-version.mjs patch     # move the generation, the manifest and 
 `tests/version-sync.test.js` fails on drift, and `--check` also warns when the delivery set has changed while the release has not — the failure that produces no error anywhere at runtime.
 
 > **This change MUST move the release version together with the bytes it describes, in the same push.** Without it, `install` reuses the same generation, `activate` evicts nothing, and installed devices keep the old bytes forever while the repo says otherwise.
+
+---
+
+## 🟢 P3 — The OLT all-clear card, reworked in 3.9.17 (Sept 20, 2026)
+
+**What changed.** Three things, all on the card the DOWN filter shows when nothing is down:
+
+- **The "View All Healthy OLTs" button is gone.** It duplicated the UP card and the UP filter,
+  which open the same list from controls that sit above it and always will. On the one screen
+  with nothing to check, the last thing it should do is hand over a chore. `.olt-empty-actions`
+  went with it rather than sitting there as dead CSS, and a test fails if the button returns.
+- **The mark is `activity`, not `circle-check-big`.** The tick was itself a circle, drawn inside
+  the card's own 64px circle — two rings reading as one smudge. `activity` is the steady signal
+  line, and already the glyph the login screen uses for real-time monitoring.
+- **It pulses.** A `::after` ring painting `currentColor`, 2.6s, `scale(1)` → `1.5` as opacity
+  falls `0.55` → `0` — the app's existing pulse vocabulary (`statusPingGreen`, `nodePingRing`)
+  at this circle's size. Slow on purpose: it is the only thing moving on a good-news screen.
+
+**Two refusals are built in.** `prefers-reduced-motion: reduce` switches the ring **off**, not
+slower — a ring that still fades in and out is still motion. And `is-missing` never pulses: a
+beat over "no rows arrived" would suggest something is being watched when nothing is.
+
+**Verified.** **196 tests, 0 failed**, **18/18 mutations caught**, and the pulse **sampled three
+times in the browser** rather than assumed — moving in both themes, `is-missing` proved still.
+
+**A test weakness the mutations caught in my own work.** The first assertion matched
+`@keyframes oltEmptyPulse` as a substring, which still passes on
+`@keyframes oltEmptyPulseRenamed` — the one rename that kills the pulse while the card looks
+correct. The test now reads the name out of the `animation:` declaration and requires a
+`@keyframes` block with that name.
 
 ---
 

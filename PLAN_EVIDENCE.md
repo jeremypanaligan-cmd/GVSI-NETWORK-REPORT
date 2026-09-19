@@ -389,3 +389,59 @@ release label had not been pushed, so folding the colour in costs nothing and av
 What's New entries describing one user-visible change. The rewrite was local-only, taken after
 `git branch -f backup/3.9.16-icons-identity`, and every stage was re-verified in a clone before
 pushing.
+
+## Phase 5 — the OLT all-clear, reworked
+
+### PART-011 — no button, and a pulse
+
+**Summary.** The zero state's all-clear card carried a **View All Healthy OLTs** button that
+duplicated the UP card and the UP filter — both open the same list, from controls that are on
+screen above it and always will be. It is gone, so the card now reports without asking the
+operator to go and check. The mark changed from `circle-check-big` to `activity`, and it pulses.
+
+**Two reasons for the glyph, and the first is the one that mattered.** The tick was *itself a
+circle*, drawn inside the card's own 64px circle, so the two rings read as one smudged ring — a
+circle glyph inside a circle chip is a shape collision before it is a taste question. `activity`
+is the steady signal line, and it is already the glyph the login screen uses for real-time
+monitoring, which is what this card reports on. It was already in the table, so nothing needed
+regenerating.
+
+**The pulse reuses what the app already says.** `statusPingGreen` (the table's status dots) and
+`nodePingRing` (the node cards) are the same idea, so this is that ring at this circle's size: a
+`::after` painting `currentColor`, 2.6s, `scale(1)` → `1.5` while opacity falls `0.55` → `0`.
+Deliberately slow — it is the only thing moving on a screen whose whole message is good news.
+Two refusals are built in: `prefers-reduced-motion: reduce` **switches it off** rather than
+slowing it (a ring that still fades in and out is still motion), and `is-missing` never pulses —
+a beat over "no rows arrived" would suggest something is being watched when nothing is.
+
+**Files.** `olt-module.js` (`oltEmptyStateMarkup_`) · `styles.css` (the pulse on
+`.olt-empty-icon::after`, its keyframes, the reduce block, the `is-missing` opt-out, `position:
+relative` on the circle, and the now-dead `.olt-empty-actions` rule removed) ·
+`tests/olt-empty-state.test.js` (+1 test).
+
+**Checks.** Full suite **196 passed, 0 failed** (the zero-state suite 9 → 10). **Mutation check
+18/18 caught, 0 missed, 0 unproven** — the 12 pre-existing ones, five for the stylesheet, and
+the button's return.
+
+**A test weakness the mutations caught, in my own work.** The first assertion was
+`assert.ok(/@keyframes oltEmptyPulse/.test(css))` — a **substring** test, which passes on
+`@keyframes oltEmptyPulseRenamed`: the exact rename that kills the pulse and leaves the card
+looking correct. The test now reads the name out of the `animation:` declaration and requires a
+`@keyframes` block with that name, so the rename and the dangling reference both fail.
+
+**The mutation harness was stale, and said so.** It did not stage `lucide-icons.js`, which the
+suite has loaded since Phase 2, so every run was red at the baseline — a false red, which is the
+one thing that trains a reader to ignore red. Fixed before any of its verdicts were trusted.
+
+**In the browser**, from the delivered bytes: `activity`'s path, **0 buttons**, `healthy-olt-cta`
+absent, `loadHealthyOltList` absent, and the badges still `457 UP / 461 TRACKED / 0 DOWN`. The
+pulse was **sampled three times rather than assumed** — `animationName oltEmptyPulse`, `2.6s`,
+transform and opacity moving at every sample, colour `rgb(5,150,105)` in light and
+`rgb(52,211,153)` in dark. `is-missing`: `animationName none`, `opacity 0`, **not moving**.
+
+**Two limits, stated rather than glossed.** The preview viewport is 566px, so both screenshots
+are the phone layout (54px box, 26px glyph); desktop is the base 64/32 rule, read from the
+stylesheet and not measured. And `prefers-reduced-motion` is verified by the test and the CSS,
+not by emulating the media feature in a browser — the tooling has no switch for it.
+
+**Released as 3.9.17.**

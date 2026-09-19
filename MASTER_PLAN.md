@@ -56,6 +56,15 @@ Outcome: The hues are categorical and never read as status: a module's colour at
 the same whether it is healthy or failing, and the admin chip keeps the treatment its own
 filled gradient needs.
 
+### SCN-012: The all-clear card asks nothing of the operator
+Outcome: On a screen whose whole message is "nothing is wrong", the card reports and
+stops. It does not hand over a button that duplicates a control already on screen above it.
+
+### SCN-013: Good news is legible, and never motion a preference refused
+Outcome: The all-clear reads as a steady signal being watched rather than a box that was
+ticked once; the pulse is the slowest thing on the page, stops entirely for
+`prefers-reduced-motion`, and never beats over missing data.
+
 ## Phase 1: OLT zero state
 
 - [x] Part 1: Read `plans/PART1_PLAN.ai.md`
@@ -139,6 +148,20 @@ one was that none of it had been delivered yet.
     active pill painted from the same value
   - Evidence: PART-010 in `PLAN_EVIDENCE.md` — 7 hues declared once and read by three
     surfaces, 195 tests, 38/38 mutations caught, the admin chip proved still white in the DOM
+
+## Phase 5: the OLT all-clear, reworked — COMPLETE (released 3.9.17)
+
+**Why this phase exists.** The card PART-001 and PART-002 built was correct but over-equipped:
+it offered "View All Healthy OLTs" on the one screen that has nothing to check, next to two
+controls that already open the same list, and its mark was a tick inside a circle drawn inside
+the card's own circle.
+
+- [x] Part 11: Read `plans/PART11_PLAN.ai.md`
+  - Scenario: SCN-012, SCN-013
+  - Outcome: The card reports without a button, with a steady-signal glyph and a slow pulse
+    that yields to `prefers-reduced-motion` and refuses to beat over missing data
+  - Evidence: PART-011 in `PLAN_EVIDENCE.md` — 196 tests, 18/18 mutations caught, the pulse
+    sampled live in both themes, `is-missing` proved still
 
 ## Notes
 
