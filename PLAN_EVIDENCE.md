@@ -223,6 +223,24 @@ glyphs (monitor / layers / server / shield / link / chart-column / info / settin
 sort chevrons in all three states — currentColor measured at `rgb(255,255,255)` in the dark
 theme and `rgb(13,138,128)` in the teal header in light.
 
+**What the clone found, after every commit was already written.** The suite was run in a
+`git clone` of these commits, not in the working tree that produced them — and two checks
+that passed here failed there. Both were mine, and neither would have shown up any other
+way:
+
+- `git` stores `lucide-icons.js` as LF and, under `core.autocrlf`, checks it out as CRLF,
+  so a byte comparison reported a file that had **just been generated** as out of date —
+  in the test and in `icons:check` alike. Newlines are now normalized before comparing;
+  the generator still writes LF.
+- `node_modules` is gitignored on purpose, because the generated file is committed and a
+  fresh clone runs without an install — but the drift test read the missing package as a
+  generator failure. It now reports which check it could not run and why, and the 18 that
+  need only the tree still run, including every call-site scan. Verified both ways in the
+  clone: 19/19 under CRLF with the package present, 18 with one check reported skipped.
+
+Neither is a defect in the app; both are defects in the guard, which is the category that
+survives longest unnoticed. Fixed in `c030239`.
+
 **Notes.**
 
 - The release had to move the label: `lucide-icons.js` is a file no installed device holds,
