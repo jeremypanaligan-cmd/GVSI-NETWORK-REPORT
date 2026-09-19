@@ -1,0 +1,10 @@
+{
+  "//": "This is a static PWA with no build step. This file exists only so the icon generator's dependency is declared: scripts/build-icons.mjs reads node_modules/lucide and writes lucide-icons.js, which is committed.",
+  "scripts": {
+    "icons:build": "node scripts/build-icons.mjs",
+    "icons:check": "node scripts/build-icons.mjs --check"
+  },
+  "dependencies": {
+    "lucide": "^1.47.0"
+  }
+}

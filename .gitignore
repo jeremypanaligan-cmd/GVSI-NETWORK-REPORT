@@ -34,6 +34,12 @@ _inline_check.js
 serve.log
 *.log
 
+# ==================== NODE ====================
+# lucide is a BUILD-TIME dependency: scripts/build-icons.mjs reads it and writes the
+# committed lucide-icons.js. Nothing at runtime imports from here, so the tree stays
+# out of git — 3696 icon files would otherwise be one `git add -A` away.
+node_modules/
+
 # ==================== PYTHON ====================
 __pycache__/
 *.pyc

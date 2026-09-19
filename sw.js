@@ -16,6 +16,7 @@
 const STATIC_CACHE = 'gvsi-shell-v3.9.14';
 const STATIC_ASSETS = [
   './index.html',
+  './lucide-icons.js',
   './styles.css',
   './manifest.json',
   './icon-192.png',
