@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.14">
+  <link rel="stylesheet" href="styles.css?v=3.9.15">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -425,6 +425,14 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.15 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>One Icon Set, Everywhere (New):</strong> The bottom navigation, the export buttons, the header, the login screen and the empty-state cards each carried their own artwork — some filled, some outlined, in sizes that only looked right on the one screen they were written for. They are all drawn from a single modern set now, at one stroke weight, so the app reads as one thing instead of six. The login panel keeps its own hand-drawn GALLOPVISION mark, because that one is the brand and not an interface glyph.</li>
+                  <li><strong>The Column Sorters Speak Up (New):</strong> A sortable column header used to mark itself with two tiny text characters, and which direction you had sorted it was easy to miss. Each header now shows a proper sort icon — neutral while unsorted, a clear single arrow once you have sorted — and it takes the colour of the header it sits in, so it stays legible on the OLT, NAP, Node and Backbone tables in both themes.</li>
+                  <li><strong>The Icons Weigh Almost Nothing (Performance):</strong> The set they come from is around 436 KB, and an app that has to work offline hands those files to every device on every update. Only the 30 glyphs the app actually draws are shipped — about 12 KB — so the download, the install and the offline copy all stay small. A name that ever goes missing costs that one icon and never the screen around it.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.14 — What's New:</strong></p>
@@ -1401,7 +1409,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.14').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.15').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
