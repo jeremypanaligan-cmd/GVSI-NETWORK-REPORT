@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.17">
+  <link rel="stylesheet" href="styles.css?v=3.9.18">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -429,6 +429,12 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.18 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>It Says What It Means (Improvement):</strong> The card that appears when no OLT is down now reads <em>All OLT Systems Operational</em>, and under it, <em>All tracked OLTs are functional. Incident alerts will automatically render here in real time.</em> The old wording described the panel — that it fills itself once something drops. The new wording describes the fleet you are looking at, and says where an alert will appear rather than that the card will repaint. The numbers under the sentence are still the fleet's own counts, so the card and the tiles above it cannot disagree.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.17 — What's New:</strong></p>
@@ -1459,7 +1465,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.17').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.18').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
