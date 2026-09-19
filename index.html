@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.13">
+  <link rel="stylesheet" href="styles.css?v=3.9.14">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -423,6 +423,14 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.14 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>"Nothing Is Down" Now Says So (New):</strong> The OLT tab opens on DOWN, and the best news it could deliver was an empty seven-column table with a grey sentence under the headers. When no OLT is down it now shows a card that says it plainly, with the fleet's own numbers — reporting up, tracked, and zero down — and a way straight into the Healthy Fleet list. Those numbers come from the same counts the cards above it show, so the two can never disagree.</li>
+                  <li><strong>One Card, Four Different Facts (Fix):</strong> The other filters — Low Power, Uplink Down, Degradation — now name themselves when they match nothing, instead of all of them sharing one sentence, so "this filter is empty" no longer looks exactly like "the network is fine". And if the server returns no rows at all, the card says <em>that</em> rather than claiming a healthy fleet, because missing data is not good news.</li>
+                  <li><strong>The Age Keeps Ticking, The Exports Go Quiet (Fix):</strong> On that empty view the refresh chip used to freeze, because the screen returned before the code that updates it ever ran — so the one screen most in need of an honest timestamp was the one showing a stale one. The chip now keeps its real age there, and CSV and PDF are muted while there is nothing to write, so a download can no longer hand back a file with a single header line in it.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.13 — What's New:</strong></p>
@@ -1375,7 +1383,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.13').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.14').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an

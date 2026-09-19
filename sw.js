@@ -13,7 +13,7 @@
    UNVERSIONED names the page requests (`admin-module.js`, not `admin-module.js?v=...`),
    so for those files `install` re-fetching every entry and `activate` deleting every
    other cache is the whole delivery mechanism. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.13';
+const STATIC_CACHE = 'gvsi-shell-v3.9.14';
 const STATIC_ASSETS = [
   './index.html',
   './styles.css',
