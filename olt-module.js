@@ -542,6 +542,202 @@ function getCauseColor(cause) {
   return { color: 'var(--text-muted)', bg: 'transparent' };
 }
 
+/* ── OLT ZERO STATE ──
+
+   The DOWN filter is this tab's DEFAULT view, and "nothing is down" is its best news —
+   but it used to render as a bare <td> reading "No OLTs found under status: DOWN" inside
+   a seven-column table with no rows, styled by an inline attribute instead of the theme.
+
+   Two things it deliberately does NOT do:
+
+   - It does not keep an empty table on screen. `@media (max-width: 340px)` turns every
+     <tr> into a card and gives every <td> a ::before label taken from `data-label`, so an
+     empty state living inside a cell inherits that shape on a phone. The table leaves the
+     screen instead; the stat cards, the donut and the filter strip stay exactly where they
+     are, because they are what still reports 457/461 while the list below is blank.
+   - It does not write into tbody. The live region is a sibling of `.table-wrapper` inside
+     #oltIssuesTableCard, created once and repainted after, so a re-render cannot replace
+     a node that a screen reader is watching.
+
+   The copy is per filter, and the "no data at all" case is worded apart from the healthy
+   one on purpose: `filtered.length === 0` on ALL means no rows ARRIVED, and calling that
+   a healthy fleet would be a claim the payload does not support. */
+
+var OLT_EMPTY_COPY = {
+  'DOWN': {
+    title: 'No Down OLT Right Now',
+    lede: 'Every tracked OLT is reporting up. This panel fills itself the moment one goes down.',
+    healthy: true
+  },
+  /* The three partial filters name themselves, because "nothing matches" and "nothing is
+     wrong" look alike on screen otherwise — and DOWN is this tab's default view, so an
+     operator who has just tapped LOW POWER has to be told it is the FILTER with no rows,
+     not the network with no problem. */
+  'LOW POWER': {
+    title: 'No Low Power OLTs',
+    lede: 'Nothing in this snapshot matches the LOW POWER filter.'
+  },
+  'UPLINK DOWN': {
+    title: 'No Uplink Down OLTs',
+    lede: 'Nothing in this snapshot matches the UPLINK DOWN filter.'
+  },
+  'DEGRADATION': {
+    title: 'No Degraded OLTs',
+    lede: 'Nothing in this snapshot matches the DEGRADATION filter.'
+  },
+  /* ALL empty is a DIFFERENT fact from DOWN empty: it means no rows ARRIVED at all. Saying
+     "no OLT is down" here would turn a missing snapshot into good news, so it says what
+     happened and points at the one control that can fix it. */
+  'ALL': {
+    title: 'No OLT data in this snapshot',
+    lede: 'The server returned no OLT rows. Use REFRESH to build a new snapshot.',
+    missing: true
+  }
+};
+
+function oltEmptyCopy_(filter) {
+  return OLT_EMPTY_COPY[filter] || {
+    title: 'Nothing to list',
+    lede: 'No OLT in this snapshot matches the current filter.'
+  };
+}
+
+/* The same numbers the cards above show. `oltMeta` wins because that is what the cards
+   read: a zero state that disagreed with the tiles directly above it would be worse than
+   no zero state at all. Legacy shape=1 carries no meta, so the count falls back to the
+   rows, using the same rules processAndRenderOlt uses. */
+function oltFleetCounts_() {
+  if (oltMeta) {
+    return {
+      up: Number(oltMeta.up) || 0,
+      total: Number(oltMeta.total) || 0,
+      down: Number(oltMeta.down) || 0
+    };
+  }
+  var up = 0, down = 0;
+  (rawOltData || []).forEach(function(item) {
+    var status = (item.S || item.STATUS || '').toString().trim().toUpperCase();
+    if (status === 'DOWN') { down++; return; }
+    if (status.includes('LOW POWER') || status.includes('UPLINK DOWN') || status.includes('DEGRADATION')) return;
+    up++;
+  });
+  return { up: up, total: (rawOltData || []).length, down: down };
+}
+
+function oltEmptyStateMarkup_(filter) {
+  const copy = oltEmptyCopy_(filter);
+  const counts = oltFleetCounts_();
+  /* Only the DOWN case is a health claim, so only it gets the numbers and the way through
+     to the fleet. A missing snapshot also gets a different glyph: a green check drawn over
+     "no rows arrived" would be the same lie in a nicer card. */
+  const icon = copy.missing
+    ? '<circle cx="12" cy="12" r="9.5"/><path d="M12 7.8v5.4"/><path d="M12 16.6h.01"/>'
+    : '<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><polyline points="22 4 12 14.1 9 11.1"/>';
+  const metrics = copy.healthy
+    ? `<div class="olt-empty-metrics">
+        <span class="badge badge-green">${counts.up.toLocaleString()} UP</span>
+        <span class="badge badge-gray">${counts.total.toLocaleString()} TRACKED</span>
+        <span class="badge badge-red">${counts.down.toLocaleString()} DOWN</span>
+      </div>`
+    : '';
+  const actions = copy.healthy
+    ? `<div class="olt-empty-actions">
+        <button class="healthy-olt-cta" type="button" onclick="loadHealthyOltList()">View All Healthy OLTs</button>
+      </div>`
+    : '';
+
+  /* role=status + aria-live sit on the container and the icon is aria-hidden: a filter tap
+     that yields nothing is a change worth hearing explained, and the icon is decoration —
+     the sentence under it carries the meaning. */
+  return `<div class="olt-empty-state${copy.missing ? ' is-missing' : ''}" role="status" aria-live="polite">
+    <div class="olt-empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg></div>
+    <h3 class="olt-empty-title">${copy.title}</h3>
+    <p class="olt-empty-desc">${copy.lede}</p>
+    ${metrics}${actions}
+  </div>`;
+}
+
+/* One host element, created on first use and repainted after — the same shape as the
+   export toolbar below, and for the same reason: a fresh node per render would replace
+   the live region rather than update it. */
+function oltEmptyStateHost_(card) {
+  if (!card) return null;
+  let host = card.querySelector('.olt-empty-state-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.className = 'olt-empty-state-host';
+    card.appendChild(host);
+  }
+  return host;
+}
+
+function showOltEmptyState_(filter) {
+  const card = document.getElementById('oltIssuesTableCard');
+  const wrapper = card ? card.querySelector('.table-wrapper') : null;
+  const tbody = document.getElementById('oltTableBody');
+  const host = oltEmptyStateHost_(card);
+  if (tbody) tbody.innerHTML = '';
+  if (wrapper) wrapper.hidden = true;
+  if (host) {
+    host.innerHTML = oltEmptyStateMarkup_(filter);
+    host.hidden = false;
+  }
+}
+
+function hideOltEmptyState_() {
+  const card = document.getElementById('oltIssuesTableCard');
+  const wrapper = card ? card.querySelector('.table-wrapper') : null;
+  const host = card ? card.querySelector('.olt-empty-state-host') : null;
+  if (wrapper) wrapper.hidden = false;
+  if (host) { host.hidden = true; host.innerHTML = ''; }
+}
+
+/* The export toolbar is built here so the zero state can reach it: with no rows the CSV
+   would be a header line and the PDF would be this card. The healthy fleet mutes its own
+   button the same way, so the app keeps one answer to "what happens when there is nothing
+   to export". */
+function setupOltExportToolbar_() {
+  const oltTab = document.getElementById('tab-olt');
+  if (!oltTab) return null;
+  let toolbar = oltTab.querySelector('.export-toolbar');
+  if (toolbar) return toolbar;
+
+  toolbar = document.createElement('div');
+  toolbar.className = 'export-toolbar';
+  toolbar.innerHTML = `
+      <button class="export-btn" onclick="exportTableToCSV('oltTableBody', 'OLT_Report')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+      <button class="export-btn" onclick="exportTabToPDF('tab-olt', 'OLT_Report')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Export PDF
+      </button>
+    `;
+  const strip = oltTab.querySelector('.filter-toolbar');
+  if (strip) strip.parentNode.insertBefore(toolbar, strip.nextSibling);
+  return toolbar;
+}
+
+function setOltExportEnabled_(enabled) {
+  const toolbar = document.querySelector('#tab-olt .export-toolbar');
+  if (!toolbar) return;
+  const reason = 'Nothing to export — no OLT matches the ' + currentOltFilter + ' filter';
+  const buttons = toolbar.querySelectorAll('button.export-btn');
+  for (let i = 0; i < buttons.length; i++) {
+    const btn = buttons[i];
+    if (enabled) {
+      btn.disabled = false;
+      btn.removeAttribute('title');
+      btn.removeAttribute('aria-label');
+    } else {
+      btn.disabled = true;
+      btn.title = reason;
+      btn.setAttribute('aria-label', btn.textContent.replace(/\s+/g, ' ').trim() + ' — ' + reason);
+    }
+  }
+}
+
 function renderOltTable() {
   const tbody = document.getElementById('oltTableBody');
   if (!tbody) return;
@@ -566,10 +762,22 @@ function renderOltTable() {
     return true;
   });
 
+  /* The export toolbar and the freshness chip are duties of THIS FUNCTION, not of its
+     table. Both used to be its last lines — after the early return for an empty result —
+     so the one screen whose honesty matters most, "nothing is down", was the screen whose
+     "Data as of" age never moved and whose export toolbar was never built. They moved
+     above the branch rather than into both arms of it: two copies of a decision is how an
+     empty path and a filled path drift apart. */
+  setupOltExportToolbar_();
+  setOltExportEnabled_(filtered.length !== 0);
+  if (window.fetchGate) fetchGate.refreshTicker('olt');
+
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No OLTs found under status: <strong>${currentOltFilter}</strong></td></tr>`;
+    showOltEmptyState_(currentOltFilter);
     return;
   }
+
+  hideOltEmptyState_();
 
   filtered.forEach(item => {
     const _s = typeof sanitizeHTML === 'function' ? sanitizeHTML : (v => v);
@@ -617,27 +825,6 @@ function renderOltTable() {
   </tr>`;
 
   tbody.innerHTML = tableHtml;
-
-  // Add export toolbar
-  const oltTab = document.getElementById('tab-olt');
-  if (oltTab && !oltTab.querySelector('.export-toolbar')) {
-    const toolbar = document.createElement('div');
-    toolbar.className = 'export-toolbar';
-    toolbar.innerHTML = `
-      <button class="export-btn" onclick="exportTableToCSV('oltTableBody', 'OLT_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Export CSV
-      </button>
-      <button class="export-btn" onclick="exportTabToPDF('tab-olt', 'OLT_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Export PDF
-      </button>
-    `;
-    const tableCard = oltTab.querySelector('.filter-toolbar');
-    if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard.nextSibling);
-  }
-
-  if (window.fetchGate) fetchGate.refreshTicker('olt');
 }
 
 function openOltModal(name, province, municipality, status, ticketNo, downtimeCause, aging, remarks, clientsAffected) {

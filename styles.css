@@ -3246,6 +3246,98 @@ body.dark-mode .healthy-olt-cta { background: #047857; box-shadow: 0 2px 4px rgb
   .healthy-olt-pagination > div { width: 100%; justify-content: space-between; }
 }
 
+/* ── OLT ZERO STATE ──
+   DOWN is this tab's default filter, so "nothing is down" is a screen an operator sees
+   often — and it is good news. It should not look like a table that failed to load. This
+   replaces that seven-column table (there is nothing to put in seven columns) and borrows
+   the app's existing vocabulary: the .badge tokens for the numbers, .healthy-olt-cta for
+   the single action, and body.dark-mode for the glass every other card wears.
+
+   It lives inside #oltIssuesTableCard, whose border and background are already the frame,
+   so nothing here draws a second one. */
+.olt-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 44px 24px;
+}
+
+/* Stated per mode rather than borrowed from --badge-green-text: that token is a TEXT
+   colour, and as a fill on this circle it would be a 1.5:1 wash in dark mode. Same
+   reasoning as .healthy-olt-cta's fill, and the same two greens .node-empty-* uses, so
+   "all clear" is one colour in this app rather than two. */
+.olt-empty-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1.5px solid rgba(16, 185, 129, 0.3);
+  color: #059669;
+}
+
+.olt-empty-icon svg { width: 32px; height: 32px; }
+
+body.dark-mode .olt-empty-icon {
+  color: #34d399;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.18);
+}
+
+.olt-empty-title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #059669;
+}
+
+body.dark-mode .olt-empty-title { color: #34d399; }
+
+.olt-empty-desc {
+  max-width: 46ch;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.olt-empty-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.olt-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* The "no data arrived" variant must NOT wear the all-clear green: the numbers are
+   missing, not healthy. Neutral glass, and the glyph is an alert rather than a check. */
+.olt-empty-state.is-missing .olt-empty-icon {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.olt-empty-state.is-missing .olt-empty-title { color: var(--dark-charcoal); }
+
+@media (max-width: 640px) {
+  .olt-empty-state { padding: 30px 16px; }
+  .olt-empty-icon { width: 54px; height: 54px; }
+  .olt-empty-icon svg { width: 26px; height: 26px; }
+  .olt-empty-title { font-size: 15px; }
+}
+
 /* ================================================================
    DARK MODE SUPPORT
    ================================================================ */

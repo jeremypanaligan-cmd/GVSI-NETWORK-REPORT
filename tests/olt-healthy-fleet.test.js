@@ -236,17 +236,31 @@ function makeEl(id, classes) {
   const set = new Set(classes ? classes.split(' ') : []);
   const el = {
     id: id,
+    className: classes || '',
     hidden: false,
     disabled: false,
     title: '',
     innerHTML: '',
-    textContent: '',
+    textContent: 'Export CSV',
     offsetLeft: 0,
     offsetWidth: 0,
     scrollLeft: 0,
     clientWidth: 0,
     attrs: {},
     setAttribute: function (name, value) { this.attrs[name] = value; },
+    removeAttribute: function (name) { delete this.attrs[name]; },
+    /* The OLT module mutes the export buttons when the table has no rows, so the stub has
+       to answer the same two queries a real toolbar answers. */
+    children: [],
+    appendChild: function (child) { this.children.push(child); return child; },
+    querySelectorAll: function (sel) {
+      const cls = sel.indexOf('.') === 0 ? sel.slice(1) : sel;
+      return this.children.filter((c) => (c.className || '').indexOf(cls) !== -1);
+    },
+    querySelector: function (sel) {
+      const hits = this.querySelectorAll(sel);
+      return hits.length ? hits[0] : null;
+    },
     classList: {
       add: (c) => set.add(c),
       remove: (c) => set.delete(c),
@@ -271,6 +285,8 @@ function chromeSandbox() {
   };
   const strip = makeEl('strip');
   const exportBar = makeEl('exportBar', 'export-toolbar');
+  exportBar.appendChild(makeEl('exportCsv', 'export-btn'));
+  exportBar.appendChild(makeEl('exportPdf', 'export-btn'));
   const filterBtns = [nodes.btnFilterUp, nodes.btnFilterDown];
 
   const s = {
@@ -288,7 +304,9 @@ function chromeSandbox() {
         if (sel.indexOf('export-toolbar') !== -1) return exportBar;
         return null;
       },
-      querySelectorAll: (sel) => (sel.indexOf('filter-btn') !== -1 ? filterBtns : [])
+      querySelectorAll: (sel) => (sel.indexOf('filter-btn') !== -1 ? filterBtns : []),
+      /* The zero state creates its host element, so this stub has to be able to make one. */
+      createElement: () => makeEl(null, '')
     }
   };
   vm.createContext(s);
