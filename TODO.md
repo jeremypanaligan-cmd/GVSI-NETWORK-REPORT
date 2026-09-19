@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 18, 2026 · working tree at v3.9.12 (uncommitted; `main` is live at 3.9.10)
+**Last updated:** September 19, 2026 · `main` is live at 3.9.14 (the OLT zero state — see P2)
 
 ---
 
@@ -88,6 +88,39 @@ node scripts/bump-version.mjs patch     # move the generation, the manifest and 
 `tests/version-sync.test.js` fails on drift, and `--check` also warns when the delivery set has changed while the release has not — the failure that produces no error anywhere at runtime.
 
 > **This change MUST move the release version together with the bytes it describes, in the same push.** Without it, `install` reuses the same generation, `activate` evicts nothing, and installed devices keep the old bytes forever while the repo says otherwise.
+
+---
+
+## 🟢 P2 — The OLT zero state shipped in 3.9.14 (Sept 19, 2026)
+
+**Built, tested and released.** When nothing is DOWN the OLT tab renders a themed card instead of
+an empty seven-column table — that path was the tab's default view, and it used to be a bare
+inline-styled `<td>` plus an early `return` that skipped the freshness chip and the export
+toolbar. One component now covers every filter that matches nothing, and the "no rows arrived at
+all" case says so instead of claiming a healthy fleet. 173 tests pass, 9 of them new in
+`tests/olt-empty-state.test.js`, and all 11 mutations of the change are caught by them.
+
+**The delivery rule, measured.** `styles.css` and `olt-module.js` are **unversioned precache
+entries**, so the label has to move with the bytes. In the preview, on a plain reload of the
+unpublished tree:
+
+```
+styles.css?v=3.9.13   transferSize: 0   454 rules, no .olt-empty-* selectors   <- what the page got
+same file, cache:reload               466 rules, .olt-empty-* present         <- what is on disk
+```
+
+The URL the page actually requests is the one the service worker answers cache-first, while the
+*unversioned* precache entry is the one `install` refreshes — so nothing evicts the former while
+the label stands still. That is the rule `sw.js` states in its own header, observed rather than
+assumed, and it is why the feature bytes alone would have reached nobody.
+
+```bash
+node scripts/bump-version.mjs --check   # exit 1 if any label disagrees, plus a drift warning
+node scripts/bump-version.mjs patch     # generation, manifest and every ?v= token, in one commit
+```
+
+3.9.14 moved all six labels; the guard stayed at 3.10.0. For working on the tree between
+releases, `.freebuff/run.md` records how to see unpublished bytes locally.
 
 ---
 
