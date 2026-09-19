@@ -565,8 +565,12 @@ function getCauseColor(cause) {
 
 var OLT_EMPTY_COPY = {
   'DOWN': {
-    title: 'No Down OLT Right Now',
-    lede: 'Every tracked OLT is reporting up. This panel fills itself the moment one goes down.',
+    /* "Operational" is this filter's claim, and the badges below scope it: the DOWN view is
+       empty, and the fleet's own numbers sit right there under the sentence. Units sitting in
+       LOW POWER / UPLINK DOWN / DEGRADATION are reported by the donut and by their own
+       filters, which is why the card carries counts rather than only prose. */
+    title: 'All OLT Systems Operational',
+    lede: 'All tracked OLTs are functional. Incident alerts will automatically render here in real time.',
     healthy: true
   },
   /* The three partial filters name themselves, because "nothing matches" and "nothing is

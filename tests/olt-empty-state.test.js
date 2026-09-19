@@ -164,7 +164,7 @@ test('nothing is DOWN: the table leaves the screen and its rows do not linger', 
   assert.strictEqual(s.__host().hidden, false, 'the zero state is what is shown instead');
   assert.strictEqual(s.__nodes.oltTableBody.innerHTML, '',
     'the previous rows must not stay behind under the card');
-  assert.ok(s.__markup().indexOf('No Down OLT Right Now') !== -1, 'and it says so in words');
+  assert.ok(s.__markup().indexOf('All OLT Systems Operational') !== -1, 'and it says so in words');
 });
 
 test('an OLT goes DOWN again: the table comes back and the card steps aside', () => {
@@ -204,7 +204,7 @@ test('each partial filter names itself instead of borrowing the DOWN copy', () =
     s.currentOltFilter = filter;
     s.renderOltTable();
     assert.ok(s.__markup().indexOf(expected[filter]) !== -1, filter + ' names itself');
-    assert.ok(s.__markup().indexOf('No Down OLT Right Now') === -1,
+    assert.ok(s.__markup().indexOf('All OLT Systems Operational') === -1,
       filter + ' must not borrow the DOWN copy: this filter is empty, the fleet is fine');
   });
 });
@@ -219,7 +219,7 @@ test('no rows at all is missing data, never good news', () => {
   const m = s.__markup();
   assert.ok(m.indexOf('No OLT data in this snapshot') !== -1, 'it says what happened');
   assert.ok(m.indexOf('REFRESH') !== -1, 'and points at the control that can fix it');
-  assert.ok(m.indexOf('No Down OLT Right Now') === -1,
+  assert.ok(m.indexOf('All OLT Systems Operational') === -1,
     'calling an empty payload a healthy fleet would be a claim the data does not support');
   assert.ok(m.indexOf('is-missing') !== -1, 'and it must not wear the all-clear green');
 
