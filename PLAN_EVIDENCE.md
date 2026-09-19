@@ -445,3 +445,12 @@ stylesheet and not measured. And `prefers-reduced-motion` is verified by the tes
 not by emulating the media feature in a browser — the tooling has no switch for it.
 
 **Released as 3.9.17.**
+
+**A copy change, requested after that release.** The DOWN card's wording became **"All OLT
+Systems Operational"** with "All tracked OLTs are functional. Incident alerts will automatically
+render here in real time." The three tests that named the old string moved with it — one asserts
+the DOWN card says the new title, and two assert that the partial filters and the no-rows case do
+NOT borrow it. Worth recording for whoever reads this next: the title now makes a wider claim
+than "No Down OLT Right Now" did, while the donut directly above it can still count LOW POWER /
+UPLINK DOWN / DEGRADATION units. The badges under the sentence are what scope it. PART-001's
+evidence above keeps the wording that release actually shipped with; only the copy moved.
