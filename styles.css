@@ -14,6 +14,25 @@
   display: none !important;
 }
 
+/* Every icon in the app is a Lucide svg emitted by lucide.icon(), so they all carry this
+   class and one rule can hold the alignment. The width/height attributes on each svg are
+   only a default: the per-component rules further down (`.export-btn svg`, `.feature-item
+   svg`, `.olt-empty-icon svg`, …) still win, which is why none of them had to change.
+
+   flex-shrink: 0 matters most: in a flex row like `.export-btn` or `.bottom-nav-btn`, an
+   svg with no intrinsic basis is happy to be squeezed when the row is tight, and the icon
+   then renders narrower than its height. `vertical-align` is for the inline cases (the
+   analytics compare button puts its glyph mid-sentence).
+
+   Colour is never set here: every icon is stroked with currentColor, so it inherits the
+   button, badge or tile it sits in — which is what keeps the light/dark themes and the
+   green/red/amber state colours working without a single icon-specific rule. */
+.lucide-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 :root {
   --primary-teal: #0d8a80;
   --primary-dark: #085f58;
@@ -746,6 +765,11 @@ th.sortable:hover {
   background-color: var(--primary-dark);
 }
 
+/* The indicator is drawn by CSS, so all 38 sortable headers get it without a line of
+   markup. The text glyphs below are the rule of record and the no-JS fallback;
+   lucide.sortIndicator() (see lucide-icons.js) injects the real Lucide chevrons after
+   these, as a mask, so the header keeps its currentColor and its hover/active states.
+   Do not hand-write paths here — the geometry comes from the generated file. */
 th.sortable::after {
   content: '\2195';
   position: absolute;

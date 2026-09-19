@@ -148,11 +148,11 @@ function renderNodeReport(data) {
     toolbar.className = 'export-toolbar';
     toolbar.innerHTML = `
       <button class="export-btn" onclick="exportTableToCSV('nodeTableBody', 'Node_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        ${iconMarkup('download', { size: 14 })}
         Export CSV
       </button>
       <button class="export-btn" onclick="exportTabToPDF('tab-node', 'Node_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        ${iconMarkup('file-text', { size: 14 })}
         Export PDF
       </button>
     `;
@@ -184,10 +184,7 @@ function renderNodeEmptyState() {
       <div class="node-empty-icon-wrapper">
         <div class="node-empty-ping-ring"></div>
         <div class="node-empty-icon-circle">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            <path d="M9 12l2 2 4-4"></path>
-          </svg>
+          ${iconMarkup('shield-check', { size: 40, strokeWidth: 1.8 })}
         </div>
       </div>
 

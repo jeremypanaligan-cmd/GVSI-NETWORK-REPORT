@@ -48,9 +48,7 @@ function renderAdminTab() {
     <div class="table-card" style="margin-bottom: 16px;">
       <div style="padding: 20px;">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-          </svg>
+          ${iconMarkup('wrench', { size: 24 })}
           <div>
             <div style="font-size: 16px; font-weight: 700; color: var(--dark-charcoal);">Maintenance Mode</div>
             <div style="font-size: 12px; color: var(--text-muted);">Toggle to close the app for all users.</div>
@@ -77,10 +75,7 @@ function renderAdminTab() {
             font-weight: 700; font-size: 13px; cursor: pointer;
             display: flex; align-items: center; justify-content: center; gap: 8px;
           ">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-            </svg>
+            ${iconMarkup('ban', { size: 16 })}
             Enable Maintenance
           </button>
           <button id="btnDisableMaintenance" onclick="toggleMaintenance(false)" style="
@@ -89,10 +84,7 @@ function renderAdminTab() {
             font-weight: 700; font-size: 13px; cursor: pointer;
             display: flex; align-items: center; justify-content: center; gap: 8px;
           ">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-              <polyline points="22 4 12 14.01 9 11.01"></polyline>
-            </svg>
+            ${iconMarkup('circle-check-big', { size: 16 })}
             Disable Maintenance
           </button>
         </div>
@@ -171,9 +163,7 @@ function showMaintenancePage() {
       padding: 24px; text-align: center; z-index: 999999;
     ">
       <div style="margin-bottom: 24px; color: #f59e0b;">
-        <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-        </svg>
+        ${iconMarkup('wrench', { size: 72, strokeWidth: 1.5 })}
       </div>
       <h1 style="font-size: 24px; font-weight: 800; margin-bottom: 12px; color: #f59e0b;">
         Under Maintenance

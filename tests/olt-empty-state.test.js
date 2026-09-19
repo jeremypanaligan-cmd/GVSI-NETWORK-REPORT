@@ -12,6 +12,17 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'olt-module.js'), 'utf8');
+
+/* iconMarkup() is a page global — index.html defines it over lucide-icons.js — so the
+   sandbox has to carry it the way the browser does. The generated file is loaded for real
+   rather than stubbed: the glyph's aria-hidden is asserted below, and a hand-written stub
+   would only prove that the stub works. */
+const lucide = (function loadGeneratedIcons() {
+  const box = { window: {} };
+  vm.createContext(box);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'lucide-icons.js'), 'utf8'), box);
+  return box.window.lucide;
+})();
 let passed = 0;
 let failed = 0;
 function test(name, fn) {
@@ -88,6 +99,7 @@ function sandbox(options) {
     getAlertClass: () => '',
     sanitizeHTML: (v) => String(v),
     fetchGate: { refreshTicker: () => { tickerCalls++; } },
+    iconMarkup: (name, options) => lucide.icon(name, options),
     document: {
       createElement: (tag) => el(tag),
       getElementById: (id) => nodes[id] || null,

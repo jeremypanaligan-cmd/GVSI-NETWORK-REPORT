@@ -233,10 +233,11 @@ function updateNotificationUI(isSubscribed) {
   const btn = document.getElementById('notifToggleBtn');
   if (!btn) return;
 
-  // Active bell icon (filled) — notifications ON
-  const bellOn = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>`;
-  // Bell off icon (outline with slash) — notifications OFF
-  const bellOff = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0M18.63 13A17.89 17.89 0 0 1 18 8M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+  /* Both states are outline now, so the difference is carried by weight and colour: the ON
+     bell is drawn heavier (the filled bell it replaces read heavier too) and the button's
+     own colour is set below. */
+  const bellOn = iconMarkup('bell', { size: 14, strokeWidth: 2.6 });
+  const bellOff = iconMarkup('bell-off', { size: 14 });
 
   if (isSubscribed) {
     btn.innerHTML = bellOn;

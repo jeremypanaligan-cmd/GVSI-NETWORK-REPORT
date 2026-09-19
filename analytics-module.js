@@ -226,7 +226,7 @@ function renderAnalyticsDashboard() {
         <button class="filter-btn ${analyticsDateRange === 90 ? 'active' : ''}" onclick="setAnalyticsDateRange(90)">90 Days</button>
       </div>
       <button class="filter-btn ${analyticsComparisonMode ? 'active' : ''}" onclick="toggleAnalyticsComparison()" style="margin-left: auto;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        ${iconMarkup('chart-column', { size: 14, style: 'vertical-align: middle; margin-right: 4px' })}
         Compare Weeks
       </button>
     </div>
@@ -312,7 +312,7 @@ function renderAnalyticsDashboard() {
     <div class="analytics-snapshot-grid">
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-green); color: var(--badge-green-text);">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          ${iconMarkup('monitor', { size: 24 })}
         </div>
         <div class="snapshot-label">NAP</div>
         <div class="snapshot-value">${napGrandTotal}</div>
@@ -320,7 +320,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-yellow); color: var(--badge-yellow-text);">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          ${iconMarkup('layers', { size: 24 })}
         </div>
         <div class="snapshot-label">LCP</div>
         <div class="snapshot-value">${lcpGrandTotal}</div>
@@ -328,7 +328,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-red); color: var(--badge-red-text);">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="12" rx="2"/><path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/></svg>
+          ${iconMarkup('server', { size: 24 })}
         </div>
         <div class="snapshot-label">OLT</div>
         <div class="snapshot-value">${oltDown + oltLowPower + oltUplinkDown + oltDegradation}</div>
@@ -336,7 +336,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-purple); color: var(--badge-purple-text);">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          ${iconMarkup('shield', { size: 24 })}
         </div>
         <div class="snapshot-label">NODE</div>
         <div class="snapshot-value">${nodeTotalTickets}</div>
@@ -344,7 +344,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-orange); color: var(--badge-orange-text);">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          ${iconMarkup('link', { size: 24 })}
         </div>
         <div class="snapshot-label">BACKBONE</div>
         <div class="snapshot-value">${bbData.length}</div>

@@ -343,7 +343,7 @@ function healthyHeading_(titleId, title, lede, isError, actionsHtml) {
    one inside the panel would hide itself. */
 function healthyExportButton_() {
   return `<button class="export-btn" id="healthyOltExport" type="button" onclick="exportHealthyOltCsv()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      ${iconMarkup('download', { size: 14 })}
       Export CSV
     </button>`;
 }
@@ -631,8 +631,8 @@ function oltEmptyStateMarkup_(filter) {
      to the fleet. A missing snapshot also gets a different glyph: a green check drawn over
      "no rows arrived" would be the same lie in a nicer card. */
   const icon = copy.missing
-    ? '<circle cx="12" cy="12" r="9.5"/><path d="M12 7.8v5.4"/><path d="M12 16.6h.01"/>'
-    : '<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><polyline points="22 4 12 14.1 9 11.1"/>';
+    ? iconMarkup('circle-alert', { strokeWidth: 1.8 })
+    : iconMarkup('circle-check-big', { strokeWidth: 1.8 });
   const metrics = copy.healthy
     ? `<div class="olt-empty-metrics">
         <span class="badge badge-green">${counts.up.toLocaleString()} UP</span>
@@ -650,7 +650,7 @@ function oltEmptyStateMarkup_(filter) {
      that yields nothing is a change worth hearing explained, and the icon is decoration —
      the sentence under it carries the meaning. */
   return `<div class="olt-empty-state${copy.missing ? ' is-missing' : ''}" role="status" aria-live="polite">
-    <div class="olt-empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg></div>
+    <div class="olt-empty-icon">${icon}</div>
     <h3 class="olt-empty-title">${copy.title}</h3>
     <p class="olt-empty-desc">${copy.lede}</p>
     ${metrics}${actions}
@@ -706,11 +706,11 @@ function setupOltExportToolbar_() {
   toolbar.className = 'export-toolbar';
   toolbar.innerHTML = `
       <button class="export-btn" onclick="exportTableToCSV('oltTableBody', 'OLT_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        ${iconMarkup('download', { size: 14 })}
         Export CSV
       </button>
       <button class="export-btn" onclick="exportTabToPDF('tab-olt', 'OLT_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        ${iconMarkup('file-text', { size: 14 })}
         Export PDF
       </button>
     `;

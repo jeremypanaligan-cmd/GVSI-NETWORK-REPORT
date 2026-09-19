@@ -192,11 +192,11 @@ function renderBackboneReport(data) {
     toolbar.className = 'export-toolbar';
     toolbar.innerHTML = `
       <button class="export-btn" onclick="exportTableToCSV('backboneTableBody', 'Backbone_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        ${iconMarkup('download', { size: 14 })}
         Export CSV
       </button>
       <button class="export-btn" onclick="exportTabToPDF('tab-backbone', 'Backbone_Report')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        ${iconMarkup('file-text', { size: 14 })}
         Export PDF
       </button>
     `;
@@ -261,10 +261,7 @@ function renderBackboneEmptyState() {
         background: var(--badge-green);
         display: flex; align-items: center; justify-content: center;
       ">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--badge-green-text)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-          <polyline points="22 4 12 14.01 9 11.01"></polyline>
-        </svg>
+        ${iconMarkup('circle-check-big', { size: 40, strokeWidth: 2.2, style: 'color: var(--badge-green-text)' })}
       </div>
 
       <h2 style="

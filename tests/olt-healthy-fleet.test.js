@@ -7,6 +7,16 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'olt-module.js'), 'utf8');
+
+/* iconMarkup() is a page global — index.html defines it over lucide-icons.js — so every
+   sandbox below carries the real generated file rather than a stub of it. */
+const lucide = (function loadGeneratedIcons() {
+  const box = { window: {} };
+  vm.createContext(box);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'lucide-icons.js'), 'utf8'), box);
+  return box.window.lucide;
+})();
+const iconMarkup = (name, options) => lucide.icon(name, options);
 let passed = 0;
 let failed = 0;
 function test(name, fn) {
@@ -22,6 +32,7 @@ function sandbox() {
     BASE_API_URL: 'https://example.test/exec',
     dataCache: { olt: null },
     rawOltData: [],
+    iconMarkup,
     fetchGate: { run: () => { requests++; return Promise.resolve({ v: 4, f: ['P', 'M', 'N', 'S'], p: ['BENGUET'], m: ['ITOGON'], meta: { up: 1, total: 1 }, r: [[0, 0, 'OLT-A', 'UP']] }); } },
     document: { getElementById: () => null, querySelector: () => null }
   };
@@ -158,6 +169,7 @@ function listSandbox(rows) {
     BASE_API_URL: 'https://example.test/exec',
     dataCache: { olt: null },
     rawOltData: [],
+    iconMarkup,
     fetchGate: { run: () => Promise.resolve(null) },
     sanitizeHTML: (v) => String(v),
     Blob: function (parts) { csv = parts.join(''); },
@@ -291,6 +303,7 @@ function chromeSandbox() {
 
   const s = {
     console: console,
+    iconMarkup,
     window: { fetchGate: { refreshTicker: () => {} } },
     BASE_API_URL: 'https://example.test/exec',
     dataCache: { olt: null },
