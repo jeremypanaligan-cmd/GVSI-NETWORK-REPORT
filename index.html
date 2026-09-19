@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.15">
+  <link rel="stylesheet" href="styles.css?v=3.9.16">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -429,6 +429,14 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Dev</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.16 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Every Module Has Its Own Face (New):</strong> The tabs were sharing shapes with screens that had nothing to do with them — NODE wore the same shield as the login page, and the access points, the cabinets and the transport links were drawn from the same three shapes. Each module now has its own: an antenna for NAP, a set of boxes for LCP, the equipment for OLT, a checked shield for NODE, a cable for BACKBONE. The glyph is bigger (22px on the phone), and it is the same one everywhere the module is named — the phone bar, the desktop tab row and the <em>Module Snapshot</em> cards on the Dashboard.</li>
+                  <li><strong>And Its Own Colour (New):</strong> Every tab used to be the same grey, so telling them apart meant reading seven small outlines one by one — and at that size they look alike. Each module now keeps its own colour — the antenna green, the boxes indigo, the equipment magenta, the shield blue, the cable amber, the charts red — on every screen it appears. The colour says <em>which</em> module it is and nothing more: it is not a warning and does not change when something goes down, because the numbers on the cards are what report that.</li>
+                  <li><strong>You Can See Where You Are (Improvement):</strong> The tab you are on used to be marked by a faint wash across the whole button, which is also what a button looks like while you are pressing it. It is now a pill behind the module's glyph, painted in that module's own colour, with the label and the underline to match — the phone bar and the desktop tab row both.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.15 — What's New:</strong></p>
@@ -1444,7 +1452,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.15').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.16').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
