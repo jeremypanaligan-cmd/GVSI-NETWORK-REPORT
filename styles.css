@@ -3398,8 +3398,9 @@ body.dark-mode .healthy-olt-cta { background: #047857; box-shadow: 0 2px 4px rgb
    DOWN is this tab's default filter, so "nothing is down" is a screen an operator sees
    often — and it is good news. It should not look like a table that failed to load. This
    replaces that seven-column table (there is nothing to put in seven columns) and borrows
-   the app's existing vocabulary: the .badge tokens for the numbers, .healthy-olt-cta for
-   the single action, and body.dark-mode for the glass every other card wears.
+   the app's existing vocabulary: the .badge tokens for the numbers, and body.dark-mode for
+   the glass every other card wears. It carries no button — the way into the healthy fleet
+   is the UP card and the UP filter, which sit above it and always will.
 
    It lives inside #oltIssuesTableCard, whose border and background are already the frame,
    so nothing here draws a second one. */
@@ -3416,6 +3417,7 @@ body.dark-mode .healthy-olt-cta { background: #047857; box-shadow: 0 2px 4px rgb
    reasoning as .healthy-olt-cta's fill, and the same two greens .node-empty-* uses, so
    "all clear" is one colour in this app rather than two. */
 .olt-empty-icon {
+  position: relative;
   width: 64px;
   height: 64px;
   border-radius: 50%;
@@ -3429,6 +3431,34 @@ body.dark-mode .healthy-olt-cta { background: #047857; box-shadow: 0 2px 4px rgb
 }
 
 .olt-empty-icon svg { width: 32px; height: 32px; }
+
+/* The pulse. Everywhere else in this app that says "live" says it with a ring that expands
+   once per beat — statusPingGreen on the table's status dots, nodePingRing on the node
+   cards — so this is that ring at this circle's size rather than a new idea. It rides on
+   ::after so the glyph keeps the circle's own 1.5px border as its edge.
+
+   Deliberately slow. On a card whose whole message is "nothing is wrong", a quick beat
+   reads as an alarm, and this is the only thing moving on a screen that is good news. */
+.olt-empty-icon::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  pointer-events: none;
+  animation: oltEmptyPulse 2.6s cubic-bezier(0.2, 0, 0.4, 1) infinite;
+}
+
+@keyframes oltEmptyPulse {
+  0% { transform: scale(1); opacity: 0.55; }
+  70%, 100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* Switched off rather than slowed: a ring that still fades in and out is still motion, and
+   at the end of a 2.6s cycle a "reduced" version is a ring that never quite arrives. */
+@media (prefers-reduced-motion: reduce) {
+  .olt-empty-icon::after { animation: none; opacity: 0; }
+}
 
 body.dark-mode .olt-empty-icon {
   color: #34d399;
@@ -3460,14 +3490,6 @@ body.dark-mode .olt-empty-title { color: #34d399; }
   margin-top: 16px;
 }
 
-.olt-empty-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 18px;
-}
-
 /* The "no data arrived" variant must NOT wear the all-clear green: the numbers are
    missing, not healthy. Neutral glass, and the glyph is an alert rather than a check. */
 .olt-empty-state.is-missing .olt-empty-icon {
@@ -3478,6 +3500,10 @@ body.dark-mode .olt-empty-title { color: #34d399; }
 }
 
 .olt-empty-state.is-missing .olt-empty-title { color: var(--dark-charcoal); }
+
+/* And no pulse. A ring beating over "no rows arrived" would suggest something is being
+   watched when nothing is — the same claim this variant already refuses to make. */
+.olt-empty-state.is-missing .olt-empty-icon::after { animation: none; opacity: 0; }
 
 @media (max-width: 640px) {
   .olt-empty-state { padding: 30px 16px; }

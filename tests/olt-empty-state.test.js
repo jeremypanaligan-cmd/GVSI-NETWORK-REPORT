@@ -315,6 +315,46 @@ test('every token the zero state uses is defined, and it has a phone layout', ()
     'and the card has a phone layout of its own');
 });
 
+test('the card reports rather than telephones: no action, and a pulse that yields to motion', () => {
+  const s = sandbox();
+  s.currentOltFilter = 'DOWN';
+  s.oltMeta = { up: 457, down: 0, total: 461 };
+  s.rawOltData = [upRow('OLT-1'), upRow('OLT-2')];
+  s.renderOltTable();
+
+  const m = s.__markup();
+  /* The button duplicated the UP card and the UP filter, which open the same list from
+     controls that are always on screen. If it comes back here it has to be a decision
+     rather than a leftover, and this is what makes it one. */
+  assert.ok(m.indexOf('healthy-olt-cta') === -1, 'the zero state carries no button');
+  assert.ok(m.indexOf('loadHealthyOltList') === -1, 'nor a call that goes and fetches the fleet');
+  assert.ok(m.indexOf('457 UP') !== -1, 'the numbers stay \u2014 they are why the card is read at all');
+
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  assert.ok(/\.olt-empty-icon \{[^}]*position: relative/.test(css),
+    'the pulse ring needs the circle as its containing block, or it lands at the card corner');
+  /* The ring has to animate a name that is DEFINED, checked by reading the name out of the
+     rule rather than matching a literal: a substring test passes on
+     `@keyframes oltEmptyPulseRenamed`, which is exactly the rename that kills the pulse and
+     leaves the card looking correct. */
+  const pulseName = (css.match(/\.olt-empty-icon::after \{[^}]*animation:\s*([A-Za-z][\w-]*)/) || [])[1];
+  assert.ok(pulseName, 'the pulse ring must animate something');
+  assert.ok(new RegExp('@keyframes ' + pulseName + '\\s*\\{').test(css),
+    'the animation names "' + pulseName + '", which no @keyframes block defines');
+
+  /* Named in exactly one reduced-motion block, and switched off there rather than slowed:
+     a ring that still fades in and out is still motion. */
+  const reduce = (css.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g) || [])
+    .filter((b) => b.indexOf('.olt-empty-icon::after') !== -1);
+  assert.strictEqual(reduce.length, 1, 'the pulse must be named in one reduced-motion block');
+  assert.ok(/animation: none/.test(reduce[0]), 'and switched off there, not slowed down');
+
+  assert.ok(/\.olt-empty-state\.is-missing \.olt-empty-icon::after \{[^}]*opacity: 0/.test(css),
+    'the "no rows arrived" card must not pulse \u2014 that would claim something is being watched');
+  assert.strictEqual(css.indexOf('.olt-empty-actions'), -1,
+    "the button's wrapper is not left behind as dead CSS");
+});
+
 setTimeout(() => {
   console.log('\n' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed ? 1 : 0);

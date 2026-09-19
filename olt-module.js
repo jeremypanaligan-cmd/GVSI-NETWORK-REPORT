@@ -627,12 +627,17 @@ function oltFleetCounts_() {
 function oltEmptyStateMarkup_(filter) {
   const copy = oltEmptyCopy_(filter);
   const counts = oltFleetCounts_();
-  /* Only the DOWN case is a health claim, so only it gets the numbers and the way through
-     to the fleet. A missing snapshot also gets a different glyph: a green check drawn over
-     "no rows arrived" would be the same lie in a nicer card. */
+  /* Only the DOWN case is a health claim, so only it gets the numbers. A missing snapshot
+     also gets a different glyph: a green all-clear drawn over "no rows arrived" would be
+     the same lie in a nicer card.
+
+     The all-clear glyph is `activity` — the steady signal — and not a tick inside a circle.
+     The tick WAS a circle, drawn inside this card's own 64px circle, so the two rings read
+     as one smudged ring; `activity` is also the line the login screen already uses for
+     real-time monitoring, which is what this card is reporting on. */
   const icon = copy.missing
     ? iconMarkup('circle-alert', { strokeWidth: 1.8 })
-    : iconMarkup('circle-check-big', { strokeWidth: 1.8 });
+    : iconMarkup('activity', { strokeWidth: 1.8 });
   const metrics = copy.healthy
     ? `<div class="olt-empty-metrics">
         <span class="badge badge-green">${counts.up.toLocaleString()} UP</span>
@@ -640,11 +645,10 @@ function oltEmptyStateMarkup_(filter) {
         <span class="badge badge-red">${counts.down.toLocaleString()} DOWN</span>
       </div>`
     : '';
-  const actions = copy.healthy
-    ? `<div class="olt-empty-actions">
-        <button class="healthy-olt-cta" type="button" onclick="loadHealthyOltList()">View All Healthy OLTs</button>
-      </div>`
-    : '';
+  /* There is no action here on purpose. "View All Healthy OLTs" duplicated the UP card and
+     the UP filter, which open the same list from a control that is always on screen — and
+     on the one card that has nothing wrong to report, the last thing it should do is ask
+     the operator to go and check. The fleet is one tap away either way; this card reports. */
 
   /* role=status + aria-live sit on the container and the icon is aria-hidden: a filter tap
      that yields nothing is a change worth hearing explained, and the icon is decoration —
@@ -653,7 +657,7 @@ function oltEmptyStateMarkup_(filter) {
     <div class="olt-empty-icon">${icon}</div>
     <h3 class="olt-empty-title">${copy.title}</h3>
     <p class="olt-empty-desc">${copy.lede}</p>
-    ${metrics}${actions}
+    ${metrics}
   </div>`;
 }
 
