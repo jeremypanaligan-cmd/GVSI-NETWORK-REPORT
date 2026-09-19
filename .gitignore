@@ -33,6 +33,11 @@ _chk.js
 _inline_check.js
 serve.log
 *.log
+# The per-thread preview log the desktop app writes. `*.log` does not cover it: the
+# filename ends in `.err`, so without this line every session adds one more untracked
+# entry to Source Control. It also carries absolute machine paths, so it is not worth
+# tracking even once.
+*.log.err
 
 # ==================== NODE ====================
 # lucide is a BUILD-TIME dependency: scripts/build-icons.mjs reads it and writes the
@@ -47,6 +52,34 @@ __pycache__/
 # ==================== OS JUNK ====================
 .DS_Store
 Thumbs.db
+
+# ==================== BORROWED SCAFFOLD — KEPT LOCAL ====================
+# Plannable's planning skill was copied into the root of this repo to author the plan
+# artifacts. It is not this project, and none of it is needed to run the app:
+#
+#   plannable/  a clone of github.com/suntay44/plannable — it has its own .git and its own
+#               remote. `git add plannable` writes a GITLINK, a "submodule" pointing at a
+#               commit no clone of this repo has, which every fresh checkout then reports
+#               as a broken empty directory. If it is ever wanted for real it has to be
+#               registered with `git submodule add`, never staged.
+#   templates/  the blank templates that clone ships (templates/PART_PLAN.ai.md is
+#               byte-identical to plannable/templates/PART_PLAN.ai.md). The FILLED-IN
+#               artifacts are what belong here, and they are already tracked at the root
+#               and in plans/. Committing the blanks would vendor them, and they would
+#               drift from upstream the moment it changes.
+#   AGENTS.md   Plannable's own agent instructions, which open with "This repo builds
+#               Plannable." At this repo's root, every future agent would read that as a
+#               statement about THIS project.
+#
+# The rules this repo actually follows are recorded where they belong: MASTER_PLAN.md
+# Notes says the artifacts are authored by hand from templates/ because the CLI is not
+# runnable in this checkout.
+#
+# Anchored to the root on purpose — the same names deeper in the tree (a templates/ inside
+# some future dependency) are not this.
+/AGENTS.md
+/templates/
+/plannable/
 
 # NOTE: .vscode/launch.json and .freebuff/project-id are tracked on purpose.
 # Do not add blanket rules for those directories — it would hide them from
