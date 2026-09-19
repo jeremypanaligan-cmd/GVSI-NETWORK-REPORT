@@ -312,7 +312,7 @@ function renderAnalyticsDashboard() {
     <div class="analytics-snapshot-grid">
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-green); color: var(--badge-green-text);">
-          ${iconMarkup('monitor', { size: 24 })}
+          ${moduleIconMarkup('nap', { size: 24 })}
         </div>
         <div class="snapshot-label">NAP</div>
         <div class="snapshot-value">${napGrandTotal}</div>
@@ -320,7 +320,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-yellow); color: var(--badge-yellow-text);">
-          ${iconMarkup('layers', { size: 24 })}
+          ${moduleIconMarkup('lcp', { size: 24 })}
         </div>
         <div class="snapshot-label">LCP</div>
         <div class="snapshot-value">${lcpGrandTotal}</div>
@@ -328,7 +328,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-red); color: var(--badge-red-text);">
-          ${iconMarkup('server', { size: 24 })}
+          ${moduleIconMarkup('olt', { size: 24 })}
         </div>
         <div class="snapshot-label">OLT</div>
         <div class="snapshot-value">${oltDown + oltLowPower + oltUplinkDown + oltDegradation}</div>
@@ -336,7 +336,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-purple); color: var(--badge-purple-text);">
-          ${iconMarkup('shield', { size: 24 })}
+          ${moduleIconMarkup('node', { size: 24 })}
         </div>
         <div class="snapshot-label">NODE</div>
         <div class="snapshot-value">${nodeTotalTickets}</div>
@@ -344,7 +344,7 @@ function renderAnalyticsDashboard() {
       </div>
       <div class="analytics-snapshot-card">
         <div class="snapshot-icon" style="background: var(--badge-orange); color: var(--badge-orange-text);">
-          ${iconMarkup('link', { size: 24 })}
+          ${moduleIconMarkup('backbone', { size: 24 })}
         </div>
         <div class="snapshot-label">BACKBONE</div>
         <div class="snapshot-value">${bbData.length}</div>

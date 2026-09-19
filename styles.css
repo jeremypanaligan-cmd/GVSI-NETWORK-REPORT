@@ -43,6 +43,18 @@
   --text-muted: #64748b;
   --header-bg: #ffffff;
   --row-hover: #f1f5f9;
+
+  /* Module identity colours — one hue per module, read by both nav bars and by the active
+     tab's pill. See the [data-module] block below for how they are applied and why they are
+     not the --badge-* status tokens. Dark mode redraws the same seven names with lighter
+     values, because a hue that passes contrast on white disappears on #0f172a. */
+  --module-nap: #0d8a80;
+  --module-lcp: #4338ca;
+  --module-olt: #c026d3;
+  --module-node: #1d4ed8;
+  --module-backbone: #b45309;
+  --module-analytics: #e11d48;
+  --module-about: #64748b;
   
   /* Status Badge & Stat Card Colors (Light) */
   --badge-green: #dcfce7;
@@ -61,6 +73,13 @@
 body.dark-mode {
   --primary-teal: #14b8a6;
   --primary-dark: #0d9488;
+  --module-nap: #34d399;
+  --module-lcp: #a5b4fc;
+  --module-olt: #e879f9;
+  --module-node: #93c5fd;
+  --module-backbone: #fbbf24;
+  --module-analytics: #fb7185;
+  --module-about: #94a3b8;
   --dark-charcoal: #f8fafc;
   --light-bg: #0f172a;
   --card-bg: #1e293b;
@@ -567,10 +586,100 @@ body.dark-mode .brand-gallop {
   flex-shrink: 0;
 }
 
+/* The desktop tab carries the module's glyph too, from the same MODULE_ICONS map. The pill
+   is on the glyph rather than the label, so the underline (the desktop "you are here")
+   keeps doing its job instead of competing with a second full-width highlight. */
+/* Sized to the glyph, not around it: the tab row is `overflow-x: auto` with non-shrinking
+   tabs, and a roomier chip pushed the row 29px past a 747px window — scrolling for the sake
+   of padding. At 22×22 the chip is the glyph's own footprint, and the row fits again. */
+.tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 2px;
+  margin-right: 5px;
+  border-radius: 11px;
+  vertical-align: -5px;
+  transition: background-color 0.2s ease;
+}
+
+/* One hue per module, named once on the button and used three ways: the resting glyph in BOTH
+   nav bars, the active tab's label and underline, and the active pill (which paints with
+   `currentColor`). Declaring it on the button rather than on each surface is what keeps a
+   module from reading teal in the tab row and violet in the bottom bar — there is one place
+   to get it wrong, and tests/icons.test.js holds both bars to it.
+
+   These are CATEGORICAL, deliberately NOT the --badge-* status tokens. The analytics cards
+   already use green/yellow/red/purple/orange to describe a COUNT (how many are down), and a
+   nav tab cannot make that claim: a permanently red OLT tab would read as "OLT is down right
+   now" on every screen, forever.
+
+   `admin` is absent on purpose. That chip is a filled indigo/violet gradient with
+   `color: white !important`, so it has no resting hue to carry. */
+[data-module="nap"] { --module-hue: var(--module-nap); }
+[data-module="lcp"] { --module-hue: var(--module-lcp); }
+[data-module="olt"] { --module-hue: var(--module-olt); }
+[data-module="node"] { --module-hue: var(--module-node); }
+[data-module="backbone"] { --module-hue: var(--module-backbone); }
+[data-module="analytics"] { --module-hue: var(--module-analytics); }
+[data-module="about"] { --module-hue: var(--module-about); }
+
+/* The glyphs are coloured at rest, so a module is identifiable without being the one you are
+   on. The property is inherited from the button and the svg only ever reads currentColor —
+   no per-icon colour is written anywhere. The fallback is `inherit`, not a literal: the
+   admin chip carries no hue because it is white on a filled gradient, and a literal fallback
+   would repaint its glyph grey on that gradient. Inheriting also keeps every chip that is
+   not a module (the admin tab is the only one) reading exactly as it did before. */
+.tab-icon,
+.bottom-nav-icon {
+  color: var(--module-hue, inherit);
+  position: relative;
+}
+
+/* The tint that used to sit across the whole active tab is gone. It was a fixed teal, which
+   is the wrong hue under six of the seven tabs now, and at 8% it read as a hover rather than
+   as "this is the tab you are on". The pill below marks the tab instead. */
 .tab-btn.active {
-  color: var(--primary-teal);
-  border-bottom-color: var(--primary-teal);
-  background-color: rgba(13, 138, 128, 0.08);
+  color: var(--module-hue, var(--primary-teal));
+  border-bottom-color: var(--module-hue, var(--primary-teal));
+}
+
+/* The active pill, in the module's own hue: tint at 14%, ring at 32%, as two pseudo layers.
+   `currentColor` + `opacity` is the only way to get hue-and-alpha here without color-mix()
+   (too new for the installed devices) or a hand-written rgba pair per module per theme. The
+   glyph is lifted over them by z-index, because a positioned pseudo paints above in-flow
+   content. Opacity, not background, is what animates — the pseudo is created when the class
+   lands, so a background transition would have nothing to run from. */
+.tab-btn.active .tab-icon::before,
+.tab-btn.active .tab-icon::after,
+.bottom-nav-btn.active .bottom-nav-icon::before,
+.bottom-nav-btn.active .bottom-nav-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.tab-btn.active .tab-icon::before,
+.bottom-nav-btn.active .bottom-nav-icon::before {
+  background: currentColor;
+  opacity: 0.14;
+}
+
+.tab-btn.active .tab-icon::after,
+.bottom-nav-btn.active .bottom-nav-icon::after {
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.32;
+}
+
+.tab-icon svg,
+.bottom-nav-icon svg {
+  position: relative;
+  z-index: 1;
 }
 
 /* Main Scrollable Content Area */
@@ -2102,14 +2211,29 @@ body.dark-mode .remarks-paragraph-box {
     letter-spacing: 0.3px;
   }
 
+  /* The tint across the whole button is gone in favour of the pill below: at 9px the label
+     is already the widest thing in the bar, and a full-button fill reads as a pressed
+     state — something that is happening — rather than as "this is the tab you are on". */
   .bottom-nav-btn.active {
-    color: var(--primary-teal);
-    background: rgba(13, 138, 128, 0.1);
+    color: var(--module-hue, var(--primary-teal));
+  }
+
+  /* Sits behind the glyph only. Deliberately narrow (30px of content, the same as the 48px
+     button's own min-width minus its padding) so a second flex item can never widen the
+     bar: seven tabs already fill a 360px phone, and the label decides the rest. */
+  .bottom-nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 24px;
+    padding: 0 4px;
+    border-radius: 12px;
   }
 
   .bottom-nav-btn svg {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
   }
 
   /* Adjust main container for bottom nav */
@@ -3487,8 +3611,8 @@ body.dark-mode .login-footer {
 }
 
 .admin-bottom-nav-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
 }
 
 /* Admin Panel Cards */

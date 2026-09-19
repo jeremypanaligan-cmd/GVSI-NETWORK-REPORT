@@ -51,7 +51,13 @@ export const ICONS = [
   'ban', // admin — enable maintenance window
   'bell', // notifications — alerts ON
   'bell-off', // notifications — alerts OFF
-  'chart-column', // nav CHARTS + analytics bar glyph
+  /* Every module has exactly one glyph, and it is the same one wherever the module is
+     named — the nav row, the mobile bottom bar and the analytics snapshot card all read
+     MODULE_ICONS in index.html. Separate shapes for the same module is how a dashboard
+     stops being readable at a glance. */
+  'boxes', // LCP — the enclosure that fans a fibre out
+  'cable', // BACKBONE — the transport link itself
+  'chart-column', // CHARTS tab + analytics bar glyph
   'chevron-down', // sortable header, descending
   'chevron-up', // sortable header, ascending
   'chevrons-up-down', // sortable header, unsorted
@@ -62,17 +68,15 @@ export const ICONS = [
   'eye', // password field, shown
   'eye-off', // password field, hidden
   'file-text', // every "Export PDF"
-  'info', // nav ABOUT
-  'layers', // nav LCP + analytics LCP snapshot
-  'link', // nav BACKBONE + analytics BACKBONE snapshot
+  'info', // ABOUT tab
   'log-out', // header LOGOUT
-  'monitor', // nav NAP + analytics NAP snapshot
   'moon', // theme toggle, dark
+  'radio-tower', // NAP — the access point that radiates
   'rocket', // app-update overlay
-  'server', // nav OLT + analytics OLT snapshot
-  'settings', // nav ADMIN
-  'shield', // nav NODE, login features, analytics NODE snapshot
-  'shield-check', // node empty state — all systems operational
+  'server', // OLT tab
+  'settings', // ADMIN tab
+  'shield', // login feature list — incident management
+  'shield-check', // NODE tab, and the node empty state
   'sun', // theme toggle, light
   'triangle-alert', // alert badge in tables
   'wrench', // admin — maintenance is on

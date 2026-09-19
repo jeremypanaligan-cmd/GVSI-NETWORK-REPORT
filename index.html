@@ -164,15 +164,19 @@
 </div>
 
   <!-- Navigation Tabs Header -->
+  <!-- Each module's glyph is the same one the bottom bar uses, and both come from
+       MODULE_ICONS in the page script below — see the comment there. data-module is the
+       second thing both bars share: styles.css names the module's hue off it, so the tab
+       row and the bottom bar cannot colour the same module differently. -->
   <nav class="nav-tabs-container">
-    <button class="tab-btn active" onclick="switchTab('nap', event)">NAP</button>
-    <button class="tab-btn" onclick="switchTab('lcp', event)">LCP</button>
-    <button class="tab-btn" onclick="switchTab('olt', event)">OLT</button>
-    <button class="tab-btn" onclick="switchTab('node', event)">NODE</button>
-    <button class="tab-btn" onclick="switchTab('backbone', event)">BACKBONE LINKS</button>
-    <button class="tab-btn" onclick="switchTab('analytics', event)">ANALYTICS</button>
-    <button class="tab-btn" onclick="switchTab('about', event)">ABOUT</button>
-    <button class="tab-btn admin-tab-btn" id="adminTabBtn" onclick="switchTab('admin', event)" style="display: none;">⚙️ ADMIN</button>
+    <button class="tab-btn active" data-module="nap" onclick="switchTab('nap', event)"><span class="tab-icon"><i data-lucide="radio-tower" data-size="15"></i></span>NAP</button>
+    <button class="tab-btn" data-module="lcp" onclick="switchTab('lcp', event)"><span class="tab-icon"><i data-lucide="boxes" data-size="15"></i></span>LCP</button>
+    <button class="tab-btn" data-module="olt" onclick="switchTab('olt', event)"><span class="tab-icon"><i data-lucide="server" data-size="15"></i></span>OLT</button>
+    <button class="tab-btn" data-module="node" onclick="switchTab('node', event)"><span class="tab-icon"><i data-lucide="shield-check" data-size="15"></i></span>NODE</button>
+    <button class="tab-btn" data-module="backbone" onclick="switchTab('backbone', event)"><span class="tab-icon"><i data-lucide="cable" data-size="15"></i></span>BACKBONE LINKS</button>
+    <button class="tab-btn" data-module="analytics" onclick="switchTab('analytics', event)"><span class="tab-icon"><i data-lucide="chart-column" data-size="15"></i></span>ANALYTICS</button>
+    <button class="tab-btn" data-module="about" onclick="switchTab('about', event)"><span class="tab-icon"><i data-lucide="info" data-size="15"></i></span>ABOUT</button>
+    <button class="tab-btn admin-tab-btn" id="adminTabBtn" onclick="switchTab('admin', event)" style="display: none;"><span class="tab-icon"><i data-lucide="settings" data-size="15"></i></span>ADMIN</button>
   </nav>
 
   <!-- Content Container -->
@@ -665,38 +669,41 @@
 
   </div>
 
-  <!-- Bottom Navigation (Mobile only) -->
+  <!-- Bottom Navigation (Mobile only). Same glyphs as the tab row above, and the same
+       MODULE_ICONS map — the module you are on reads the same in both bars. data-module is
+       the same key the tab row carries, and it is what styles.css colours the glyphs from.
+       The icon sits in .bottom-nav-icon so the active tab can carry a pill behind it. -->
   <nav class="bottom-nav" id="bottomNav">
-    <button class="bottom-nav-btn active" onclick="switchTab('nap', event)" data-tab="nap">
-      <i data-lucide="monitor"></i>
+    <button class="bottom-nav-btn active" onclick="switchTab('nap', event)" data-tab="nap" data-module="nap">
+      <span class="bottom-nav-icon"><i data-lucide="radio-tower" data-size="22"></i></span>
       <span>NAP</span>
     </button>
-    <button class="bottom-nav-btn" onclick="switchTab('lcp', event)" data-tab="lcp">
-      <i data-lucide="layers"></i>
+    <button class="bottom-nav-btn" onclick="switchTab('lcp', event)" data-tab="lcp" data-module="lcp">
+      <span class="bottom-nav-icon"><i data-lucide="boxes" data-size="22"></i></span>
       <span>LCP</span>
     </button>
-    <button class="bottom-nav-btn" onclick="switchTab('olt', event)" data-tab="olt">
-      <i data-lucide="server"></i>
+    <button class="bottom-nav-btn" onclick="switchTab('olt', event)" data-tab="olt" data-module="olt">
+      <span class="bottom-nav-icon"><i data-lucide="server" data-size="22"></i></span>
       <span>OLT</span>
     </button>
-    <button class="bottom-nav-btn" onclick="switchTab('node', event)" data-tab="node">
-      <i data-lucide="shield"></i>
+    <button class="bottom-nav-btn" onclick="switchTab('node', event)" data-tab="node" data-module="node">
+      <span class="bottom-nav-icon"><i data-lucide="shield-check" data-size="22"></i></span>
       <span>NODE</span>
     </button>
-    <button class="bottom-nav-btn" onclick="switchTab('backbone', event)" data-tab="backbone">
-      <i data-lucide="link"></i>
+    <button class="bottom-nav-btn" onclick="switchTab('backbone', event)" data-tab="backbone" data-module="backbone">
+      <span class="bottom-nav-icon"><i data-lucide="cable" data-size="22"></i></span>
       <span>BACKBONE</span>
     </button>
-    <button class="bottom-nav-btn" onclick="switchTab('analytics', event)" data-tab="analytics">
-      <i data-lucide="chart-column"></i>
+    <button class="bottom-nav-btn" onclick="switchTab('analytics', event)" data-tab="analytics" data-module="analytics">
+      <span class="bottom-nav-icon"><i data-lucide="chart-column" data-size="22"></i></span>
       <span>CHARTS</span>
     </button>
-    <button class="bottom-nav-btn" onclick="switchTab('about', event)" data-tab="about">
-      <i data-lucide="info"></i>
+    <button class="bottom-nav-btn" onclick="switchTab('about', event)" data-tab="about" data-module="about">
+      <span class="bottom-nav-icon"><i data-lucide="info" data-size="22"></i></span>
       <span>ABOUT</span>
     </button>
     <button class="bottom-nav-btn admin-bottom-nav-btn" onclick="switchTab('admin', event)" data-tab="admin" style="display: none;">
-      <i data-lucide="settings"></i>
+      <span class="bottom-nav-icon"><i data-lucide="settings" data-size="22"></i></span>
       <span>ADMIN</span>
     </button>
   </nav>
@@ -1081,6 +1088,34 @@ function iconMarkup(name, options) {
   return (window.lucide && typeof window.lucide.icon === 'function')
     ? window.lucide.icon(name, options)
     : '';
+}
+
+/* One glyph per module. Every surface that names a module reads it from here — the desktop
+   tab row, the mobile bottom bar and the analytics snapshot cards — because a module that
+   looks like one thing in the tab bar and another thing in the cards beside it stops being
+   readable at a glance, which is the only reason a module has a glyph at all.
+
+   The two nav bars are STATIC markup, so they carry [data-lucide] placeholders written out
+   by hand rather than a call to this map — that keeps basic chrome working with no JS.
+   tests/icons.test.js compares those placeholders against this map, so the two cannot
+   drift apart silently.
+
+   The map holds GLYPHS only. A module's hue is not here but in styles.css, keyed on the same
+   [data-module] both bars carry — the bars cannot read a JS map either, and putting half a
+   module's identity in one place and half in another is how the two halves drift. */
+const MODULE_ICONS = {
+  nap: 'radio-tower',
+  lcp: 'boxes',
+  olt: 'server',
+  node: 'shield-check',
+  backbone: 'cable',
+  analytics: 'chart-column',
+  about: 'info',
+  admin: 'settings'
+};
+
+function moduleIconMarkup(module, options) {
+  return iconMarkup(MODULE_ICONS[module], options);
 }
 
 // Theme toggle glyphs (the header button paints one of these instead of a moon/sun path)
