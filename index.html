@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.18">
+  <link rel="stylesheet" href="styles.css?v=3.9.19">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -435,6 +435,17 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Jeremy</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.19 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>The OLT Tab Opens On What Is Wrong (New):</strong> The list used to be reached through a button called <em>ALL OLTs</em>, which was not what it showed — the rows behind it have always been the incidents only, so the label was the one thing wrong with it. It is <em>Active Incidents</em> now, and it is what the tab opens on. The summary above it was rearranged to match: <em>UP</em>, then <em>ACTIVE INCIDENTS</em> where <em>TOTAL OLT</em> used to sit, then <em>DOWN</em>, with the three incident types underneath. The middle card counts every OLT that is not reporting UP — the same rows the list below it draws — so the card and the list cannot disagree.</li>
+                  <li><strong>Impact, Not Just Status (New):</strong> Every row now carries the impact of its ticket, taken from the OLT DOWN Tickets sheet, in a new column right after the clients count. <em>SA</em> (service affecting) is loud, <em>NSA</em> is quiet, and a ticket with nothing recorded shows a dash rather than a zero — a blank is an absence, not a number. <em>Affected Clients</em> is scoped the same way: it says <em>(SA)</em> and totals the clients of the tickets marked service affecting, so it is a sharper number than the old DOWN-only total — it no longer counts an outage that affected nobody, and it does count one whose OLT is not fully down.</li>
+                  <li><strong>The Column Stops Repeating The Tab Name (Improvement):</strong> The last column was called <em>STATUS</em> and its values read <em>OLT UPLINK DOWN</em>, <em>OLT SERVICE DEGRADATION</em>, <em>OLT UPLINK LOW POWER</em> — each one spending its first word on the name of the tab you are already standing in. The column is <em>INCIDENT</em> now and the values have lost that prefix. Nothing was renamed in the data itself: the filters, the counts and the export all still match the sheet's own wording, and hovering a cell still shows it.</li>
+                  <li><strong>One Box Per Value (Improvement):</strong> The incident, impact and service values are drawn in a fixed-size box, so a column can no longer be as wide as its longest word and the badges line up instead of stacking as a ragged edge. The full label rides in the tooltip, so a long value wraps inside its box rather than being cut off.</li>
+                  <li><strong>Nothing To Export, Nothing To Click (Improvement):</strong> When the OLT list has nothing to show — no ticket matches the filter — the <em>Export CSV</em> and <em>Export PDF</em> buttons are no longer on screen. They used to sit above the card that says nothing is wrong, greyed out and unusable, taking the height the card needed.</li>
+                  <li><strong>The Trend Charts Are Gone (Removed):</strong> The four historical charts on the Dashboard — Incidents per Day, OLT Status Trend, Clients Affected Trend and Aging Distribution — were removed, along with the charting library they downloaded from the internet. The Dashboard now draws everything from data the app already holds, so it opens with no outside request at all and works with no connection. The daily snapshots it used to chart are still recorded exactly as before; only the charts that read them are gone.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.18 — What's New:</strong></p>
@@ -1471,7 +1482,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.18').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.19').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
