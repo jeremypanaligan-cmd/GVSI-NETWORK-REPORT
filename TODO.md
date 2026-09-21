@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 22, 2026 · `main` is live at **3.9.19** (Dashboard/OLT batch — see P2) · **the update trigger is fixed in the tree and still needs a release — see P1** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 22, 2026 · `main` is live at **3.9.20** (the installer's update trigger — see P2; the Dashboard/OLT batch is in 3.9.19) · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -16,16 +16,26 @@
 
 ---
 
-## 🔴 P1 — The update trigger: an installed PWA now asks for its own release (Sept 22, 2026)
+## 🟢 P2 — The update trigger shipped in 3.9.20 (Sept 22, 2026)
 
-**Status.** Fixed, tested and measured — **uncommitted, and therefore not delivered.** Both edited
-files are in the delivery set (`index.html` and `sw.js`), so the label has to move with them or an
-installed device keeps the build it has:
+**Status.** Released and pushed as **3.9.20** in three commits — `e5a1e11` (fix), `49d71cb` (docs),
+`efdcdf9` (release: labels, tokens, manifest and cache generation together, guard untouched at
+3.10.0). Live origin serves the new bytes on all four surfaces; verified with the **previous
+release's own files**, not a simulation:
 
-```
-node scripts/bump-version.mjs patch      # 3.9.19 -> 3.9.20, and a What's New entry in the same commit
-node scripts/bump-version.mjs --check    # already warns: "delivery set changed, release did not"
-```
+| the device was | it was given | it came back as |
+|---|---|---|
+| 3.9.19 shell, worker `sw.js?v=3.9.19`, cache `gvsi-shell-v3.9.19` | the 3.9.20 release at the same URL | 3.9.20 shell, `styles.css?v=3.9.20`, worker `?v=3.9.20`, no waiting worker |
+
+The only thing that page was given was **one foreground event** — the sole trigger a 3.9.19 build
+has — with its 5-minute throttle skipped by moving the clock. No uninstall, no cache clear, no new
+browser, and the app came back rendering live data.
+
+**What that means for the devices already out there.** 3.9.18 and 3.9.19 both carry the
+`controllerchange` reload, so a device on either updates itself on its next foreground return — or
+on its next launch. A device older than that has no reload handler: it still receives the new
+worker, and takes the new shell on the next launch instead of in place. **Neither needs an
+uninstall.**
 
 **What was wrong.** Two gaps, each invisible on its own:
 
@@ -47,10 +57,10 @@ deadlock an uninstall was breaking.
 
 **Measured.** 246 tests across 15 suites, 0 failed (231 → 246; new `tests/sw-update.test.js` with
 15). Mutation check **17/17 caught, 0 missed, 0 unproven**, baseline green in the mutation workspace
-first. End to end in a real browser: a published `sw.js` was picked up by an already-running,
-service-worker-controlled page from a single foreground event, with no uninstall — old cache
-generation deleted, new one activated, page reloaded, app rendering live data. See PART-018 of
-`PLAN_EVIDENCE.md` for the numbers and `.freebuff/run.md` for the recipe.
+first. See PART-018 of `PLAN_EVIDENCE.md` for the numbers and `.freebuff/run.md` for the recipe —
+including the trap that made the first end-to-end attempt unreadable: a **polluted origin**, where a
+registration left over from an earlier session parked the new worker in `waiting`. The upgrade
+verdict above comes from a **pristine** origin, which is the only place it means anything.
 
 ---
 

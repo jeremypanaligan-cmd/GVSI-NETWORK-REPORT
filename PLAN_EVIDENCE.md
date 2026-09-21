@@ -868,3 +868,34 @@ but a second origin would have been the cleaner harness and is recorded in `.fre
 the release is still owed: `node scripts/bump-version.mjs --check` reports `delivery set changed,
 release did not (HEAD published 3.9.19)` for `index.html` and `sw.js` — until the label moves, none
 of this reaches an installed device.
+
+**The upgrade path, measured after the release (2026-09-22), with the real files rather than a
+working-tree copy.** A throwaway copy of the **3.9.19** tree was extracted at a sub-path of a
+**pristine** origin — its own worker, its own cache generation, its own `?v=3.9.19` tokens, and no
+`checkForShellUpdate` in the document — loaded twice so it was controlled at script time, and then
+the **3.9.20** tree was extracted over it at the same paths: a publish at the same URLs, which is
+what a Pages deploy is. The page was then given one foreground event, the only trigger a 3.9.19
+build has, with its 5-minute throttle skipped by moving the clock.
+
+| | before | after |
+|---|---|---|
+| shell | 3.9.19 (no new trigger, no 3.9.20 What's New) | **3.9.20** (both present) |
+| `styles.css?v=` | 3.9.19 | **3.9.20** |
+| worker scriptURL | `sw.js?v=3.9.19` | **`sw.js?v=3.9.20`** |
+| navigation type | `navigate` | **`reload`** |
+| the marker left on the old document | present | **gone** |
+| waiting / installing | none | none |
+
+So a device on 3.9.18 or 3.9.19 — the builds carrying the `controllerchange` reload — updates
+itself on its next foreground return, and anything older still receives the new worker and takes the
+new shell on its next launch. **Neither needs an uninstall, a cache clear, or a new browser.**
+
+**A false trail worth recording, because it cost a cycle.** The first attempt at this same test ran
+on the dev origin the preview panel uses, which still had a registration from an earlier session
+(worker `sw.js?v=3.9.18`, with a newer one parked in `waiting`). There the published update *was*
+fetched and installed — a new cache generation appeared — and then sat in `waiting` while the old
+worker kept serving the page; neither that worker's own install-time `skipWaiting()` nor a
+hand-sent `SKIP_WAITING` promoted it. I did not explain that, and did not chase it, because the
+same sequence on a clean origin behaves exactly as designed. Two things follow: a verification
+origin must be **pristine** (a second `python -m http.server` on a free port is the cheap way), and
+that stuck `waiting` state is not hypothetical — it is the state the nudge exists for.
