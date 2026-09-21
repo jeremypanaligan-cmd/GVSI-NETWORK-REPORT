@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.19">
+  <link rel="stylesheet" href="styles.css?v=3.9.20">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -435,6 +435,13 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Jeremy</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+        <p><strong>Version 3.9.20 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Your App Now Goes Looking For Its Own Update (Fix):</strong> An installed app could sit on the release it was installed with for as long as you kept using it — the update only ever arrived on a fresh launch, and sometimes not even then, so the fix was to delete the app and install it again. The app asked the browser for a new version in exactly one situation: the moment it came back to the foreground. That missed the two cases that matter most — opening the app, and leaving it open all day — and the browser's own check is no help either, because it will not look more than once every twenty-four hours per installation. It now asks on every launch, on every return to the app, and every fifteen minutes while it is open, so a release you publish reaches the phone without uninstalling anything. The asking is deliberately cheap and shared: opening the app and returning to it in the same minute is still one question, not three, and the answer decides whether anything is downloaded at all.</li>
+                  <li><strong>A Version That Was Waiting Is Let In (Fix):</strong> A downloaded update sometimes sat waiting for its turn, and it would wait until every window of the app was closed — which an app on the home screen never does. It is now told to step in as soon as it is ready, so the version your phone has already downloaded is the one it runs.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
                 <p><strong>Version 3.9.19 — What's New:</strong></p>
@@ -1482,7 +1489,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.19').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.20').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
