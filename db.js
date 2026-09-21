@@ -1,5 +1,12 @@
 // ====================== IndexedDB MODULE ======================
-// Offline-first data storage para sa daily snapshots & trend charts
+// Offline-first data storage para sa daily snapshots.
+//
+// A snapshot is captured once a day and NEVER rewritten — it is the record of what the sheet
+// said that day, and the sheet cannot be asked again once the day has passed. Nothing reads it
+// back now: the Analytics trend charts were the only reader, and they are gone. So the store is
+// retained history rather than a live feature. `saveDailySnapshot` keeps writing for that
+// reason (deleting it would destroy data that cannot be rebuilt), and `getSnapshots` stays as
+// the reader for whatever history view comes next.
 
 const DB_NAME = 'netpulse-db';
 const DB_VERSION = 1;
