@@ -163,7 +163,7 @@ function renderBackboneReport(data) {
             ${linkChips || '<span style="color: var(--text-muted);">-</span>'}
           </div>
         </td>
-        <td data-label="Service" style="text-align: center;"><span class="badge badge-${serviceBadge}">${service}</span></td>
+        <td data-label="Service" style="text-align: center;"><span class="badge badge-${serviceBadge} status-chip" title="${safeService}">${service}</span></td>
         <td data-label="No. of Links" style="text-align: center;"><span class="badge badge-orange">${countLinks}</span></td>
         <td data-label="Category">${category}</td>
         <td data-label="Impact">${impact}</td>

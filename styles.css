@@ -781,6 +781,25 @@ body.dark-mode .brand-gallop {
   margin-bottom: 14px;
 }
 
+/* The OLT tiles carry the longest labels in the app, and two of them — ACTIVE
+   INCIDENTS and SERVICE DEGRADATION — are wider than a phone's third. The shared
+   `.stat-card .label` rule is `nowrap`, which would push those two words out of
+   the tile rather than wrap them. Scoped to this grid because every other tab's
+   tiles still hold one line, and a label that leaves its tile is worse than one
+   that takes two.
+
+   The 2.2em reserve is what keeps the six tiles even: a label on two lines and a
+   label on one occupy the same box, bottom-aligned, so the six VALUES sit on one
+   baseline in both rows instead of one row sitting a line lower than the other. */
+.olt-stats-grid .stat-card .label {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  white-space: normal;
+  min-height: 2.2em;
+  line-height: 1.1;
+}
+
 .stat-card {
   background: var(--card-bg);
   border-radius: 12px;
@@ -1014,6 +1033,63 @@ tr.total-row td {
   border: 0;
   background: none;
   color: var(--text-muted);
+}
+
+/* Fixed-size chips — the OLT table's STATUS cell and the Backbone table's SERVICE
+   cell
+
+   The same problem the cause pill above had, in two more columns: the label is
+   data-driven, so a chip sized by its own text gave every row a different box —
+   "DOWN" beside "OLT SERVICE DEGRADATION" beside "OLT UPLINK LOW POWER" stacked
+   as three widths of ragged pill, and the column was as wide as its longest
+   label. These chips are one fixed WIDTH and one fixed HEIGHT, centred, so every
+   row is the same shape whatever the label is, and the column stops resizing
+   when the mix of incidents changes.
+
+   `width`, not `min-width`: a minimum still lets the longest label drag the
+   column wider, which is the thing being fixed. A label too long for one line
+   wraps to a second rather than stretching the column — hence the fixed height
+   holding exactly two lines at this font size, so a wrapped chip and a short one
+   are the same box — and `title` carries the full label on the markup, so a
+   wrapped chip is never a truncation. The text itself is untouched: "OLT UPLINK
+   LOW POWER" is the string the filter and the CSV export match on, so only the
+   box is fixed, never the value.
+
+   Three widths, because the three columns hold different vocabularies: SERVICE holds
+   four characters (DWDM, MPLS), IMPACT holds up to three (SA, NSA), and INCIDENT
+   holds phrases up to twenty. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 5em;
+  height: 2.9em;
+  padding: 0.25em 0.5em;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+
+/* OLT INCIDENT. Wide enough for "DOWN" and "UPLINK DOWN" on one line, and two
+   lines for "UPLINK LOW POWER" and "SERVICE DEGRADATION" — both of which the
+   fixed height already holds. */
+.status-chip.is-long {
+  width: 12em;
+}
+
+/* OLT IMPACT. The shortest vocabulary of the three, and the reason this column
+   needs the fixed box at all: "SA" and "NSA" are one character apart, so a chip
+   sized to its own text re-centres on every row whose ticket type changes and
+   the column breathes with it. 4.2em is NSA plus the horizontal padding on one
+   line — wide enough for the longest value, narrow enough that the header
+   ("IMPACT") still sets the column width, so the fixed chip never widens it. */
+.status-chip.is-impact {
+  width: 4.2em;
 }
 
 /* Modal / Popup Box */

@@ -7,6 +7,7 @@ var COL = {
   OLT_NAME: 2,           // C
   OLT_TICKET_NO: 5,      // F
   OLT_CAUSE: 6,          // G
+  OLT_IMPACT: 10,        // K (Index 10) — same column NODE_IMPACT and BB_IMPACT read
   OLT_REMARKS: 20,       // U
   OLT_AGING: 23,         // X
   OLT_CLIENTS: 25,       // Z
@@ -370,6 +371,7 @@ if (!oltSheet) {
     var agingMap = {};
     var remarksMap = {};
     var causeMap = {};
+    var impactMap = {}; // Ticket-level IMPACT (Column K): SA = service affecting
     var clientsMap = {}; // Fallback: total clients per ticket
     var oltClientsMap = {}; // NEW: per-OLT client lookup { ticketKey: { oltName: count } }
     
@@ -381,6 +383,7 @@ if (!oltSheet) {
         for (var t = 0; t < tixData.length; t++) {
           var ticketNoRaw = tixData[t][COL.OLT_TICKET_NO];
           var causeRaw = tixData[t][COL.OLT_CAUSE];
+          var impactRaw = tixData[t][COL.OLT_IMPACT];
           var remarksRaw = tixData[t][COL.OLT_REMARKS];
           var agingRaw = tixData[t][COL.OLT_AGING];
           var clientsRaw = tixData[t][COL.OLT_CLIENTS];
@@ -391,6 +394,7 @@ if (!oltSheet) {
             agingMap[tKey] = agingRaw ? String(agingRaw).trim() : "-";
             remarksMap[tKey] = remarksRaw ? String(remarksRaw).trim() : "-";
             causeMap[tKey] = causeRaw ? String(causeRaw).trim() : "-";
+            impactMap[tKey] = impactRaw ? String(impactRaw).trim().toUpperCase() : "-";
             clientsMap[tKey] = clientsRaw !== "" && clientsRaw !== null ? String(clientsRaw).trim() : "0";
             
             // NEW: Build per-OLT client map from breakline format
@@ -433,12 +437,14 @@ if (!oltSheet) {
         var remarks = "-";
         var downtimeCause = "-";
         var clientsAffected = "0";
+        var impact = "-";
 
         if (status !== "UP" && ticketNo && ticketNo !== "N/A") {
           var tKey = String(ticketNo).trim().toUpperCase();
           if (agingMap[tKey]) aging = agingMap[tKey];
           if (remarksMap[tKey]) remarks = remarksMap[tKey];
           if (causeMap[tKey]) downtimeCause = causeMap[tKey];
+          if (impactMap[tKey]) impact = impactMap[tKey];
           
           // NEW: Look up by OLT name (not just ticket total) to avoid double-counting
           var perOlt = oltClientsMap[tKey] || {};
@@ -459,12 +465,13 @@ if (!oltSheet) {
           "AG": aging,
           "RM": remarks,
           "DC": downtimeCause,
-          "CA": clientsAffected
+          "CA": clientsAffected,
+          "IM": impact
         });
       }
     }
     // Compute meta summary for the compact shapes
-    var oltMeta = { total: oltList.length, up: 0, down: 0, lowPower: 0, uplinkDown: 0, degradation: 0, clientsDown: 0 };
+    var oltMeta = { total: oltList.length, up: 0, down: 0, lowPower: 0, uplinkDown: 0, degradation: 0, clientsDown: 0, clientsSA: 0 };
     for (var oi = 0; oi < oltList.length; oi++) {
       var os = oltList[oi].S;
       if (os === "UP") oltMeta.up++;
@@ -472,6 +479,16 @@ if (!oltSheet) {
       else if (os && os.indexOf("LOW POWER") !== -1) oltMeta.lowPower++;
       else if (os && os.indexOf("UPLINK DOWN") !== -1) oltMeta.uplinkDown++;
       else if (os && os.indexOf("DEGRADATION") !== -1) oltMeta.degradation++;
+
+      /* Affected Clients (SA) is scoped by the TICKET's IMPACT, not by the row's status,
+         so it is accumulated BESIDE the status chain rather than inside one of its arms —
+         an OLT sitting in LOW POWER whose ticket is SA counts, and a DOWN ticket marked
+         NSA does not. clientsDown keeps its own meaning: the Analytics tab and the daily
+         snapshot in db.js still read it, and a snapshot is never corrected after the
+         fact, so changing what that number means would rewrite history. */
+      if (os !== "UP" && String(oltList[oi].IM || "").toUpperCase() === "SA") {
+        oltMeta.clientsSA += parseInt(oltList[oi].CA) || 0;
+      }
     }
 
     /* When this payload was built. It rides INSIDE the cached bytes, so a cache
@@ -847,7 +864,7 @@ function handleGetRev() {
    The order is the one the legacy objects are built in above, so a decoded row is
    not merely equal to a legacy row but identical to it key-for-key. That keeps the
    round trip provable by string comparison (see tests/olt-payload.test.js). */
-var OLT_ROW_FIELDS = ["P", "M", "N", "S", "T", "AG", "RM", "DC", "CA"];
+var OLT_ROW_FIELDS = ["P", "M", "N", "S", "T", "AG", "RM", "DC", "CA", "IM"];
 
 /* Fields replaced by an index into a dictionary. Keys are the dictionary names. */
 var OLT_DICT_FIELDS = { "P": "p", "M": "m" };

@@ -293,13 +293,16 @@ function chromeSandbox() {
     healthyOltListRange: makeEl('healthyOltListRange'),
     healthyOltListPager: makeEl('healthyOltListPager'),
     btnFilterUp: makeEl('btnFilterUp'),
-    btnFilterDown: makeEl('btnFilterDown', 'active')
+    /* Active Incidents is the landing view and carries the highlight on load; DOWN is one
+       pill further in, exactly as the markup in index.html has them. */
+    btnFilterActiveIncidents: makeEl('btnFilterActiveIncidents', 'active'),
+    btnFilterDown: makeEl('btnFilterDown')
   };
   const strip = makeEl('strip');
   const exportBar = makeEl('exportBar', 'export-toolbar');
   exportBar.appendChild(makeEl('exportCsv', 'export-btn'));
   exportBar.appendChild(makeEl('exportPdf', 'export-btn'));
-  const filterBtns = [nodes.btnFilterUp, nodes.btnFilterDown];
+  const filterBtns = [nodes.btnFilterUp, nodes.btnFilterActiveIncidents, nodes.btnFilterDown];
 
   const s = {
     console: console,
@@ -343,7 +346,7 @@ test('the healthy view drops the export bar but keeps the toolbar saying UP', ()
   assert.ok(!s.__nodes.btnFilterDown.classList.contains('active'), 'DOWN must not stay highlighted');
 });
 
-test('going back to the overview restores the table, its export bar and DOWN', () => {
+test('going back to the overview restores the table, its export bar and Active Incidents', () => {
   const s = chromeSandbox();
   s.showHealthyOltFleet();
   s.showOltOverview();
@@ -352,7 +355,10 @@ test('going back to the overview restores the table, its export bar and DOWN', (
   assert.strictEqual(s.__nodes.oltIssuesTableCard.hidden, false, 'the incident table returns');
   assert.strictEqual(s.__exportBar.hidden, false, 'and so does its export bar');
   assert.strictEqual(s.__strip.hidden, false);
-  assert.ok(s.__nodes.btnFilterDown.classList.contains('active'));
+  /* "Back to OLT Overview" has to land on the view the operator started from, and that is
+     the landing view now — not DOWN, which is one filter deeper in. */
+  assert.ok(s.__nodes.btnFilterActiveIncidents.classList.contains('active'));
+  assert.ok(!s.__nodes.btnFilterDown.classList.contains('active'));
   assert.ok(!s.__nodes.btnFilterUp.classList.contains('active'));
 });
 

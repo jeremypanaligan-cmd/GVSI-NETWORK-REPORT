@@ -1,7 +1,7 @@
-// Focused client tests for the OLT zero state — the "no Down OLT" screen.
+// Focused client tests for the OLT zero state — the "no incident" screen.
 //
-// This path gets its own suite because it is the tab's DEFAULT view (currentOltFilter
-// starts at 'DOWN'), so it is the screen an operator sees most often and the one that
+// This path gets its own suite because it is the tab's landing view (currentOltFilter
+// starts at 'ACTIVE'), so it is the screen an operator sees most often and the one that
 // most needs to be honest. What it replaces: a bare inline-styled <td> plus an early
 // `return` that skipped the freshness chip and the export toolbar.
 'use strict';
@@ -211,7 +211,9 @@ test('each partial filter names itself instead of borrowing the DOWN copy', () =
 
 test('no rows at all is missing data, never good news', () => {
   const s = sandbox();
-  s.currentOltFilter = 'ALL';
+  /* The landing filter, over a payload that carried nothing: the missing-snapshot card is
+     chosen from the data, not from the filter token, so it is this screen's copy too. */
+  s.currentOltFilter = 'ACTIVE';
   s.oltMeta = null;
   s.rawOltData = [];
   s.renderOltTable();
@@ -230,15 +232,20 @@ test('no rows at all is missing data, never good news', () => {
 
 test('legacy shape=1 with no meta counts the fleet from the rows', () => {
   const s = sandbox();
-  s.currentOltFilter = 'DOWN';
+  s.currentOltFilter = 'ACTIVE';
   s.oltMeta = null;
-  s.rawOltData = [upRow('OLT-1'), upRow('OLT-2'), { S: 'LOW POWER', P: 'X', M: 'Y', N: 'OLT-LP' }];
+  /* Three UP rows and no summary: a legacy full-row payload whose incident list is empty,
+     which is the shape a client that has not reloaded still asks for. The badges have to be
+     counted from those rows, because there is nothing else to read them from — and because
+     rows DID arrive, this is the all-clear, not the missing-snapshot card. */
+  s.rawOltData = [upRow('OLT-1'), upRow('OLT-2'), upRow('OLT-3')];
   s.renderOltTable();
 
   const m = s.__markup();
-  assert.ok(m.indexOf('2 UP') !== -1, 'two rows report UP');
+  assert.ok(m.indexOf('3 UP') !== -1, 'three rows report UP');
   assert.ok(m.indexOf('3 TRACKED') !== -1, 'three are tracked');
   assert.ok(m.indexOf('0 DOWN') !== -1, 'and the zero is counted, not assumed');
+  assert.ok(m.indexOf('is-missing') === -1, 'rows arrived, so nothing is missing');
 });
 
 /* ------------------------------------------------------------------ *
@@ -253,11 +260,29 @@ test('the freshness chip and the export bar are this function\'s tail, not the t
   empty.renderOltTable();
 
   assert.strictEqual(empty.__ticker(), 1, 'the empty view still refreshes the age chip');
+  /* The bar is still BUILT here (every other render path assumes it exists) but it is not
+     on screen: two greyed-out buttons above "nothing is down" spend the height the card
+     needs, and this is the only function that knows the table is empty. */
+  const bar = empty.__tab.querySelector('.export-toolbar');
+  assert.ok(bar, 'the bar is still constructed, so the filled path can find it later');
+  assert.strictEqual(bar.hidden, true,
+    'and it leaves the screen, so the zero-state card sits directly under the filter strip');
   const btns = empty.__exportBtns();
-  assert.strictEqual(btns.length, 2, 'and its export bar still exists to be muted');
+  assert.strictEqual(btns.length, 2, 'both buttons are still there, in case it is revealed');
   assert.ok(btns.every((b) => b.disabled),
-    'muted: a CSV of no rows is a header line, and a PDF of it is this card');
+    'muted as well as hidden: a CSV of no rows is a header line, and a PDF of it is this card');
   assert.ok(btns[0].title.indexOf('DOWN') !== -1, 'and it says which filter has nothing');
+
+  /* The sequence that actually happens, on the SAME tab: the ticket clears, and then another
+     one arrives. The bar has to come back, which is why the un-hide at the top of the
+     function is not redundant with the hide in the empty arm — and this is the only way to
+     catch it, because a fresh sandbox starts with a visible bar. */
+  empty.oltMeta = { up: 0, down: 1, total: 1 };
+  empty.rawOltData = [downRow('OLT-B')];
+  empty.renderOltTable();
+  assert.strictEqual(empty.__tab.querySelector('.export-toolbar').hidden, false,
+    'the bar comes back the moment a row does — hiding it is a state, not a removal');
+  assert.ok(empty.__exportBtns().every((b) => !b.disabled), 'and its buttons are live again');
 
   const filled = sandbox();
   filled.currentOltFilter = 'DOWN';
@@ -267,6 +292,8 @@ test('the freshness chip and the export bar are this function\'s tail, not the t
 
   assert.strictEqual(filled.__ticker(), 1, 'the filled view refreshes it too');
   assert.ok(filled.__exportBtns().every((b) => !b.disabled), 'and its export buttons are live');
+  assert.strictEqual(filled.__tab.querySelector('.export-toolbar').hidden, false,
+    'the bar comes back the moment a row does — hiding it is a state, not a removal');
 });
 
 test('a tab with no export bar gets one even when there is nothing to export', () => {
@@ -279,6 +306,13 @@ test('a tab with no export bar gets one even when there is nothing to export', (
   const bar = s.__tab.querySelector('.export-toolbar');
   assert.ok(bar, 'the bar is built before it can be muted');
   assert.strictEqual(bar.parentNode, s.__tab, 'and lands in the tab, beside the filter strip');
+  assert.strictEqual(bar.hidden, true, 'then hidden, because this snapshot has nothing to export');
+  /* It sits immediately after the filter strip, so the height it gives back goes to the
+     card below it and not to whatever else shares the tab. The fake DOM has no
+     `nextSibling`, so the position is read off the parent's child list. */
+  const siblings = bar.parentNode.children;
+  assert.strictEqual(siblings.indexOf(bar), siblings.indexOf(s.__strip) + 1,
+    'directly after the filter strip it belongs to');
 });
 
 /* ------------------------------------------------------------------ *

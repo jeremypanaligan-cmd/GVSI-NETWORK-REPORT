@@ -316,15 +316,20 @@
         <div class="page-title">OLT Status Summary</div>
       </div>
 
-      <!-- Top Summary Cards Matrix para sa OLT -->
+      <!-- Top Summary Cards Matrix para sa OLT.
+           The order is the incident ladder read left to right, top to bottom: the whole
+           fleet first (UP / ACTIVE INCIDENTS / DOWN), then the three incident types that
+           add up to the middle card. ACTIVE INCIDENTS sits between UP and DOWN because it
+           is the pair's remainder — total minus UP — so the middle tile is the sum of the
+           five that flank it, and no tile states a number the others contradict. -->
       <div class="olt-stats-grid">
-        <div class="stat-card c-total clickable" onclick="setOltFilter('ALL')">
-          <div class="label">TOTAL OLT</div>
-          <div class="value" id="oltCardTotal">0</div>
-        </div>
         <div class="stat-card c-green clickable" onclick="showHealthyOltFleet()" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showHealthyOltFleet();}">
           <div class="label">UP</div>
           <div class="value" id="oltCardUp">0</div>
+        </div>
+        <div class="stat-card c-total clickable" onclick="setOltFilter('ACTIVE')">
+          <div class="label">ACTIVE INCIDENTS</div>
+          <div class="value" id="oltCardActive">0</div>
         </div>
         <div class="stat-card c-red clickable" id="cardOltDown" onclick="setOltFilter('DOWN')">
           <div class="label">DOWN</div>
@@ -339,7 +344,7 @@
           <div class="value" id="oltCardUplinkDown">0</div>
         </div>
         <div class="stat-card c-purple clickable" id="cardOltDegradation" onclick="setOltFilter('DEGRADATION')">
-          <div class="label">DEGRADATION</div>
+          <div class="label">SERVICE DEGRADATION</div>
           <div class="value" id="oltCardDegradation">0</div>
         </div>
       </div>
@@ -357,15 +362,15 @@
         </div>
         <div style="width: 1px; align-self: stretch; background: var(--border-color); min-height: 100px;" class="olt-insight-divider"></div>
         <div style="text-align: center; padding: 4px 20px;">
-          <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Affected Clients (Down)</div>
-          <div style="font-size: 34px; font-weight: 800; color: var(--badge-red-text); margin-top: 6px;" id="oltCardClientsDown">0</div>
+          <div style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Affected Clients (SA)</div>
+          <div style="font-size: 34px; font-weight: 800; color: var(--badge-red-text); margin-top: 6px;" id="oltCardClientsSA">0</div>
         </div>
       </div>
 
       <!-- Filter Buttons Toolbar -->
       <div class="filter-toolbar">
-        <button class="filter-btn" id="btnFilterAll" onclick="setOltFilter('ALL')">ALL OLTs</button>
-        <button class="filter-btn active" id="btnFilterDown" onclick="setOltFilter('DOWN')">DOWN</button>
+        <button class="filter-btn active" id="btnFilterActiveIncidents" onclick="setOltFilter('ACTIVE')">Active Incidents</button>
+        <button class="filter-btn" id="btnFilterDown" onclick="setOltFilter('DOWN')">DOWN</button>
         <button class="filter-btn" id="btnFilterLowPower" onclick="setOltFilter('LOW POWER')">LOW POWER</button>
         <button class="filter-btn" id="btnFilterUplinkDown" onclick="setOltFilter('UPLINK DOWN')">UPLINK DOWN</button>
         <button class="filter-btn" id="btnFilterDegradation" onclick="setOltFilter('DEGRADATION')">DEGRADATION</button>
@@ -384,9 +389,10 @@
                 <th class="sortable" onclick="sortTable('oltTableBody', 1, this)">CITY/MUN</th>
                 <th class="sortable" onclick="sortTable('oltTableBody', 2, this)">OLT NAME</th>
                 <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 3, this, true)">CLIENTS</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">DT CAUSE</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 5, this, false, true)">AGING</th>
-                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 6, this)">STATUS</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 4, this)">IMPACT</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 5, this)">DT CAUSE</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 6, this, false, true)">AGING</th>
+                <th class="sortable" style="text-align: center;" onclick="sortTable('oltTableBody', 7, this)">INCIDENT</th>
               </tr>
             </thead>
             <tbody id="oltTableBody">
@@ -427,7 +433,7 @@
         <!-- Developer Credit Card -->
         <div class="developer-box">
           <div class="dev-label">Developed by:</div>
-          <div class="dev-name">GVSI Dev</div>
+          <div class="dev-name">GVSI Jeremy</div>
         </div>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
@@ -976,7 +982,7 @@
   
   let currentTab = 'nap';
   let rawOltData = [];
-  let currentOltFilter = 'DOWN';
+  let currentOltFilter = 'ACTIVE';
   let _isInitialLoad = true;
 
   const dataCache = { nap: null, lcp: null, olt: null, node: null, backbone: null };

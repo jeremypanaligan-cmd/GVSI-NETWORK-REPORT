@@ -133,7 +133,8 @@ function aggregateOltDownCauses(rows) {
 function processAndRenderOlt() {
   hideModuleLoading('olt');
   let countUp = 0, countDown = 0, countLowPower = 0, countUplinkDown = 0, countDegradation = 0;
-  let totalClientsDown = 0;
+  let countActive = 0;
+  let totalClientsSA = 0;
   let totalOlt = rawOltData.length;
 
   if (oltMeta) {
@@ -143,26 +144,41 @@ function processAndRenderOlt() {
     countLowPower = oltMeta.lowPower;
     countUplinkDown = oltMeta.uplinkDown;
     countDegradation = oltMeta.degradation;
-    totalClientsDown = oltMeta.clientsDown;
+    totalClientsSA = Number(oltMeta.clientsSA) || 0;
     totalOlt = oltMeta.total;
+
+    /* ACTIVE INCIDENTS is every row the server did NOT call UP: the test the server applied
+       when it chose which rows to send, and the same test the ACTIVE filter re-applies to
+       them when it renders. Derived from the fleet size rather than added up from the four
+       arms below, because those arms are a hand-written list of the statuses anyone thought
+       of — a status the sheet spells differently increments none of them, and the card would
+       count one incident fewer than the table shows while the row sat there on screen. */
+    countActive = Math.max(0, totalOlt - countUp);
   } else {
     // Fallback: compute from data (legacy shape=1)
     rawOltData.forEach(item => {
       const status = (item.S || item.STATUS || '').toString().trim().toUpperCase();
-      if (status === 'DOWN') {
-        countDown++;
-        totalClientsDown += parseInt(item.CA || 0) || 0;
-      }
+      /* The same comparison the ACTIVE filter makes, so the card and the table cannot
+         disagree about what active means. */
+      if (status !== 'UP') countActive++;
+      if (status === 'DOWN') countDown++;
       else if (status.includes('LOW POWER')) countLowPower++;
       else if (status.includes('UPLINK DOWN')) countUplinkDown++;
       else if (status.includes('DEGRADATION')) countDegradation++;
       else countUp++;
+
+      /* Affected Clients (SA) is scoped by the TICKET's impact, not by this row's status,
+         so it is counted beside the status chain rather than inside one of its arms: an OLT
+         in LOW POWER whose ticket is SA counts, and a DOWN ticket marked NSA does not. */
+      if (status !== 'UP' && (item.IM || '').toString().trim().toUpperCase() === 'SA') {
+        totalClientsSA += parseInt(item.CA || 0) || 0;
+      }
     });
   }
 
   // Null-safe DOM updates
   const _el = (id) => document.getElementById(id);
-  if (_el('oltCardTotal')) _el('oltCardTotal').textContent = totalOlt;
+  if (_el('oltCardActive')) _el('oltCardActive').textContent = countActive;
   if (_el('oltCardUp')) _el('oltCardUp').textContent = countUp;
   if (_el('oltCardDown')) _el('oltCardDown').textContent = countDown;
   if (_el('oltCardLowPower')) _el('oltCardLowPower').textContent = countLowPower;
@@ -174,7 +190,7 @@ function processAndRenderOlt() {
   const cardLP = _el('cardOltLowPower');
   if (cardLP) cardLP.className = 'stat-card clickable ' + getAlertClass('oltLowPower', countLowPower);
   if (_el('oltCardDegradation')) _el('oltCardDegradation').textContent = countDegradation;
-  if (_el('oltCardClientsDown')) _el('oltCardClientsDown').textContent = totalClientsDown;
+  if (_el('oltCardClientsSA')) _el('oltCardClientsSA').textContent = totalClientsSA;
 
   renderOltDonut(countUp, countDown, countLowPower, countUplinkDown, countDegradation, totalOlt);
   if (oltView === 'healthy-summary' || oltView === 'healthy-list') renderHealthyOltFleet();
@@ -232,7 +248,7 @@ function setOltFilter(filterType) {
   document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
 
   const btnMap = {
-    'ALL': 'btnFilterAll',
+    'ACTIVE': 'btnFilterActiveIncidents',
     'DOWN': 'btnFilterDown',
     'LOW POWER': 'btnFilterLowPower',
     'UPLINK DOWN': 'btnFilterUplinkDown',
@@ -252,8 +268,8 @@ function healthyPanel_() {
 }
 
 /* The healthy fleet IS the UP view of this module, so the toolbar has to say UP
-   while it is open. It used to keep whatever was active before — DOWN, because that
-   is the overview's default — so the strip said the opposite of what was on screen.
+   while it is open. It used to keep whatever was active before — DOWN, the overview's
+   default at the time — so the strip said the opposite of what was on screen.
    Scoped to this tab's toolbar, unlike setOltFilter's app-wide sweep. */
 function markOltFilterActive_(buttonId) {
   const strip = document.querySelector('#tab-olt .filter-toolbar');
@@ -283,7 +299,10 @@ function showOltOverview() {
   oltView = 'overview';
   oltUpQuery = '';
   oltUpPage = 1;
-  setOltFilter('DOWN');
+  /* Back to the landing view. It used to return to DOWN, which was the default before the
+     toolbar's first pill became Active Incidents — a "Back" that landed somewhere other
+     than where the operator started. */
+  setOltFilter('ACTIVE');
 }
 
 async function loadHealthyOltList() {
@@ -544,9 +563,9 @@ function getCauseColor(cause) {
 
 /* ── OLT ZERO STATE ──
 
-   The DOWN filter is this tab's DEFAULT view, and "nothing is down" is its best news —
-   but it used to render as a bare <td> reading "No OLTs found under status: DOWN" inside
-   a seven-column table with no rows, styled by an inline attribute instead of the theme.
+   Active Incidents is this tab's DEFAULT landing view, and "nothing is wrong" is its best
+   news — but it used to render as a bare <td> reading "No OLTs found under status: DOWN"
+   inside a table with no rows, styled by an inline attribute instead of the theme.
 
    Two things it deliberately does NOT do:
 
@@ -560,19 +579,27 @@ function getCauseColor(cause) {
      a node that a screen reader is watching.
 
    The copy is per filter, and the "no data at all" case is worded apart from the healthy
-   one on purpose: `filtered.length === 0` on ALL means no rows ARRIVED, and calling that
-   a healthy fleet would be a claim the payload does not support. */
+   one on purpose: an empty list over a payload that carried NOTHING means no rows
+   ARRIVED, and calling that a healthy fleet would be a claim the payload does not
+   support. That case is decided from the data itself — see oltEmptyCopy_(). */
+
+/* The all-clear copy, declared ONCE and shared by the two views that can legitimately claim
+   it. A copy per view is how two cards that mean the same thing start saying different
+   things; the badges these views render under the sentence are what scope it.
+
+   ACTIVE is the tab's DEFAULT view and it is empty only when DOWN, LOW POWER, UPLINK DOWN
+   and DEGRADATION are all zero — the server sends nothing but incident rows — so there the
+   sentence is exactly true. DOWN is the narrower view whose own card the fleet's numbers
+   sit under. */
+var OLT_ALL_CLEAR_COPY = {
+  title: 'All OLT Systems Operational',
+  lede: 'All tracked OLTs are functional. Incident alerts will automatically render here in real time.',
+  healthy: true
+};
 
 var OLT_EMPTY_COPY = {
-  'DOWN': {
-    /* "Operational" is this filter's claim, and the badges below scope it: the DOWN view is
-       empty, and the fleet's own numbers sit right there under the sentence. Units sitting in
-       LOW POWER / UPLINK DOWN / DEGRADATION are reported by the donut and by their own
-       filters, which is why the card carries counts rather than only prose. */
-    title: 'All OLT Systems Operational',
-    lede: 'All tracked OLTs are functional. Incident alerts will automatically render here in real time.',
-    healthy: true
-  },
+  'ACTIVE': OLT_ALL_CLEAR_COPY,
+  'DOWN': OLT_ALL_CLEAR_COPY,
   /* The three partial filters name themselves, because "nothing matches" and "nothing is
      wrong" look alike on screen otherwise — and DOWN is this tab's default view, so an
      operator who has just tapped LOW POWER has to be told it is the FILTER with no rows,
@@ -589,17 +616,25 @@ var OLT_EMPTY_COPY = {
     title: 'No Degraded OLTs',
     lede: 'Nothing in this snapshot matches the DEGRADATION filter.'
   },
-  /* ALL empty is a DIFFERENT fact from DOWN empty: it means no rows ARRIVED at all. Saying
-     "no OLT is down" here would turn a missing snapshot into good news, so it says what
-     happened and points at the one control that can fix it. */
-  'ALL': {
-    title: 'No OLT data in this snapshot',
-    lede: 'The server returned no OLT rows. Use REFRESH to build a new snapshot.',
-    missing: true
-  }
+};
+
+/* "No rows ARRIVED" is a DIFFERENT fact from "this filter matched nothing": the first is a
+   missing snapshot, the second is a fleet with nothing to report. Saying "no OLT is down"
+   over a missing snapshot would turn a failure into good news, so it is worded apart and
+   points at the one control that can fix it.
+
+   It is chosen from the DATA, not from a filter token, because no token can decide it: a
+   payload that carried a summary, or carried rows, is evidence the server answered — an
+   empty list is then a fact about the filters. It used to hang off the 'ALL' token, which
+   meant the one screen it described depended on which button had been tapped. */
+var OLT_MISSING_COPY = {
+  title: 'No OLT data in this snapshot',
+  lede: 'The server returned no OLT rows. Use REFRESH to build a new snapshot.',
+  missing: true
 };
 
 function oltEmptyCopy_(filter) {
+  if (!oltMeta && !(rawOltData || []).length) return OLT_MISSING_COPY;
   return OLT_EMPTY_COPY[filter] || {
     title: 'Nothing to list',
     lede: 'No OLT in this snapshot matches the current filter.'
@@ -701,9 +736,10 @@ function hideOltEmptyState_() {
 }
 
 /* The export toolbar is built here so the zero state can reach it: with no rows the CSV
-   would be a header line and the PDF would be this card. The healthy fleet mutes its own
-   button the same way, so the app keeps one answer to "what happens when there is nothing
-   to export". */
+   would be a header line and the PDF would be this card, which is why `renderOltTable`
+   mutes it and then takes it off screen when the table comes up empty. The healthy fleet
+   mutes its own button the same way, so the app keeps one answer to "what happens when
+   there is nothing to export". */
 function setupOltExportToolbar_() {
   const oltTab = document.getElementById('tab-olt');
   if (!oltTab) return null;
@@ -730,7 +766,7 @@ function setupOltExportToolbar_() {
 function setOltExportEnabled_(enabled) {
   const toolbar = document.querySelector('#tab-olt .export-toolbar');
   if (!toolbar) return;
-  const reason = 'Nothing to export — no OLT matches the ' + currentOltFilter + ' filter';
+  const reason = 'Nothing to export — no OLT matches the ' + oltFilterLabel_() + ' filter';
   const buttons = toolbar.querySelectorAll('button.export-btn');
   for (let i = 0; i < buttons.length; i++) {
     const btn = buttons[i];
@@ -744,6 +780,32 @@ function setOltExportEnabled_(enabled) {
       btn.setAttribute('aria-label', btn.textContent.replace(/\s+/g, ' ').trim() + ' — ' + reason);
     }
   }
+}
+
+/* The footer and the tooltips name the view in the words the toolbar itself uses. 'ACTIVE'
+   is the only token whose printed form differs from the token, and this is where it would
+   have read "FILTERED TOTAL (ACTIVE)". */
+function oltFilterLabel_() {
+  return currentOltFilter === 'ACTIVE' ? 'ACTIVE INCIDENTS' : currentOltFilter;
+}
+
+/* The INCIDENT cell's label, trimmed of the module prefix the status arrives with: every row
+   in this table is an OLT, so "OLT UPLINK DOWN" spends its first word repeating the name of
+   the tab you are already looking at. DOWN is retained exactly as it arrives — it carries no
+   prefix, and it is the one status whose label is already the whole story under this header.
+
+   A DISPLAY transform, and nothing else. The raw status is what the filters compare against
+   (`st.includes('LOW POWER')`), what the cards and `meta` count, and what the modal receives —
+   and the raw value is what the cell's `title` keeps, so the sheet's own wording is still one
+   hover away. Trimming the DATA would be a different change with a wider blast radius: the
+   server's vocabulary is what the sheet, the CSV export and every count already agree on. */
+function oltIncidentLabel_(status) {
+  var s = String(status || '').trim().toUpperCase();
+  /* DOWN is retained exactly as it arrives, prefix or not: it is the one status whose label is
+     already the whole story under this header, and the only one the instruction named as
+     retained. The other three lose the prefix and keep everything that distinguishes them. */
+  if (s === 'DOWN' || s === 'OLT DOWN') return s;
+  return s.replace(/^OLT\s+/, '');
 }
 
 function renderOltTable() {
@@ -761,7 +823,10 @@ function renderOltTable() {
 
   const filtered = rawOltData.filter(item => {
     const st = (item.S || item.STATUS || '').toString().trim().toUpperCase();
-    if (currentOltFilter === 'ALL') return true;
+    /* Active Incidents is every row the server sends: shape=3 already carries only problem
+       rows, so "not UP" is the honest test — and it stays correct if a legacy full-row
+       payload ever reaches this function. */
+    if (currentOltFilter === 'ACTIVE') return st !== 'UP';
     if (currentOltFilter === 'DOWN') return st === 'DOWN';
     if (currentOltFilter === 'LOW POWER') return st.includes('LOW POWER');
     if (currentOltFilter === 'UPLINK DOWN') return st.includes('UPLINK DOWN');
@@ -775,12 +840,19 @@ function renderOltTable() {
      so the one screen whose honesty matters most, "nothing is down", was the screen whose
      "Data as of" age never moved and whose export toolbar was never built. They moved
      above the branch rather than into both arms of it: two copies of a decision is how an
-     empty path and a filled path drift apart. */
-  setupOltExportToolbar_();
+     empty path and a filled path drift apart.
+
+     Still above the branch — but the bar now LEAVES when the table has nothing in it. Two
+     greyed-out buttons over a card that says there is nothing to report are a control the
+     operator cannot use, spending the height the card needs, and this function is the only
+     place that knows both facts at once. The buttons stay muted as well as hidden, so the
+     bar is never one reveal away from exporting a header line. */
+  const exportBar = setupOltExportToolbar_();
   setOltExportEnabled_(filtered.length !== 0);
   if (window.fetchGate) fetchGate.refreshTicker('olt');
 
   if (filtered.length === 0) {
+    if (exportBar) exportBar.hidden = true;
     showOltEmptyState_(currentOltFilter);
     return;
   }
@@ -800,6 +872,23 @@ function renderOltTable() {
     const clientsAffectedDisplay = clientsAffectedNum > 0
       ? `<strong style="color: var(--badge-red-text);">${clientsAffectedNum}</strong>`
       : `<span style="color: var(--text-muted);">–</span>`;
+
+    /* Ticket-level IMPACT, from OLT DOWN Tickets column K. SA = service affecting, so it
+       takes the red badge; NSA is the ordinary case and wears the quiet gray one; anything
+       else that is not blank is printed as-is. A payload built by a server that does not
+       send `IM` yet renders the same muted dash this table already uses for an empty CLIENTS
+       cell — an absence, never a confident zero.
+
+       Both badges share one fixed box (`.status-chip.is-impact`), because "SA" and "NSA" are
+       one character apart: a chip sized to its own text re-centres on every row whose ticket
+       type changes, and the column breathes with it. The dash stays outside the box — it is
+       the absence of an answer, not a value that needs to line up with one. */
+    const impact = _s(item.IM || '').toString().trim().toUpperCase();
+    const impactDisplay = impact === 'SA'
+      ? `<span class="badge badge-red status-chip is-impact">SA</span>`
+      : impact
+        ? `<span class="badge badge-gray status-chip is-impact">${impact}</span>`
+        : `<span style="color: var(--text-muted);">–</span>`;
     const remarks = _s(item.RM || item.REMARKS || '-');
 
     let badgeType = 'green';
@@ -813,6 +902,13 @@ function renderOltTable() {
       ? `<span class="dt-cause-badge" style="--cause-color: ${causeColor.color}; --cause-bg: ${causeColor.bg};">${downtimeCause}</span>`
       : `<span class="dt-cause-badge is-empty">–</span>`;
 
+    /* The cell shows the trimmed label under an INCIDENT header; `title` keeps the status the
+       sheet actually reports, so the tooltip is the record and the cell is the reading. Quotes
+       are escaped on the way into the attribute, the same way the onclick parameters below
+       are. */
+    const statusLabel = oltIncidentLabel_(status);
+    const statusTitle = _s(status).replace(/"/g, '&quot;');
+
     const alertClass = getAlertClass('clientsDown', clientsAffectedNum);
     const safeRemarks = remarks.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n').replace(/\r/g, '');
     const onclickStr = `openOltModal('${_s(name).replace(/'/g, "\'")}', '${_s(province).replace(/'/g, "\'")}', '${_s(municipality).replace(/'/g, "\'")}', '${status}', '${_s(ticketNo).replace(/'/g, "\'")}', '${_s(downtimeCause).replace(/'/g, "\'")}', '${_s(aging).replace(/'/g, "\'")}', '${safeRemarks}', ${clientsAffectedNum})`;
@@ -821,14 +917,15 @@ function renderOltTable() {
       <td data-label="Municipality">${municipality}</td>
       <td data-label="OLT Name"><strong>${name}</strong></td>
       <td data-label="Affected Clients" style="text-align: center;">${clientsAffectedDisplay}</td>
+      <td data-label="Impact" style="text-align: center;">${impactDisplay}</td>
       <td data-label="DT Cause" style="text-align: center;">${causeDisplay}</td>
       <td data-label="Aging" style="text-align: center;">${aging}</td>
-      <td data-label="Status" style="text-align: center;"><span class="badge badge-${badgeType}">${status}</span></td>
+      <td data-label="Incident" style="text-align: center;"><span class="badge badge-${badgeType} status-chip is-long" title="${statusTitle}">${statusLabel}</span></td>
     </tr>`;
   });
 
   tableHtml += `<tr class="total-row">
-    <td colspan="6">FILTERED TOTAL (${currentOltFilter})</td>
+    <td colspan="7">FILTERED TOTAL (${oltFilterLabel_()})</td>
     <td style="text-align: center;">${filtered.length}</td>
   </tr>`;
 

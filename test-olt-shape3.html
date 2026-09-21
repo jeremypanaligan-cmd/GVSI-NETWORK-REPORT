@@ -41,14 +41,17 @@ function decodeOltCompact(compact) {
 // Test with mock data
 var mockData = {
   v: 3,
-  f: ["P", "M", "N", "S", "T", "AG", "RM", "DC", "CA"],
+  f: ["P", "M", "N", "S", "T", "AG", "RM", "DC", "CA", "IM"],
   p: ["ABRA", "BENGUET", "PANGASINAN"],
   m: ["BANGUED", "LA TRINIDAD", "DAGUPAN"],
-  meta: { total: 461, up: 456, down: 1, lowPower: 1, uplinkDown: 2, degradation: 1, clientsDown: 150 },
+  /* clientsDown counts DOWN rows only (Analytics and the daily snapshot read it);
+     clientsSA counts every incident row whose TICKET is service affecting — here the
+     LOW POWER row. Two different numbers on purpose, so a swap between them shows. */
+  meta: { total: 461, up: 456, down: 1, lowPower: 1, uplinkDown: 2, degradation: 1, clientsDown: 150, clientsSA: 45 },
   r: [
-    [0, 0, "BDA001-OLT-01", "DOWN", "TKT-001", "2h 30m", "Fiber cut", "FIBER", "75"],
-    [1, 1, "LTB001-OLT-01", "OLT UPLINK LOW POWER", "TKT-002", "1h 15m", "Signal weak", "POWER", "45"],
-    [2, 2, "DGN001-OLT-01", "OLT UPLINK DOWN", "TKT-003", "45m", "Uplink failure", "UPLINK", "30"]
+    [0, 0, "BDA001-OLT-01", "DOWN", "TKT-001", "2h 30m", "Fiber cut", "FIBER", "75", "NSA"],
+    [1, 1, "LTB001-OLT-01", "OLT UPLINK LOW POWER", "TKT-002", "1h 15m", "Signal weak", "POWER", "45", "SA"],
+    [2, 2, "DGN001-OLT-01", "OLT UPLINK DOWN", "TKT-003", "45m", "Uplink failure", "UPLINK", "30", "NSA"]
   ]
 };
 
@@ -69,9 +72,9 @@ metaDiv.innerHTML = '<h3>Meta Summary (from server)</h3>' +
 // Display table
 var tableDiv = document.getElementById('table');
 tableDiv.style.display = 'block';
-var html = '<h3>Decoded Rows</h3><table><tr><th>Province</th><th>Municipality</th><th>OLT Name</th><th>Status</th><th>Ticket</th><th>Aging</th><th>Cause</th><th>Clients</th></tr>';
+var html = '<h3>Decoded Rows</h3><table><tr><th>Province</th><th>Municipality</th><th>OLT Name</th><th>Status</th><th>Ticket</th><th>Aging</th><th>Cause</th><th>Clients</th><th>Impact</th></tr>';
 decoded.forEach(function(row) {
-  html += '<tr><td>' + row.P + '</td><td>' + row.M + '</td><td>' + row.N + '</td><td>' + row.S + '</td><td>' + row.T + '</td><td>' + row.AG + '</td><td>' + row.DC + '</td><td>' + row.CA + '</td></tr>';
+  html += '<tr><td>' + row.P + '</td><td>' + row.M + '</td><td>' + row.N + '</td><td>' + row.S + '</td><td>' + row.T + '</td><td>' + row.AG + '</td><td>' + row.DC + '</td><td>' + row.CA + '</td><td>' + row.IM + '</td></tr>';
 });
 html += '</table>';
 tableDiv.innerHTML = html;
