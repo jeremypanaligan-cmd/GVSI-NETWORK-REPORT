@@ -69,6 +69,22 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+/* A worker that is INSTALLED but not ACTIVATED holds a release back: the page keeps the
+   old bytes, the new cache sits unused, and nothing on screen says so. `skipWaiting()` in
+   `install` normally prevents that, but a device whose RUNNING worker predates these lines
+   can still hold a new one in `waiting` — and a waiting worker stays waiting until every
+   controlled tab goes away, which for an installed app that is never closed is never.
+
+   index.html watches for that worker (and for one already waiting at launch) and posts
+   this message. Answering it here is what turns the nudge into an activation, an
+   `activate` that drops the old cache, a `controllerchange`, and a reload in the same
+   launch — instead of an uninstall and reinstall. */
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 // Push Notification Handler
 self.addEventListener('push', (e) => {
   let data = { title: 'GVSI NetPulse', body: 'New incident detected' };
@@ -127,17 +143,53 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' }).catch(() => fetch(e.request))
     );
-  } else {
-    // 2. Static Assets (App Shell) -> CACHE FIRST (Instant Load)
-    e.respondWith(
-      caches.match(e.request).then((cachedResponse) => {
-        return cachedResponse || fetch(e.request).then((networkResponse) => {
-          return caches.open(STATIC_CACHE).then((cache) => {
-            cache.put(e.request, networkResponse.clone());
-            return networkResponse;
-          });
-        });
-      })
-    );
+    return;
   }
+
+  /* 2. THE RELEASE DOCUMENT -> ALWAYS NETWORK, and never stored.
+
+     `version.json` is the one file whose cached answer would defeat its whole purpose. The
+     page asks it "is a newer release published?" and a cache-first branch would answer with
+     the release that was current when this device last asked — which is exactly the false
+     "you are up to date" that keeps a device on yesterday's build. Never cached, not even as
+     a fallback: an offline check should fail and be retried, never lie. */
+  if (url.indexOf('version.json') !== -1) {
+    e.respondWith(fetch(e.request, { cache: 'no-store' }));
+    return;
+  }
+
+  /* 3. NAVIGATIONS -> NETWORK FIRST, with the cache only as the offline fallback.
+
+     This is the branch that decides whether a release can arrive at all. A navigation was
+     being answered cache-first and then PINNED under its own URL — and the manifest's
+     `start_url` is a VERSIONED navigation (`index.html?v=3.9.19`), so the launch the OS
+     performs for an installed app hit the pinned copy every single time. The page then kept
+     the old `?v=` tokens inside it, which meant it kept asking for the old generation, which
+     meant the one document that could have moved the device forward was the one document the
+     cache refused to refresh. That is the deadlock an uninstall was breaking.
+
+     `cache: 'no-cache'` rather than a plain fetch: it revalidates, so a changed shell is seen
+     on that same launch (a 304 costs one small round trip when it has not changed), and the
+     precached `./index.html` stays as the offline copy — refreshed at every install, which
+     is also what makes it worth having. */
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request, { cache: 'no-cache' }).catch(() =>
+        caches.match(e.request).then((c) => c || caches.match('./index.html'))
+      )
+    );
+    return;
+  }
+
+  // 4. Static Assets (App Shell) -> CACHE FIRST (Instant Load)
+  e.respondWith(
+    caches.match(e.request).then((cachedResponse) => {
+      return cachedResponse || fetch(e.request).then((networkResponse) => {
+        return caches.open(STATIC_CACHE).then((cache) => {
+          cache.put(e.request, networkResponse.clone());
+          return networkResponse;
+        });
+      });
+    })
+  );
 });

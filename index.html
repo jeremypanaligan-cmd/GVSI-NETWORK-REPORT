@@ -1519,17 +1519,85 @@ function closeNodeModal(event) {
           applyShellUpdate();
         });
 
-        /* A standalone PWA resumed from the background is not navigated, so nothing runs
-           the update check and a release can sit unseen indefinitely. Ask on every return
-           to the foreground (throttled like the data refresh above), and a changed sw.js
-           installs and then triggers the reload. */
-        var lastSwCheck = Date.now();
-        document.addEventListener('visibilitychange', () => {
+        /* ---- ASKING FOR THE UPDATE -----------------------------------------------
+
+           The reload above is the second half of an update; this is the first half.
+           Nothing in the app ever ASKED for an update check, and an installed PWA
+           answers none of the browser's own triggers:
+
+             - Check-on-navigation needs a navigation. A home-screen launch navigates
+               once and then never again; a dashboard left open navigates none at all;
+               and a phone resuming the app from the task switcher does not navigate
+               either — that is a `visibilitychange`, which is not a check.
+             - Chrome floors the navigation rule at 24 hours per registration anyway.
+
+           So the check is asked for here, at every reason there is to ask: the launch,
+           a return to the foreground, and a timer for the display that is never hidden.
+
+           All three go through ONE throttled body, because they overlap by design: a
+           launch that is also a foreground return would otherwise be two fetches of
+           sw.js for one answer. */
+        var SHELL_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+        var _lastShellCheck = 0;
+        var _shellCheckInFlight = false;
+
+        function checkForShellUpdate() {
+          if (_shellCheckInFlight) return;   /* the answer is already on its way */
+          var now = Date.now();
+          if (_lastShellCheck && now - _lastShellCheck < SHELL_CHECK_INTERVAL_MS) return;
+          _lastShellCheck = now;
+          _shellCheckInFlight = true;
+          Promise.resolve().then(function () {
+            return reg.update();
+          }).catch(function () {
+            /* Offline, or the check itself failed. Silent by design: the next trigger
+               asks again, and the cost of this one is that the release arrives at the
+               next trigger instead of at this one. */
+          }).then(function () {
+            _shellCheckInFlight = false;
+          });
+        }
+
+        /* ---- AND THE OTHER WAY A RELEASE STALLS ---------------------------------
+
+           A worker that is INSTALLED but not ACTIVATED holds the release back: the page
+           keeps the old bytes, the new cache sits unused, and nothing on screen says so.
+           The `skipWaiting()` in sw.js normally prevents that, but a device whose
+           RUNNING worker predates that line can still hold a new one in `waiting` — and
+           a waiting worker stays waiting until every controlled tab goes away, which
+           for an installed app that is never closed is never. sw.js answers this nudge
+           by activating, which fires `controllerchange`, which is the reload above. */
+        function releaseWaitingWorker(worker) {
+          if (!worker) return;
+          try { worker.postMessage({ type: 'SKIP_WAITING' }); } catch (err) {}
+        }
+
+        function watchForWaitingWorker() {
+          if (reg.waiting) releaseWaitingWorker(reg.waiting);
+          reg.addEventListener('updatefound', function () {
+            var installing = reg.installing;
+            if (!installing) return;
+            installing.addEventListener('statechange', function () {
+              if (installing.state === 'installed') releaseWaitingWorker(reg.waiting);
+            });
+          });
+        }
+
+        checkForShellUpdate();      /* the launch */
+        watchForWaitingWorker();
+
+        document.addEventListener('visibilitychange', function () {
           if (document.visibilityState !== 'visible') return;
-          if (Date.now() - lastSwCheck < 5 * 60 * 1000) return;
-          lastSwCheck = Date.now();
-          reg.update().catch(() => {});
+          checkForShellUpdate();
         });
+
+        /* The display that is never hidden — no navigation and no return to the
+           foreground — so this timer is the only trigger that reaches it. It decides
+           WHAT to ask; the throttle above decides whether asking costs a fetch. */
+        setInterval(function () {
+          if (document.visibilityState === 'hidden') return;
+          checkForShellUpdate();
+        }, SHELL_CHECK_INTERVAL_MS);
       }).catch(err => {
         console.log('SW registration failed: ', err);
       });
