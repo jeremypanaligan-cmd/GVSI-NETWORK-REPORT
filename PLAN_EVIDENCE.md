@@ -789,3 +789,82 @@ worked: `fetch(url, { cache: 'reload' })` for **each unversioned module**, then 
 cross-check on a second origin (`localhost` vs `127.0.0.1`), which has no cache state at all and
 showed the new code immediately. Recorded in `.freebuff/run.md`, because the existing recipe there
 covered only the versioned `styles.css?v=` half.
+
+---
+
+### PART-018 — the update trigger an installed PWA never had
+
+**Summary.** An installed PWA could keep the release it was installed with until the user
+uninstalled and reinstalled it. Two gaps, each invisible on its own:
+
+1. **Nothing ever asked for an update check.** `reg.update()` was called on exactly one event —
+   `visibilitychange` back to visible, throttled to 5 minutes. Chrome's own check-on-navigation
+   rule is presumably why that looked like enough: except that a home-screen launch navigates
+   **once**, a dashboard left open navigates **never**, a phone resuming the app from the task
+   switcher does not navigate at all (that is a `visibilitychange`, not a check), and the rule is
+   floored at **24 hours per registration** on top of that. `index.html` now asks on the launch, on
+   a return to the foreground, and on a **15-minute timer** for the display that is never hidden.
+   All three share one throttled body with an in-flight guard, because they overlap by design.
+2. **A worker left in `waiting` was never told to go.** A device whose running worker predates
+   `skipWaiting()` can hold the new one in `waiting` indefinitely: a waiting worker stays waiting
+   until every controlled tab goes away, and an installed app is never closed. The page now nudges
+   one already waiting at launch, and watches `updatefound` → `installing.statechange` for one that
+   starts waiting afterwards; `sw.js` answers `{type:'SKIP_WAITING'}` by calling `skipWaiting()`.
+
+**The other half, from the previous turn, is in the same delivery set.** `sw.js`'s fetch handler now
+answers **navigations** network-first (cache only as the offline fallback) and never stores
+`version.json`. The old cache-first navigation branch pinned the release document under its own
+versioned URL, so the page kept the old `?v=` tokens, kept asking for the old generation, and the
+one document that could have moved the device forward was the one document the cache refused to
+refresh. That is the deadlock an uninstall was breaking.
+
+**The throttle is the part that had to be right.** Three reasons to ask collide constantly — an
+installed app launched *is* a foreground event — and without the guard this fix would have become a
+request generator on every device. Measured in the sandbox: a launch followed by three more reasons
+in the same minute costs **one** `reg.update()`; a hidden tab costs **none**; a check that is
+already in flight is not repeated, and the flag is cleared by the ANSWER rather than left set.
+
+**Checks.** Full suite **246 passed across 15 suites, 0 failed** (231 → 246). New
+`tests/sw-update.test.js` — 15 tests that slice the **real** registration block out of `index.html`
+and run it in a vm with a fake `navigator`/`document`/clock, so the triggers cannot drift away from
+the test. **Mutation check 17/17 caught, 0 missed, 0 unproven**, with the baseline green in the same
+workspace first: the launch call removed, the timer removed, the foreground trigger removed, the
+throttle removed, the in-flight guard removed, the flag never cleared, the failure path made noisy,
+the hidden-tab guard removed, the first-install guard removed, the double-reload guard removed, the
+blur guard removed, the launch nudge removed, the `updatefound` wiring removed, the nudge sent
+before the install finished, a non-versioned registration URL, the `sw.js` message handler removed,
+and `sw.js` activating on any message at all.
+
+**One assertion was wrong before the mutation pass, and it is worth recording**: the
+"an installing worker that is not installed yet is left alone" test passed with `reg.waiting`
+`null`, where *no* nudge is possible anyway — green, and proving nothing. It now parks an older
+worker in `waiting` first, which is the state the guard actually exists for.
+
+**End to end, in the real browser, with no uninstall.** A copy of the shell was served at a
+sub-path of the preview origin and loaded twice (the second load is the one that has a controller,
+which is what arms the auto-reload):
+
+| | before | after |
+|---|---|---|
+| `caches.keys()` | `['gvsi-shell-v3.9.19']` | `['gvsi-shell-E2E-PUBLISH-2']` |
+| `performance…navigation[0].type` | `navigate` | **`reload`** |
+| `navigator.serviceWorker.controller.state` | `activated` | `activated` (the new worker) |
+| waiting / installing | — | none |
+
+The publish was a `STATIC_CACHE` generation change in the served `sw.js` at the **same URL** (a
+static server ignores the query string, exactly as GitHub Pages does). The only thing the page was
+then given was one foreground event — with the 15-minute throttle skipped by moving the clock
+forward, which is what a wall display does by waiting. The reload was confirmed both by the
+navigation type and by a marker that lived on the pre-update document and was gone afterwards, and
+the app came back rendering live data.
+
+**Files.** `index.html` (the registration block: three triggers, one throttled body, the waiting
+worker nudge) · `sw.js` (the `SKIP_WAITING` message handler) · **new** `tests/sw-update.test.js`.
+
+**Two things said out loud rather than quietly fixed.** The E2E copy shared the preview's **origin**,
+so its `activate` deleted the preview app's cache generation as well as its own — the root worker
+re-populated it on the next load (verified: 16 entries, `olt-module.js` present, one registration),
+but a second origin would have been the cleaner harness and is recorded in `.freebuff/run.md`. And
+the release is still owed: `node scripts/bump-version.mjs --check` reports `delivery set changed,
+release did not (HEAD published 3.9.19)` for `index.html` and `sw.js` — until the label moves, none
+of this reaches an installed device.

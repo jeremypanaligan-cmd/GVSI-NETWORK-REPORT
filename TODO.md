@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 20, 2026 · `main` is live at **3.9.18** (module identity + module colour — see P2; OLT all-clear rework — see P3; the 3.9.18 reworded copy is not filed here yet) · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 22, 2026 · `main` is live at **3.9.19** (Dashboard/OLT batch — see P2) · **the update trigger is fixed in the tree and still needs a release — see P1** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -16,10 +16,49 @@
 
 ---
 
-## 🔴 P1 — OLT Active Incidents view, IMPACT column and Affected Clients (SA) — in the tree, NOT deployed, NOT released (Sept 21, 2026)
+## 🔴 P1 — The update trigger: an installed PWA now asks for its own release (Sept 22, 2026)
 
-**Status.** Code complete and verified; sitting uncommitted so it can be tested locally first.
-Nothing here has reached the live deployment or an installed device yet.
+**Status.** Fixed, tested and measured — **uncommitted, and therefore not delivered.** Both edited
+files are in the delivery set (`index.html` and `sw.js`), so the label has to move with them or an
+installed device keeps the build it has:
+
+```
+node scripts/bump-version.mjs patch      # 3.9.19 -> 3.9.20, and a What's New entry in the same commit
+node scripts/bump-version.mjs --check    # already warns: "delivery set changed, release did not"
+```
+
+**What was wrong.** Two gaps, each invisible on its own:
+
+1. **Nothing ever asked.** The page called `reg.update()` on exactly one event — a return to the
+   foreground — so a launch and a dashboard left open never checked, and Chrome floors its own
+   check-on-navigation rule at 24 hours per registration. There was no launch trigger, no timer,
+   and no in-flight guard, so adding the obvious triggers would have made every device fetch
+   `sw.js` several times per minute.
+2. **A worker left in `waiting` was never told to go.** A device whose running worker predates
+   `skipWaiting()` can hold a new one in `waiting` indefinitely, because an installed app is never
+   closed and so never releases it. The page now watches for that worker (at launch, and on
+   `updatefound`) and posts `SKIP_WAITING`; `sw.js` answers it.
+
+**Also in this batch (already in the tree from the previous turn, same delivery):** `sw.js`'s fetch
+handler is now network-first for **navigations** and never-caches `version.json`. That is the other
+half of the same symptom — while navigations were answered cache-first and pinned, the one document
+that could move a device forward was the one document the cache refused to refresh, which is the
+deadlock an uninstall was breaking.
+
+**Measured.** 246 tests across 15 suites, 0 failed (231 → 246; new `tests/sw-update.test.js` with
+15). Mutation check **17/17 caught, 0 missed, 0 unproven**, baseline green in the mutation workspace
+first. End to end in a real browser: a published `sw.js` was picked up by an already-running,
+service-worker-controlled page from a single foreground event, with no uninstall — old cache
+generation deleted, new one activated, page reloaded, app rendering live data. See PART-018 of
+`PLAN_EVIDENCE.md` for the numbers and `.freebuff/run.md` for the recipe.
+
+---
+
+## 🟢 P2 — OLT Active Incidents view, IMPACT column and Affected Clients (SA) — SHIPPED in 3.9.19 (Sept 21, 2026)
+
+**Status.** Done. `code.gs` was deployed to Apps Script, and the client shipped as **3.9.19** with
+its labels, tokens, manifest and cache generation moved together (commit `7e06b04`). The two steps
+that were owed here are recorded below as history, not as work.
 
 **What changed.** `ALL OLTs` → **`Active Incidents`**, now the landing view. A new **IMPACT**
 column directly after CLIENTS, joined from `OLT DOWN Tickets` column K by ticket number.
@@ -27,15 +66,14 @@ column directly after CLIENTS, joined from `OLT DOWN Tickets` column K by ticket
 the row's status. The rename is a correction: the payload was already problem-rows-only under
 `shape=3`, so the old label described a view that did not exist.
 
-### The two things that still have to happen, in this order
+### The two steps that were owed, both done
 
-1. **Deploy `code.gs` to Apps Script.** Without it the client renders `–` in every impact cell
-   and **0** on the SA card, because `IM` and `meta.clientsSA` do not exist on the live script
-   yet. That is the honest pre-deploy state, not a bug — but it looks like one.
-2. **Release the client with the version tooling** (`node scripts/bump-version.mjs patch` →
-   3.9.19, plus a What's New entry in the same commit, per the delivery condition above).
-   `olt-module.js` is an unversioned precache entry, so until the label moves the new bytes reach
-   nobody. `node scripts/bump-version.mjs --check` already warns about exactly this.
+1. **`code.gs` deployed to Apps Script** — done by the user. Without it the client would render
+   `–` in every impact cell and **0** on the SA card, because `IM` and `meta.clientsSA` do not
+   exist on the old script.
+2. **Client released with the version tooling** — done as **3.9.19**, What's New in the same
+   commit. `olt-module.js` is an unversioned precache entry, so until the label moved the new
+   bytes reached nobody.
 
 **Measured.** 212 tests pass across 12 suites (196 → 212). Mutation check 21/21 caught, 0 missed,
 0 unproven. In the browser: 4 incident rows on the landing view, impacts SA/NSA/NSA/SA, 8 cells

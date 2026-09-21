@@ -162,3 +162,54 @@ cache entries for this app — it loads the working tree as it is on disk, immed
 confirm a change before spending more cycles on the first origin. (Cost of the trick: a fresh
 origin has no session, so it lands on the login gate — fine for DOM measurements like "is this
 section gone", not for screenshots of a dashboard.)
+
+## 6. Proving a release reaches an installed shell (the service-worker E2E)
+
+Run on 2026-09-22 to verify the update trigger. Nothing in the repo is edited: the "publish" is a
+single line in a throwaway copy.
+
+```bash
+# 1. The shell has to be served from a SUB-PATH so its worker gets its own scope.
+rm -rf _e2e && mkdir -p _e2e
+cp index.html styles.css lucide-icons.js manifest.json version.json sw.js \
+   nap-module.js lcp-module.js olt-module.js node-module.js backbone-module.js \
+   analytics-module.js admin-module.js db.js fetch-gate.js rev-watch.js notifications.js \
+   icon-192.png icon-512.png apple-touch-icon.png _e2e/
+```
+
+Then, in the preview panel:
+
+1. Load `http://127.0.0.1:8080/_e2e/index.html?boot=1` — this installs the worker. It is claimed by
+   `clients.claim()` but the page was loaded BEFORE that, so its `hadController` is false and the
+auto-reload is not armed yet.
+2. Load `...?boot=2` — a controller now exists at script time. **This is the load the test needs.**
+3. **Publish**: `sed -i "s/gvsi-shell-v3.9.19/gvsi-shell-E2E-2/" _e2e/sw.js`. The URL does not
+change (`sw.js?v=...` — a static server ignores the query, exactly as GitHub Pages does), which is
+the point: the same script URL now answers with new bytes, as a real deploy does.
+4. **Trigger it with one foreground event**, and skip the 15-minute throttle the way a wall display
+   does — by waiting — without waiting:
+
+   ```js
+   const realNow = Date.now.bind(Date);
+   Date.now = () => realNow() + 20 * 60 * 1000;
+   Object.defineProperty(Document.prototype, 'visibilityState', { get: () => 'visible', configurable: true });
+   document.dispatchEvent(new Event('visibilitychange'));
+   ```
+
+5. Wait ~5 s, then read the result. Expected: `caches.keys()` has the NEW generation and the old one
+   is gone, `performance.getEntriesByType('navigation')[0].type === 'reload'`, the controller is
+   `activated`, and `reg.waiting` / `reg.installing` are both null.
+6. Cleanup: unregister the `/_e2e/` scope and delete the caches FROM THAT PAGE, then navigate back
+   to the root app and `rm -rf _e2e`.
+
+**Two traps, both hit on 2026-09-22:**
+
+- **CacheStorage is per-origin, not per-scope.** The copy's `activate` deletes every cache except
+  its own, so publishing it also deleted the root app's `gvsi-shell-*` generation. It heals (the
+  cache-first branch re-caches on the next load — verify: 16 entries, `olt-module.js` present,
+  exactly one registration), but a clean harness puts the copy on a **second origin**
+  (`localhost:8080`) instead, where it cannot touch the app. Cost of that: the preview panel
+  drives only the dev server it is attached to, so the second origin has to be driven by hand.
+- **`preview_logs` will not show the `sw.js` fetch.** The registration and update fetches are
+  browser-internal, so "did the launch ask?" cannot be answered from the network log — that claim
+  belongs to `tests/sw-update.test.js`, which counts the calls.
