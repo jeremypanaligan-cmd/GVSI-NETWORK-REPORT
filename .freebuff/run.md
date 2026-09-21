@@ -60,6 +60,23 @@ depends on the release label or the cache generation moving together with the by
 rule `sw.js`'s own header states. An edit that lands without that move keeps serving the
 old bytes out of `gvsi-shell-v*` on every reload.
 
+**The browser's own HTTP cache can lie first, before the worker gets a chance to.**
+`python -m http.server` sends no `Cache-Control`, so the browser applies heuristic freshness and
+may answer a plain reload of `index.html` with the PRE-EDIT copy — observed on a first load of a
+fresh port, where the served file and the rendered DOM disagreed (the DOM still had
+`oltCardClientsDown` while the server was returning `oltCardClientsSA`). Clearing the worker does
+not clear that. Navigate once to the same page with a query string (`index.html?fresh=1`) — a
+different URL, so the HTTP cache has nothing to answer with — and the reload is real.
+
+The VERSIONED asset URLs are the sticky half of this. Measured on 2026-09-21: after the worker
+was cleared, `olt-module.js` (unversioned) came back fresh while `styles.css?v=3.9.18` was still
+answered from the browser's own HTTP cache — new markup, old stylesheet, which reads as "my CSS
+change did nothing". One call fixes the entry, from a page whose worker no longer serves it:
+
+```js
+await fetch('styles.css?v=3.9.18', { cache: 'reload' });   // then navigate with ?something
+```
+
 Clear it in the preview **before reloading after an edit**:
 
 ```js
@@ -91,3 +108,57 @@ Refresh & Sync App"* overlay: `checkAppVersion()` compares `localStorage.app_ver
 against `REQUIRED_APP_VERSION` (`3.10.0`), and a fresh profile has no such key. One tap
 on its button clears it and reloads. That is first-visit behavior of the app itself, not
 a fault introduced by the preview.
+
+## 5. Checking a responsive rule without resizing the window
+
+The preview viewport cannot be resized from a script, so a narrow-layout claim has to be
+measured by constraining the element instead. Inject the constraint, measure, then remove
+it — and **use `width`, not `max-width`**: on 2026-09-21 `max-width: 336px !important` left
+the grid box at 336px while its three `1fr` tracks stayed at their desktop 258px, so the
+tiles overflowed the grid and the probe measured a layout no phone has. `width` moved the
+tracks to 106.7px, which is what a 360px viewport produces.
+
+```js
+const st = document.createElement('style');
+st.textContent = '.olt-stats-grid { width: 336px !important; }';
+document.head.appendChild(st);
+// ...measure with getBoundingClientRect and Range.getClientRects()...
+document.head.removeChild(st);
+```
+
+Two things worth measuring this way, because a box that is *tall enough* hides both: the
+number of LINE BOXES a label actually takes (`document.createRange().selectNodeContents(el)`
+then `.getClientRects().length` — a fixed `min-height` makes every label the same height
+whether it wrapped or not, so height alone cannot tell you), and whether a label **escapes
+its tile** (compare the label's rect against the tile's, left and right).
+
+Note that the app's own tab switching lives on `switchTab('olt')`, and a background refresh
+can paint another tab back over your measurement — re-check which tab is active immediately
+before taking a screenshot, not once at the start.
+
+### 5.1 Refreshing an UNVERSIONED module (the one that cost three reload cycles)
+
+`index.html` loads the modules by bare name — `<script src="analytics-module.js"></script>`, no
+`?v=`. So for those files the browser's HTTP cache is what answers the page, and **clearing the
+worker does not clear it**. Observed on 2026-09-21 while removing the Analytics trend charts: with
+the worker unregistered, every cache deleted, and a fresh query-string navigation, the page still
+executed the PREVIOUS `analytics-module.js` after the file on disk had changed — because the
+navigation's own script requests were served from the HTTP cache, while the worker's cache (whose
+`install` uses `cache: 'reload'`) already held the new bytes. Every probe of "what will this load"
+answered *new* and lied about what the page had actually run.
+
+Refresh the modules themselves, then navigate:
+
+```js
+for (const m of ['analytics-module.js', 'olt-module.js', 'nap-module.js', 'db.js', 'index.html']) {
+  await fetch('/' + m, { cache: 'reload' });
+}
+// then navigate to index.html?something-else
+```
+
+The bulletproof cross-check is a **second origin**. `localhost:8080` and `127.0.0.1:8080` are
+separate origins, so the second one has no worker registration, no cache generation and no HTTP
+cache entries for this app — it loads the working tree as it is on disk, immediately. Use it to
+confirm a change before spending more cycles on the first origin. (Cost of the trick: a fresh
+origin has no session, so it lands on the login gate — fine for DOM measurements like "is this
+section gone", not for screenshots of a dashboard.)

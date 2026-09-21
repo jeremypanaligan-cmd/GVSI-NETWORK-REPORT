@@ -386,7 +386,7 @@ const province = provinceRaw.toString().replace(/_/g, ' ');
 | **Skeleton Loading** | Professional loading UX with shimmer placeholders |
 | **Pull-to-Refresh** | 120px threshold with hold-to-confirm — prevents accidental refresh |
 | **Error Toast System** | User-friendly error/success messages |
-| **IndexedDB Snapshots** | Daily data retention for trend analysis — forward-thinking |
+| **IndexedDB Snapshots** | Daily data retention — a snapshot a day, still captured (the trend charts that read it were removed Sept 2026) |
 | **Dark Mode** | Complete theme system with CSS variables — well implemented |
 | **Accessibility** | Keyboard shortcuts (R, 1-7, Esc, ?) — nice touch |
 

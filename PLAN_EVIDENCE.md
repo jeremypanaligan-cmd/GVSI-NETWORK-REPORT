@@ -454,3 +454,338 @@ NOT borrow it. Worth recording for whoever reads this next: the title now makes 
 than "No Down OLT Right Now" did, while the donut directly above it can still count LOW POWER /
 UPLINK DOWN / DEGRADATION units. The badges under the sentence are what scope it. PART-001's
 evidence above keeps the wording that release actually shipped with; only the copy moved.
+
+## Phase 6 — Active Incidents, the IMPACT column, and Affected Clients (SA)
+
+### PART-012 — the label that was lying, a column that was already in the sheet
+
+**Summary.** `ALL OLTs` became **`Active Incidents`**, and became the landing view; a new
+**IMPACT** column sits directly after CLIENTS; and **Affected Clients (Down)** became
+**Affected Clients (SA)**, counting the per-OLT clients of SA tickets only.
+
+**The rename was a correction, not a change of behaviour.** The branch already answers
+`?type=olt&shape=3`, and shape=3 filters the payload to `row.S !== "UP"` before it leaves the
+server — so the button labelled "ALL OLTs" was already showing exactly DOWN + LOW POWER +
+UPLINK DOWN + DEGRADATION, and nothing else. The old label was the only thing wrong with it.
+That is why the view is now the landing page at no cost: no second request, no extra rows, and
+the four per-status pills stay exactly where they were.
+
+**Column K is the whole feature.** `COL.OLT_IMPACT = 10` — the same absolute column
+`NODE_IMPACT` and `BB_IMPACT` have read all along — is joined onto each row by TICKET NUMBER,
+normalised for case and whitespace, and carried as `IM`. The join is per-row and not per-ticket:
+the ticket's own Z cell holds one client count per line aligned with the OLT names in AB, so two
+OLTs sharing an SA ticket contribute **their own** numbers. A fallback to the ticket cell would
+have charged each of them the first number and inflated the fleet total — the new server suite
+pins both the per-OLT value and the resulting 95, so that fallback cannot come back quietly.
+
+**`meta.clientsSA` is new; `meta.clientsDown` is untouched.** The Analytics tab
+(`analytics-module.js:132` and its chart) and the daily snapshot in `db.js` read `clientsDown`,
+and a snapshot is never corrected after the fact — so changing what that field means would
+rewrite history. The card reads the new field, the old one keeps its own meaning, and the two are
+different numbers by construction (135 vs 95 in the server fixture; 150 vs 45 in the client one),
+which is what makes a swap between them a failing test rather than a silent lie.
+
+**The zero state's missing-data case stopped depending on a filter token.** It used to hang off
+`'ALL'`, which meant the one screen it described depended on which button had been tapped. With
+`'ALL'` gone it is chosen from the DATA: an empty list over a payload that carried neither a
+summary nor a row is the missing snapshot, and an empty list over any other payload is a fleet
+at peace. `'ACTIVE'` and `'DOWN'` now share **one** all-clear object — the sentence is written
+once, and a test counts the occurrences to keep it that way.
+
+**Files.** `code.gs` (`COL.OLT_IMPACT`, `impactMap`, the `IM` field, `OLT_ROW_FIELDS`,
+`meta.clientsSA`) · `index.html` (the pill, the landing default, the SA card's label and id, the
+two new `sortTable` indices, the totals colspan) · `olt-module.js` (`'ACTIVE'` in the button map
+and the filter predicate, `oltFilterLabel_`, the shared all-clear copy, `OLT_MISSING_COPY`,
+`oltEmptyCopy_`, `processAndRenderOlt`, the impact cell) · `test-olt-shape3.html` (mock wire
+shape) · `tests/olt-impact.test.js` (new, server) · `tests/olt-active-incidents.test.js` (new,
+client) · `tests/olt-empty-state.test.js`, `tests/olt-healthy-fleet.test.js` (the default view
+moved; the overview's back button now returns to it).
+
+**Checks.** Full suite **212 passed, 0 failed across 12 suites** (196 → 212: +6 server, +10
+client, −0 lost). **Mutation check 21/21 caught, 0 missed, 0 unproven**, with the baseline
+verified green inside the mutation workspace first — the false-red failure this repo has already
+paid for once. It caught two real things: the cross-realm array comparison that made
+`deepStrictEqual` reject an order it had just been handed, and one anchor that matched zero
+times, which is a mutation that never ran and would otherwise have been counted as a pass.
+
+**In the browser**, from the served bytes at `127.0.0.1:8080` with a shape=3 payload carrying
+`IM` and a `clientsSA` (165) deliberately different from `clientsDown` (150): the **SA card read
+165**, the landing view rendered **4 incident rows**, the impact cells read **SA, NSA, NSA, SA**,
+each row had **8 cells**, and the footer read `FILTERED TOTAL (ACTIVE INCIDENTS)` with
+`colspan="7"`. Against the **live** deployment — which does not send the new field yet — the same
+screen renders **`–`** in every impact cell and **0** on the SA card. That is the intended
+pre-deploy state and not a defect, but it is the reason the Apps Script deployment has to follow
+the client.
+
+**Two limits.** `IM` is additive and last, and `v` is unchanged, so an installed shell decodes
+the extra field and ignores it — but nothing can prove that against a device that has not
+reloaded. And the served table had a horizontal scrollbar at the preview's 566px viewport; the
+8th column does not change that the wrapper already scrolls, but nobody has measured it on a
+phone.
+
+### PART-013 — the same ragged pill, in two more columns
+
+**Summary.** The OLT table's STATUS cell and the Backbone table's SERVICE cell became
+fixed-size chips. `status-chip` fixes a width and a height; `is-long` is the wider variant the
+STATUS column needs.
+
+**This is the cause pill's problem, one column over.** `dt-cause-badge` was written for exactly
+this: a data-driven label with no floor gives every row its own box, so the column reads as
+ragged noise AND is as wide as its longest label. The same was true of "DOWN" beside "OLT
+SERVICE DEGRADATION" beside "OLT UPLINK LOW POWER", and of a service column that resized when
+the mix of incidents changed.
+
+**`width`, never `min-width`.** A minimum is the version of this that looks right in review and
+fails in use: it still lets the longest label drag the column wider, which is the whole thing
+being fixed. The height is fixed too, sized to hold exactly two lines at this font size, so a
+chip that wraps and a chip that does not are the same box — and every chip carries its full
+label in `title`, because a box that wraps must not become a truncation. The **value** is
+untouched: `OLT UPLINK LOW POWER` is the string the filter matches and the CSV export reads out
+of the DOM, so only the box is fixed.
+
+**Two widths, on purpose.** SERVICE holds four characters (DWDM, MPLS) and STATUS holds phrases
+up to twenty-three; one width for both would either clip the phrases or pad the service column
+out. The OLT fleet list keeps its small `UP` badge: its only value is `UP`, so a fixed box there
+buys uniformity nobody can see and would widen that column for a two-letter word.
+
+**Files.** `styles.css` (`STATUS_CHIP` block with `.status-chip` and `.status-chip.is-long`) ·
+`olt-module.js` (the STATUS cell, plus `statusTitle` with the attribute's quotes escaped the way
+the onclick parameters are) · `backbone-module.js` (the SERVICE cell, reusing the `safeService`
+that is already escaped) · `tests/status-chip.test.js` (new) · `tests/olt-active-incidents.test.js`
+(+1).
+
+**Checks.** Full suite **217 passed, 0 failed across 13 suites**. **Mutation check 9/9 caught, 0
+missed, 0 unproven** — `width` swapped for `min-width`, the height dropped, the long variant
+made narrower than the base, the label un-centred, and each module losing the class or the
+title. Baseline verified green inside the mutation workspace first.
+
+**Measured in the browser**, from the served bytes and against the LIVE deployment (which by
+then had the new `code.gs`: the SA card read **58**, matching `meta.clientsSA`): all four OLT
+STATUS chips **132 × 31.9px, one distinct size**, `inline-flex`, centred, wrapped labels inside
+the fixed height, full label in `title`; the STATUS column **181px → 156px**, and no longer a
+function of the longest label. All eight Backbone SERVICE chips **55 × 31.9px**, likewise one
+distinct size, over live DWDM/MPLS rows.
+
+### PART-014 — the column is INCIDENT now, and the label is trimmed
+
+**Summary.** The OLT table's last column is titled **INCIDENT** instead of STATUS, and its labels
+lost the module prefix: `OLT UPLINK DOWN` → **UPLINK DOWN**, `OLT SERVICE DEGRADATION` →
+**SERVICE DEGRADATION**, `OLT UPLINK LOW POWER` → **UPLINK LOW POWER**, and `DOWN` retained.
+
+**Why the rename and the trim are the same change.** Under a STATUS header, "OLT UPLINK DOWN"
+reads as a status called *OLT UPLINK DOWN*; under INCIDENT it reads as an incident of type
+*UPLINK DOWN* — and every row in this table is already an OLT, so the first word was repeating
+the tab you are standing in. Trimming it also removes the wrapping the fixed chip was built to
+absorb: the longest label is now nineteen characters, which fits one line, so the chips are
+uniform *and* single-line. `DOWN` is retained exactly as it arrives, with or without the prefix,
+because it is the one status whose label is already the whole story.
+
+**A display transform, and only that.** `oltIncidentLabel_` runs at render time. The payload,
+the filters (`st.includes('LOW POWER')`), the stat cards and `meta` all keep reading the raw
+status the server sends — verified in the browser by reading `dataCache.olt` after the repaint
+and finding `OLT UPLINK LOW POWER` still there under a cell that reads `UPLINK LOW POWER`. The
+cell's `title` keeps the sheet's own wording, so the tooltip is the record and the label is the
+reading. Two consequences worth stating rather than discovering: **the CSV export now carries the
+trimmed labels**, because `exportTableToCSV` reads the DOM, and the **detail modal still shows
+the raw status** (its own field is labelled `Status:` and is untouched).
+
+**Files.** `index.html` (the header) · `olt-module.js` (`oltIncidentLabel_`, the `statusLabel`
+binding, `data-label="Incident"` so the phone card layout prints the same name the header does) ·
+`tests/olt-active-incidents.test.js` (+2, and the header-order expectation moved).
+
+**Checks.** OLT suite **13 passed**, full suite **220 passed across 13 suites**. **Mutation
+check 17/17 caught, 0 missed, 0 unproven** — the header left as STATUS, the card layout still
+labelled Status, the display left untrimmed, a trim that eats the word but leaves its space,
+the DOWN retention removed and narrowed to the bare word, the trim reaching the payload, and the
+title trimmed along with the cell.
+
+**Measured in the browser**: header `INCIDENT`; cells reading `DOWN`, `SERVICE DEGRADATION`,
+`UPLINK LOW POWER`, `UPLINK DOWN`; titles still the server's values; all four chips **132 × 32px,
+one distinct size**; the INCIDENT column **181px → 156px → 148px** across the three states.
+
+**The delivery mechanism bit twice while verifying the chips, and the run doc now says how to get
+out.** A service worker held the previous `olt-module.js`, and after that was cleared the
+VERSIONED `styles.css?v=3.9.18` was still answered from the browser's own HTTP cache while the
+unversioned module came fresh — so the markup arrived and the stylesheet did not, and the chips
+measured 117/148/163px, i.e. sized by their own text. `fetch(url, { cache: 'reload' })` onthe versioned URL replaces that entry, and the reload after it is real. Recorded in
+`.freebuff/run.md` beside the worker-cache recipe.
+
+### PART-015 — the tile the tab is named after, and two more fixed boxes
+
+**Summary.** Three changes that are one claim. The IMPACT value got the same fixed box the
+INCIDENT column already had; **TOTAL OLT became ACTIVE INCIDENTS** and the six summary tiles were
+reordered into the ladder they describe (`UP / ACTIVE INCIDENTS / DOWN`, then
+`LOW POWER / UPLINK DOWN / SERVICE DEGRADATION`); and the two long tile labels were given a
+reserve so they wrap **inside** the tile instead of leaving it.
+
+**ACTIVE INCIDENTS is `total − up`, not the sum of the four arms.** The server's four counting arms
+(`down`, `lowPower`, `uplinkDown`, `degradation`) are a hand-written list of the statuses anyone
+thought of, and a row the sheet spells differently increments **none** of them — it is counted in
+the fleet total, and the table renders it like any other incident. A tile built by adding the four
+together would therefore read one fewer than the table beside it, on screen, with no error. The
+card is derived from the fleet size instead, which is the same comparison the server used to choose
+which rows to send (`row.S !== "UP"`) and the same one the ACTIVE filter re-applies when it renders.
+The middle tile can no longer disagree with the view it opens.
+
+**Why it keeps `c-total`.** The aggregate colour is not a compliment — it says *this is the whole*,
+and it is what the tile held as TOTAL OLT. Red would dress a clean fleet as an alarm, and the four
+tiles underneath it already carry the alarm colours.
+
+**Why the labels needed a reserve rather than a rename.** The shared `.stat-card .label` rule is
+`nowrap`, which was fine while every tile label was one word; ACTIVE INCIDENTS and SERVICE
+DEGRADATION are both wider than a third of a phone. The new scoped rule lets them wrap and reserves
+`min-height: 2.2em` — exactly two lines at this label's `line-height: 1.1` — bottom-aligned, so a
+two-line label and a one-line label in the same row put their values on the **same baseline**. It
+is scoped to `.olt-stats-grid`, because every other tab's tiles still have room on one line, and it
+is the reason this change did not have to alter the shared rule for four other tabs.
+
+**Files.** `index.html` (the six tiles, their order, and the middle tile's id) · `olt-module.js`
+(`countActive` derived in both the meta and legacy paths, and the IMPACT cell) · `styles.css`
+(`.status-chip.is-impact`, the scoped label rule, and the chip comment corrected from two widths to
+three) · `tests/olt-active-incidents.test.js` (+6) · `tests/status-chip.test.js` (the width test
+now covers all three vocabularies).
+
+**Checks.** Full suite **225 passed across 13 suites, 0 failed** — the OLT suite went **13 → 19**.
+**Mutation check 19/19 caught, 0 missed, 0 unproven**, baseline verified green inside the mutation
+workspace first: the chip class halved or dropped, the tile reverting to the fleet size, the four
+arms added instead of derived, the legacy count narrowed to DOWN, the id left behind, the tile
+pointing at the DOWN filter or dressed in the alarm colour, the order swapped, the label reverting
+to the filter token, the filter opened with a token no filter answers, `width` back to `min-width`,
+the IMPACT width made the widest of the three, `white-space` back to `nowrap`, the reserve short by
+a line, and the labels top-aligned.
+
+**Measured in the browser**, against the LIVE deployment (`meta.up: 457`, `meta.total: 461`): the six
+tiles read **UP 457 · ACTIVE INCIDENTS 4 · DOWN 0 · LOW POWER 2 · UPLINK DOWN 1 · SERVICE
+DEGRADATION 1**, and 461 − 457 = **4** — the card, the table and the filter are the same claim. The
+IMPACT chips over live rows: **SA and NSA both 46.2 × 31.9px, one distinct size**, neither clipped,
+and the column stays **72px, set by its own header** — the fixed chip never widens it, which was the
+point of sizing it under the header rather than over it.
+
+**And the reserve, at a phone's width.** Constrained to a 336px grid (a 360px viewport gives
+106.7px tiles): ACTIVE INCIDENTS and SERVICE DEGRADATION render on **two lines**, the other four on
+one — and all three values in each row still land on **one baseline** (254.8 and 329.6), the six
+tiles are the same height, **no label is clipped and none escapes its tile**. Without the reserve the
+middle tile of the first row would have sat a line below its neighbours.
+
+**One thing this made more visible, and did not change.** The DOWN tile loses its colour when it
+reads 0, because the module assigns `getAlertClass('oltDown', countDown)` over the tile's class and
+that helper returns an empty string at zero — so with the fleet clean, DOWN is the one incident tile
+without its colour while LOW POWER and the rest keep theirs. That behaviour is **pre-existing** and
+untouched here; it is noted because the new ACTIVE INCIDENTS tile beside it now makes the
+inconsistency easy to see.
+
+### PART-016 — the export bar leaves the screen with the table
+
+**Summary.** When the OLT table comes up empty — nothing matches the filter, which includes the
+whole-fleet all-clear — the **EXPORT CSV and EXPORT PDF buttons are no longer on screen**, so the
+zero-state card sits directly under the filter strip instead of under a row of controls that
+cannot be used. Measured on the live page: the card rises **39px** (the bar's 29px line plus its
+margins).
+
+**Hidden, not removed.** The bar is still constructed by `setupOltExportToolbar_()` on every
+render, because every other path assumes it exists — the healthy-fleet panel hides and re-reveals
+it, and `renderOltTable` re-shows it at the top of every filled render. Hiding it is a state, and
+the state is reversed by the same function that set it: a fresh sandbox starts with a visible bar,
+so only the **empty → filled sequence on the same tab** can catch a missing un-hide. That sequence
+is now a test.
+
+**Muted as well as hidden, on purpose.** `setOltExportEnabled_` still disables both buttons in the
+empty arm. Nothing on screen shows it, and that is the point: the bar is never one reveal — by a
+future caller, a stylesheet change, or a developer inspecting the DOM — away from exporting a
+header line and a PDF of the card itself.
+
+**One detail that looks like a no-op and is not.** The empty arm hides the bar **returned by**
+`setupOltExportToolbar_()`, not the `exportToolbar` queried at the top of the function. On the very
+first render the bar does not exist yet, so that captured value is `null` — and a hide against it
+silently does nothing exactly when the tab opens straight into the zero state. The mutation that
+swaps the two references is caught; this is the line that catches it.
+
+**Files.** `olt-module.js` (the empty arm, and the two comments that stated the old "built so it can
+be muted" rule) · `tests/olt-empty-state.test.js` (the tail test now asserts hidden **and** muted,
+also that the bar follows the filter strip in the tab's child order and that it returns when a row
+does) · no stylesheet change — `[hidden] { display: none !important }` was already the app's single
+source of truth for "not on screen", and it is what makes `el.hidden = true` win against
+`.export-toolbar { display: flex }`.
+
+**Checks.** Full suite **225 passed across 13 suites, 0 failed**. **Mutation check 7/7 caught,
+0 missed, 0 unproven**, baseline green in the mutation workspace first: the hide dropped, flipped to
+`false`, aimed at the pre-build `null`, the setup call dropped, the un-hide dropped, the
+`!important` removed from `[hidden]`, and the buttons left live behind the hidden bar.
+
+**Measured in the browser, both directions, on the same tab.** Empty (live sheet had zero
+incidents at that moment, and the seed matched it): `bar.hidden === true`, bar height **0px**, both
+buttons present and **disabled**, `.olt-empty-state` present, table wrapper hidden, bar directly
+after the filter strip in the tab's child order. A/B on the same page — revealing the bar by hand
+moved the card from **611.6px** to **650.6px**, i.e. the zero-state card gains **39px**. Then a
+DOWN row arriving: bar **visible at 29px**, both buttons **enabled**, empty state gone, wrapper
+back. A reload returned the tab to the live 4-incident view with the bar visible.
+
+### PART-017 — the Analytics trend charts are gone, and so is the CDN they needed
+
+**Summary.** The four IndexedDB trend charts — **Incidents per Day, OLT Status Trend, Clients
+Affected Trend, Aging Distribution** — were removed from the Analytics tab, together with
+`renderTrendCharts()`, `loadChartJS()` and the Chart.js script the dashboard pulled from a CDN.
+**164 lines** came out of `analytics-module.js` (749 → 585).
+
+**What the tab gains, not just loses.** Chart.js was loaded per chart session — a third-party
+library fetched from `cdn.jsdelivr.net` before anything could be drawn. The dashboard now renders
+from the app's own caches alone: **no external script, no IndexedDB read, no network**. The suite
+below runs it in a sandbox where `Chart` and `indexedDB` do not exist at all, so a chart call
+creeping back is a ReferenceError rather than a box that silently stays blank.
+
+**What was deliberately NOT removed, and why each one looks like the same feature:**
+
+- **The daily snapshot writer.** `saveDailySnapshot()` is still called on boot and
+  `getSnapshots()` is still in `db.js`. A snapshot is the record of what the sheet said that day
+  and is **never rewritten** — once the day has passed the sheet cannot be asked again. Removing
+  the reader is not removing the record, so the capture keeps running and the reader waits for
+  whatever history view comes next. `db.js`'s header comment now says exactly that.
+- **`.analytics-charts-row` / `-card` / `-title` / `-body`.** These read as the removed feature's
+  own CSS — the comment above the first one says *"Donut Charts Row — 2 columns"* — and the OLT and
+  Backbone **donut** cards are laid out by them. Deleting them with the feature would have taken the
+  donuts with it, which is the one mistake this change was most likely to make.
+- **The What's New entries** naming Trend Charts (v3.3.1's Chart.js memory-leak fix, and the
+  later "Trend Charts (New)"). They are **versioned history**, not documentation of the present:
+  a changelog that erases a release is no longer a changelog.
+
+**The one loose end, stated rather than quietly fixed.** The **7 / 30 / 90 Days** buttons in the
+Analytics filter bar were added "for trend analysis" and are **already inert** — `analyticsDateRange`
+is written by `setAnalyticsDateRange()` and read by **nothing**; all three buttons re-render an
+identical dashboard. That was true before this change, and the trend charts were their stated
+purpose, so they are now a control with no job at all. Left in place because they were not what was
+asked for, and flagged because the next reader will assume they filter something.
+
+**Files.** `analytics-module.js` (the section markup, the render call, both functions) ·
+`db.js` (header comment) · `GVSI_NetPulse_Analytics_Documentation.md` (section 8 deleted, sections
+renumbered, TOC, data-source list, and the architecture tree) · `GVSI_NetPulse_System_Roadmap.md`
+(one capability row) · **new** `tests/analytics-dashboard.test.js`.
+
+**Checks.** Full suite **231 passed across 14 suites, 0 failed**. **Mutation check 9/9 caught,
+0 missed, 0 unproven**, baseline green in the mutation workspace first: the trend heading and its
+chart rows put back, a trend canvas put back, the library called again, the snapshot store read
+again, the shared chart-row rule deleted, the donut cards losing the class their layout comes from,
+a surviving section dropped, the boot capture neutered, and the reader renamed away.
+
+**Two assertions had to be fixed before they meant anything**, and both were the kind that passes
+while proving nothing: `/function saveDailySnapshot/` also matches `saveDailySnapshot_gone`, and
+`page.indexOf('saveDailySnapshot()')` also matches a call sitting behind `if (false)`. They are now
+`/function saveDailySnapshot\s*\(/` and the whole guarded call statement. The mutation pass is what
+surfaced them — a check that had been counted as green twice.
+
+**Measured in the browser** on the live deployment origin: `typeof window.Chart === 'undefined'`,
+**no `jsdelivr` script tag anywhere in the document**, **0 canvases** in the tab, **2** donut cards,
+and the section headings reading `Module Snapshot · OLT Status Distribution · Backbone Service
+Type · Aging Timeline (NAP + LCP) · Top Provinces by Incidents` — with **every** removed token
+(`trendIncidentsChart`, `trendNote`, `Trend (Last 30 Days)`, `Incidents per Day`, …) absent from the
+rendered 14,383 characters.
+
+**The verification itself was the hard part, and it is worth reading before the next removal.**
+The preview kept executing the OLD module for three full clear-and-reload cycles: unregistering the
+worker, deleting every cache, and navigating to a new query string were **not enough** — the
+navigation's own script requests are answered by the **browser's HTTP cache** before the freshly
+registered worker has a say, and the page then runs yesterday's module while the worker's cache
+already holds today's bytes (so any probe of "what will this load" answers *new* and lies). What
+worked: `fetch(url, { cache: 'reload' })` for **each unversioned module**, then navigate — plus a
+cross-check on a second origin (`localhost` vs `127.0.0.1`), which has no cache state at all and
+showed the new code immediately. Recorded in `.freebuff/run.md`, because the existing recipe there
+covered only the versioned `styles.css?v=` half.

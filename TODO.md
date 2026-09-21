@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 20, 2026 · `main` is live at 3.9.17 (module identity + module colour — see P2; OLT all-clear rework — see P3)
+**Last updated:** September 20, 2026 · `main` is live at **3.9.18** (module identity + module colour — see P2; OLT all-clear rework — see P3; the 3.9.18 reworded copy is not filed here yet) · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -13,6 +13,132 @@
 - **A to-do item lives on disk or it does not exist.** Conversation history does not survive between sessions, so anything decided in chat and worth keeping gets written here.
 
 **Not the same as `GVSI_NetPulse_System_Roadmap.md`.** That file is a **dated audit** (Aug 26, 2026, against app v3.3.0) with its own signature and priority tables. Treat it as history: useful context, but **re-verify each item before working it** — several have already landed (see the bottom of this file).
+
+---
+
+## 🔴 P1 — OLT Active Incidents view, IMPACT column and Affected Clients (SA) — in the tree, NOT deployed, NOT released (Sept 21, 2026)
+
+**Status.** Code complete and verified; sitting uncommitted so it can be tested locally first.
+Nothing here has reached the live deployment or an installed device yet.
+
+**What changed.** `ALL OLTs` → **`Active Incidents`**, now the landing view. A new **IMPACT**
+column directly after CLIENTS, joined from `OLT DOWN Tickets` column K by ticket number.
+`Affected Clients (Down)` → **`Affected Clients (SA)`**, scoped by the ticket's IMPACT and not by
+the row's status. The rename is a correction: the payload was already problem-rows-only under
+`shape=3`, so the old label described a view that did not exist.
+
+### The two things that still have to happen, in this order
+
+1. **Deploy `code.gs` to Apps Script.** Without it the client renders `–` in every impact cell
+   and **0** on the SA card, because `IM` and `meta.clientsSA` do not exist on the live script
+   yet. That is the honest pre-deploy state, not a bug — but it looks like one.
+2. **Release the client with the version tooling** (`node scripts/bump-version.mjs patch` →
+   3.9.19, plus a What's New entry in the same commit, per the delivery condition above).
+   `olt-module.js` is an unversioned precache entry, so until the label moves the new bytes reach
+   nobody. `node scripts/bump-version.mjs --check` already warns about exactly this.
+
+**Measured.** 212 tests pass across 12 suites (196 → 212). Mutation check 21/21 caught, 0 missed,
+0 unproven. In the browser: 4 incident rows on the landing view, impacts SA/NSA/NSA/SA, 8 cells
+per row, footer `FILTERED TOTAL (ACTIVE INCIDENTS)` with `colspan="7"`, and the SA card reading
+165 while `clientsDown` in the same payload was 150.
+
+### Also in this batch — fixed-size chips (OLT STATUS, Backbone SERVICE)
+
+Both columns carry data-driven labels, so a chip sized by its own text gave every row a
+different box and let the longest label set the column width. `styles.css` now fixes a width
+**and** a height for `.status-chip` (`width`, never `min-width` — a minimum still lets the long
+label widen the column), with `.status-chip.is-long` for the OLT vocabulary. Measured in the
+browser: four OLT chips at 132×31.9px (one distinct size, STATUS column 181px → 156px) and eight
+Backbone chips at 55×31.9px. The full label rides in `title`, so a wrapped chip is not a
+truncation, and the value itself is unchanged because the filter and the CSV export read it.
+The OLT fleet list keeps its small `UP` badge on purpose — its only value is `UP`.
+
+**Then the column itself:** the OLT table's `STATUS` header is now **`INCIDENT`**, and its labels
+lost the module prefix (`OLT UPLINK DOWN` → `UPLINK DOWN`, `OLT SERVICE DEGRADATION` →
+`SERVICE DEGRADATION`, `OLT UPLINK LOW POWER` → `UPLINK LOW POWER`, `DOWN` retained). Display
+only: the payload, the filters, the cards and `meta` still read the raw status, and the cell's
+`title` keeps it. Two things follow from that and are deliberate: the **CSV export now carries
+the trimmed labels** (it reads the DOM), and the **detail modal still shows the raw status**.
+
+**`code.gs` was deployed on Sept 21** (the live payload now carries `clientsSA`, and the card
+read 58 against the live meta). The client release below is the part still owed.
+
+### Also in this batch — ACTIVE INCIDENTS, the IMPACT chip, and the tile labels
+
+**The summary tile the tab is named after.** `TOTAL OLT` is now **`ACTIVE INCIDENTS`** and the six
+tiles were reordered into the ladder they describe — `UP / ACTIVE INCIDENTS / DOWN`, then
+`LOW POWER / UPLINK DOWN / SERVICE DEGRADATION`. The middle tile is **`total − up`**, not the sum
+of the four counting arms: those arms are a hand-written list, and a status the sheet spells
+differently increments none of them while still being counted in the fleet total and rendered in
+the table — so a sum would read one fewer than the table beside it. `total − up` is the same test
+the server used to pick the rows it sent and the same one the ACTIVE filter re-applies. The tile
+keeps `c-total`: red would dress a clean fleet as an alarm. Its id is now `oltCardActive`; the old
+`oltCardTotal` is gone from the markup, so nothing can quietly keep writing the fleet size into it.
+
+**The IMPACT and the two long labels, both fixed boxes.** IMPACT got `.status-chip.is-impact`
+(4.2em), sized **under** its own header so the chip can never widen the column — measured at 46.2px
+against a 72px column, header-set. And the two labels wider than a phone's third — ACTIVE INCIDENTS
+and SERVICE DEGRADATION — now wrap **inside** the tile: the shared `.stat-card .label` rule is
+`nowrap`, so a scoped `.olt-stats-grid` rule reserves `min-height: 2.2em` (two lines at
+`line-height: 1.1`) and bottom-aligns, which keeps the six values on one baseline per row even when
+one tile's label takes two lines and its neighbour's takes one.
+
+**Measured.** Full suite **225 passed across 13 suites**; the OLT suite **13 → 19**. Mutation check
+**19/19 caught, 0 missed, 0 unproven**. In the browser against the live payload (`up: 457`,
+`total: 461`): tiles `UP 457 · ACTIVE INCIDENTS 4 · DOWN 0 · LOW POWER 2 · UPLINK DOWN 1 ·
+SERVICE DEGRADATION 1`; IMPACT chips SA and NSA both **46.2 × 31.9px**; and at a phone's width
+(106.7px tiles) the two long labels wrap with **no clipping, no label outside its tile, and one
+baseline per row**.
+
+**Flagged, not changed:** the DOWN tile drops its colour when it reads 0
+(`getAlertClass('oltDown', 0)` returns `''` and overwrites the class). Pre-existing, untouched, and
+now easy to see beside the new middle tile.
+
+**This batch also needs the client release**, for the same reason as the rest: `olt-module.js`,
+`index.html` and **the versioned `styles.css?v=`** all have to move together or a phone gets new
+markup against an old stylesheet — a state that measures like "my CSS never loaded".
+
+**And the zero-state export bar.** With nothing to export — any filter that matches no rows,
+including the whole-fleet all-clear — the **EXPORT CSV / EXPORT PDF row leaves the screen**, so the
+zero-state card sits directly under the filter strip: measured **+39px** for the card. The bar is
+still built (every other path assumes it exists) and its buttons are still muted behind the hidden
+attribute, which is deliberate: it is never one reveal away from exporting a header line. It comes
+back on its own when a row does. `olt-empty-state.test.js` now pins hidden **and** muted, the child
+order, and the empty → filled return; mutation check **7/7 caught**. No CSS change — the app's
+`[hidden] { display: none !important }` was already what makes `el.hidden = true` win against
+`.export-toolbar { display: flex }`.
+
+### Also in this batch — the Analytics trend charts are gone
+
+The four IndexedDB charts (**Incidents per Day, OLT Status Trend, Clients Affected Trend, Aging
+Distribution**) were removed from the Analytics tab with `renderTrendCharts()`, `loadChartJS()` and
+the **Chart.js CDN script**. The tab now renders from the app's own caches alone — no external
+script, no IndexedDB read, no network — and a new `tests/analytics-dashboard.test.js` runs it in a
+sandbox with no `Chart` and no `indexedDB`, so a chart call creeping back is a ReferenceError.
+
+**Three things that look like the same feature and were kept on purpose:** the **snapshot writer**
+(`saveDailySnapshot()` still runs on boot; the reader stays for a future history view — the record
+cannot be rebuilt once the day is gone), the **`.analytics-charts-*` CSS** (the OLT and Backbone
+**donuts** are laid out by it), and the **What's New entries** naming Trend Charts (versioned
+history is not documentation of the present).
+
+**One loose end, flagged and not fixed:** the **7 / 30 / 90 Days** filter buttons are **already
+inert** — `analyticsDateRange` is written and never read, so all three re-render an identical
+dashboard. Pre-existing, but the trend charts were their stated purpose, so they now have no job at
+all. Removing them is a small follow-up if you want it.
+
+**Checks.** Full suite **231 passed across 14 suites**; mutation check **9/9 caught**. Measured on
+the live origin: `window.Chart` undefined, no `jsdelivr` tag in the document, **0 canvases**, the 2
+donut cards intact, and the five remaining section headings present.
+
+### Deliberately NOT done (decided with the user, Sept 21)
+
+- **Analytics and the daily snapshot stay on the DOWN definition.** They read
+  `meta.clientsDown`, which keeps its meaning; a snapshot is never corrected after the fact.
+  If the two screens must agree one day, that is a separate change with a history question.
+- **The OLT detail modal was not given an IMPACT row.** The value is in the row that was clicked.
+- **The Backbone service chip was left at 5em** (a 4-character value gets ~15px of slack). Fine
+  for DWDM/MPLS; tighten to ~4.2em if the column looks padded out next to its neighbours.
 
 ---
 
@@ -88,6 +214,103 @@ node scripts/bump-version.mjs patch     # move the generation, the manifest and 
 `tests/version-sync.test.js` fails on drift, and `--check` also warns when the delivery set has changed while the release has not — the failure that produces no error anywhere at runtime.
 
 > **This change MUST move the release version together with the bytes it describes, in the same push.** Without it, `install` reuses the same generation, `activate` evicts nothing, and installed devices keep the old bytes forever while the repo says otherwise.
+
+---
+
+## 🔴 P1 — Security Roadmap Phase 1 — the gate the client can see (Tier 0 + Tier 3)
+
+**Scheduled for off-peak hours.** Nothing here is applied yet; this section is the resume point.
+
+**Why it is first.** Every data route is open to anyone holding the deployment URL — which is
+hardcoded in the public `index.html` on GitHub Pages. Probed live with no token, no cookie:
+`?type=nap` → 200 with 12 real rows · `?type=olt&shape=3` → 200 · `?action=rev` → 200 ·
+`?action=getSettings` → 200. Only `?action=setMaintenance` gates. `requireSession()` exists in
+`admin.gs` and has **zero callers**; `resolveSession()` is called from exactly one place
+(`admin.gs:291`). The comment above it claims *"Phase 2: ENFORCED … flipped on 2026-09-12"* —
+the code says otherwise.
+
+Phase 1 does **not** close the gate. It makes the gate **safe to close**, by giving the client a
+way to see a rejected session, and removes two leaks that cost nothing to remove.
+
+### TIER 0 — the unauthorized envelope the client can actually see
+
+- `admin.gs` `unauthorizedResponse()` (`admin.gs:30`): add `error: "unauthorized"` and
+  `retryable: false`. **Additive** — `success:false`, `unauthorized:true` and `message` stay, so
+  a stale client that reads `success` is unaffected.
+- `index.html` `fetchWithRetry()` (`index.html:1047`): tag the envelope when
+  `data.unauthorized === true`, treat it as fatal (one attempt, no retry), then clear the session
+  and return to the sign-in screen **with the envelope's `message` shown** — instead of the blank
+  table the current parse produces.
+
+**Why this has to come first.** `fetchWithRetry` only treats `data.error` as a failure, and
+`unauthorizedResponse()` has no `error` field. An unauthorized reply therefore parses perfectly
+and is *rendered as data*: an empty table with no error on it. Close the gate without this and
+every expired token becomes a silent blank screen.
+
+### TIER 3 — two leaks that cost zero runtime
+
+- `admin.gs` `generateHash()` (`admin.gs:362`): delete `Logger.log('Password: ' + plainTextPassword)`.
+  Plaintext passwords currently reach the Executions log, readable by anyone with Editor access.
+- `index.html` `handleLogout()` (`index.html:1882`): revoke server-side before clearing local state.
+  The route already exists and works (`admin.gs:342`, `?action=logout`), so **this half needs no
+  server deploy**.
+
+### Constraints measured from the code, before any edit
+
+- `generateHash()` has **zero callers** in the repo — the leak is latent, and the fix is provably
+  zero-risk. Its sibling `Logger.log('Hash: ' + hash)` is the same defect class in the same dead
+  function (a SHA-256 hash without a salt is crackable); one extra line, flagged for a decision.
+- `fetchWithRetry` is also the login path (`index.html:1831`), so the unauthorized handler must make
+  **no API call** and must not retry, or it recurses into itself.
+- `isLoggedIn()` calls `handleLogout()` and reads its result, so `handleLogout()` must stay
+  **synchronous in effect** — fire the revoke, do not await it, and clear local state regardless of
+  the outcome. An offline logout that *appears* broken is worse than a token that lives to its TTL.
+- `tests/origin-resilience.test.js` extracts the **real** `fetchWithRetry` from `index.html` by line
+  slicing and pins its contents. The new handler must be exported on `window` so that harness can
+  stub it; an undefined name there is a `ReferenceError` in every existing client test.
+
+### Deploy order — decided
+
+**The client release first, then `admin.gs`.** The client change is inert until the server emits the
+new field, so nothing can regress; once `admin.gs` is deployed, every updated shell already handles
+it. The reverse order hands a still-stale shell a fatal envelope error where it used to show a nice
+message — admin-only and rare, but avoidable.
+
+Two delivery channels that move separately: `admin.gs` through the Apps Script editor (manual paste
++ deploy), `index.html` through the release label — a precached shell entry, so it reaches an
+installed device **only when the version moves**.
+
+### Still owed at the end of Phase 1
+
+- A new suite — **no test covers `admin.gs` today** — asserting the envelope shape, that the
+  plaintext password never appears in a log capture while `generateHash` runs, and that logout
+  revokes. Plus a client-side case in `tests/origin-resilience.test.js` proving one attempt, session
+  cleared, login shown.
+- A mutation check over the new assertions, so they are not vacuous.
+- **A release** (`chore(release)`, 6 labels + one What's New entry) — without it the client half
+  never reaches a device.
+- Plan parts, by the `MASTER_PLAN.md` convention: **PART-012** (Tier 0) · **PART-013** (Tier 3) ·
+  **PART-014** (tests, evidence, release).
+
+### Phase 2 of the roadmap — for later, deliberately not in this item
+
+- **Tier 1 (the gate itself).** Wire `requireSession()` into the five `?type=` routes and
+  `getSettings`. Validate through a **`CacheService` session mirror** first — unmetered, unlike
+  `PropertiesService` (50,000 read/write per day), and the data route already does a `CacheService`
+  read — with the durable `PropertiesService` copy as the fallback. A look-up against a ~1.1–1.3 s
+  warm request is **<1 %**; in the worst case it is *faster*, because it removes the anonymous cold
+  builds (1.2–3.2 s) that produce the documented echo 404s.
+- **Tier 2 — leave `?action=rev` open.** It is the busiest route (~960 of ~1,200 requests/device/8 h)
+  and leaks only `{ok, rev}` — "something changed", never the data. Gating it would multiply
+  look-ups on the hottest path for nothing. `keepalive` stays open; it is a warm-up ping.
+- **Tier 4 — the Cloudflare worker** (`proxy/README.md`, currently off) is the only place a
+  **per-IP rate limit, WAF and a shared secret** can live without spending Apps Script quota. It adds
+  a proxy hop, so **measure before turning it on**.
+- **Do not add a rate limiter inside Apps Script.** It reads and writes on *every* request,
+  accelerating the exhaustion of the very quota it is meant to protect. Traffic is not the problem:
+  ~1,200 requests/device/8 h, ~7 users, usually 2 concurrent — nowhere near any ceiling.
+- Minor, unmeasured: login lockout is per-username with no IP or global backoff, so five bad guesses
+  can lock a real user out.
 
 ---
 

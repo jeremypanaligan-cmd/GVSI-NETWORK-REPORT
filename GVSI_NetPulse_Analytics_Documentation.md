@@ -15,8 +15,7 @@
 5. [Aging Timeline](#aging-timeline)
 6. [Top Provinces](#top-provinces)
 7. [Critical Tickets Table](#critical-tickets-table)
-8. [Trend Charts](#trend-charts)
-9. [How to Use](#how-to-use)
+8. [How to Use](#how-to-use)
 
 ---
 
@@ -31,7 +30,6 @@ The Analytics Dashboard provides a consolidated view of all network incidents ac
 - OLT DOWN Tickets
 - Node DOWN Tickets
 - Backbone Tickets
-- IndexedDB (local snapshots for trend analysis)
 
 ---
 
@@ -353,101 +351,9 @@ A table listing OLT tickets with the longest aging duration.
 
 ---
 
-## 8. Trend Charts (IndexedDB)
+## 8. How to Use
 
-Four line/bar charts showing historical trends over the last 30 days. Data is sourced from daily IndexedDB snapshots.
-
-> **Important:** Trend data builds over time. The charts require at least 2 days of snapshot data to display meaningful trends. Check back after a few days of use.
-
-### 8.1 Incidents per Day (Stacked Bar)
-
-| Field | Description |
-|-------|-------------|
-| **Chart Type** | Stacked bar chart |
-| **X-axis** | Date (last 30 days) |
-| **Y-axis** | Number of active incidents |
-| **Segments** | NAP (teal), LCP (yellow), OLT (red), Node (purple), Backbone (orange) |
-
-**What it shows:**
-- Total active incidents on each day, broken down by module
-- Stacked to show both the total and the contribution of each module
-
-**How to Interpret:**
-- Rising bars = network health is declining
-- Falling bars = incidents are being resolved
-- Spikes = possible major incident on that day
-- Consistent height = steady state of incidents
-
-**Note:** This chart shows the **total active incidents** on each day (snapshot), not newly created tickets. If the count drops from 15 to 12, it means 3 incidents were resolved.
-
----
-
-### 8.2 OLT Status Trend (Line)
-
-| Field | Description |
-|-------|-------------|
-| **Chart Type** | Line chart with area fill |
-| **X-axis** | Date (last 30 days) |
-| **Y-axis** | Number of OLTs |
-| **Lines** | DOWN (red), LOW POWER (orange), UPLINK DOWN (yellow) |
-
-**What it shows:**
-- How the count of non-UP OLTs has changed over time
-- Each status type is tracked separately
-
-**How to Interpret:**
-- Red line going up = more OLTs going DOWN — network degrading
-- Red line going down = OLTs being restored — network improving
-- Orange/yellow spikes = temporary power or uplink issues
-- Flat lines = stable network status
-
----
-
-### 8.3 Clients Affected Trend (Area)
-
-| Field | Description |
-|-------|-------------|
-| **Chart Type** | Area chart with line |
-| **X-axis** | Date (last 30 days) |
-| **Y-axis** | Number of clients |
-| **Lines** | OLT Clients (red), LCP Clients (yellow) |
-
-**What it shows:**
-- How the number of affected subscribers has changed over time
-- Separated by OLT and LCP impact
-
-**How to Interpret:**
-- Area growing = more customers affected — critical issue
-- Area shrinking = customers being restored — good progress
-- Red area dominates = OLT issues are the primary customer impact
-- Yellow area dominates = LCP issues are the primary customer impact
-
----
-
-### 8.4 Aging Distribution (Stacked Bar)
-
-| Field | Description |
-|-------|-------------|
-| **Chart Type** | Stacked bar chart |
-| **X-axis** | Date (last 30 days) |
-| **Y-axis** | Number of incidents |
-| **Segments** | <24h (green), 1-3d (yellow), >3d (red) |
-
-**What it shows:**
-- How the aging profile of incidents has changed over time
-- Combines NAP and LCP aging data
-
-**How to Interpret:**
-- Green dominant = incidents are being resolved quickly
-- Red growing = incidents are aging — not being resolved fast enough
-- Ideal: Green bars should increase while red bars decrease
-- Concerning: If red bars are consistently growing, SLA breaches are imminent
-
----
-
-## 9. How to Use
-
-### 9.1 Daily NOC Checklist
+### 8.1 Daily NOC Checklist
 
 | Step | Action | Where |
 |------|--------|-------|
@@ -457,16 +363,15 @@ Four line/bar charts showing historical trends over the last 30 days. Data is so
 | 4 | Review Top Provinces | Bar Chart |
 | 5 | Review Critical OLT Tickets | Table |
 
-### 9.2 Weekly Review
+### 8.2 Weekly Review
 
 | Step | Action | Where |
 |------|--------|-------|
 | 1 | Compare this week vs last week | Click "Compare Weeks" button |
-| 2 | Review trend direction | Trend Charts |
-| 3 | Check aging distribution | Aging Timeline |
-| 4 | Identify provinces with most incidents | Top Provinces Chart |
+| 2 | Check aging distribution | Aging Timeline |
+| 3 | Identify provinces with most incidents | Top Provinces Chart |
 
-### 9.3 Date Range Filters
+### 8.3 Date Range Filters
 
 | Filter | Use Case |
 |--------|----------|
@@ -474,7 +379,7 @@ Four line/bar charts showing historical trends over the last 30 days. Data is so
 | **30 Days** | Standard view — monthly trend analysis (default) |
 | **90 Days** | Long-term view — quarterly analysis, seasonal patterns |
 
-### 9.4 Comparison Mode
+### 8.4 Comparison Mode
 
 Click the **"Compare Weeks"** button to enable week-over-week comparison. This shows:
 - Current week values vs previous week
@@ -513,7 +418,6 @@ Google Sheets (GVSI NetPulse Database)
                         Analytics Dashboard
                         - Aggregates data from all modules
                         - Renders stat cards, donut charts
-                        - Renders trend charts from IndexedDB
 ```
 
 ## Appendix B: Color Reference
