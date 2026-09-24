@@ -240,6 +240,38 @@ test('the warmer actually passes the override — not just a TTL constant that e
   assert.strictEqual(calls[0].ttl, 180, 'warmer must pass its TTL as the 2nd positional arg');
 });
 
+test('an OLT build that answers with an error envelope is a failure, not a warm success', () => {
+  /* The origin reports a failed build with a 200 and a perfectly valid body, so this is the
+     one failure a try/catch cannot see. OLT was the module that skipped the check — it
+     logged its own success line unconditionally — which made the heaviest build in the pass
+     the only one whose result nobody verified: a green "warmed in 40ms (74 bytes)" over a
+     cache that was never written. */
+  const envelope = JSON.stringify({ error: 'build_failed', type: 'olt', message: 'boom', retryable: true });
+  const s = freshSandbox();
+  s.doGet = () => ({ getContent: () => envelope });
+
+  assert.strictEqual(s.warmOltCache(), -1, 'a failed build must not report an elapsed time');
+  assert.ok(s.__logs.some((l) => l.indexOf('❌ warmOltCache') !== -1),
+    'the envelope must be logged as a failure');
+  assert.ok(s.__logs.some((l) => l.indexOf('NOTHING was cached') !== -1),
+    'and it must say plainly that nothing was cached');
+  assert.strictEqual(s.__logs.some((l) => l.indexOf('✅ warmOltCache') !== -1), false,
+    'no success line may be logged over a failed build');
+});
+
+test('a real OLT build is still read as a success, and writes its entry', () => {
+  /* The other half of the check, and the one that keeps it honest: the detector must not
+     fire on real data, or every healthy run would be reported as a failure. OLT's payload
+     is an object envelope that starts with a brace — exactly what the detector looks for. */
+  const s = freshSandbox();
+  const elapsed = s.warmOltCache();
+
+  assert.ok(elapsed >= 0, 'a real OLT build reports its elapsed ms');
+  assert.strictEqual(s.__puts.length, 1, 'and still writes the warmed entry');
+  assert.ok(s.__logs.some((l) => l.indexOf('✅ warmOltCache') !== -1),
+    'and logs as warmed');
+});
+
 /* The cadence is read out of TRIGGER_PLAN as data rather than scraped from the
    source text, so the two files stay tied together by the schedule itself and
    not by how it happens to be written.

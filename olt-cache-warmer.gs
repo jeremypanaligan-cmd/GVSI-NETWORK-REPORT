@@ -107,22 +107,15 @@ function warmOltCache() {
     var output = doGet(fakeEvent, OLT_WARM_TTL_SECONDS);
     var elapsed = Date.now() - start;
     var content = output.getContent();
-    var size = content ? content.length : 0;
 
-    Logger.log('✅ warmOltCache: OLT cache warmed in ' + elapsed + 'ms (' +
-               size + ' bytes, TTL ' + OLT_WARM_TTL_SECONDS + 's)');
-
-    // The build has to finish well inside the interval it is covering, or the
-    // cadence cannot hold and the schedule is a fiction. Compared against the
-    // INTERVAL, not the TTL: the TTL is now shorter than the build's own order
-    // of magnitude and would warn on every healthy run.
-    if (elapsed > OLT_WARM_INTERVAL_SECONDS * 1000) {
-      Logger.log('⚠️ warmOltCache: build took ' + elapsed +
-                 'ms — longer than the ' + OLT_WARM_INTERVAL_SECONDS +
-                 's interval it covers. The cache cannot stay warm at this cadence.');
-    }
+    // Every type's build is judged in one place. OLT used to be the exception —
+    // it logged its own success line with no envelope test — and that made the
+    // heaviest, most budget-critical build here the one whose result nobody
+    // checked. See judgeWarmResponse_() for why a failed build does not throw.
+    return judgeWarmResponse_('warmOltCache', content, elapsed, OLT_WARM_TTL_SECONDS);
   } catch (err) {
     Logger.log('❌ warmOltCache failed: ' + err.message);
+    return -1;
   }
 }
 
@@ -172,6 +165,53 @@ function isBuildErrorEnvelope_(text) {
 }
 
 /**
+ * Judge one warm run's response, log what it means, and say whether it counts.
+ *
+ * EVERY warm build goes through here — OLT's included. It used to be that OLT logged its
+ * own success line and skipped this check, which made the heaviest build in the pass the
+ * only one whose result was never verified. One judge, one definition of "warmed".
+ *
+ * The reason this is not just a try/catch: a failed build does NOT throw. code.gs catches
+ * it and answers {error:"build_failed", retryable:true} — a 200 with a perfectly valid
+ * body. So a warmer that judged by "did anything throw" would log a 74-byte success and
+ * cache nothing, reporting a module warm every five minutes while every user paid a cold
+ * build. That is the silent-lie shape this project keeps having to hunt, and the Executions
+ * page makes it worse: an operator would read green lines over a module that has been
+ * serving an empty payload since breakfast.
+ *
+ * @param {string} label       what to name in the log — 'warmOltCache', 'warmCache nap'
+ * @param {string} content     the body the build produced
+ * @param {number} elapsed     ms the build took
+ * @param {number} ttlSeconds  the lifetime that was asked for
+ * @return {number} elapsed ms on a real build, -1 when nothing was cached
+ */
+function judgeWarmResponse_(label, content, elapsed, ttlSeconds) {
+  var size = content ? content.length : 0;
+
+  if (isBuildErrorEnvelope_(content)) {
+    Logger.log('❌ ' + label + ': the build answered with an error envelope — ' +
+               'NOTHING was cached for it (' + size + ' bytes, ' + elapsed + 'ms). ' +
+               'Look for the matching "❌ Build failed" line above it.');
+    return -1;
+  }
+
+  Logger.log('✅ ' + label + ': warmed in ' + elapsed + 'ms (' +
+             size + ' bytes, TTL ' + ttlSeconds + 's)');
+
+  // A build that cannot finish inside the interval it covers cannot keep the cache warm
+  // at this cadence, and the schedule becomes a fiction. Compared against the INTERVAL,
+  // not the TTL: the TTL is deliberately shorter than a build's own order of magnitude
+  // and would warn on every healthy run.
+  if (elapsed > OLT_WARM_INTERVAL_SECONDS * 1000) {
+    Logger.log('⚠️ ' + label + ': build took ' + elapsed +
+               'ms — longer than the ' + OLT_WARM_INTERVAL_SECONDS +
+               's interval it covers. The cache cannot stay warm at this cadence.');
+  }
+
+  return elapsed;
+}
+
+/**
  * Rebuild one module's cache entry, out of band, and report honestly.
  *
  * @param {string} type        a member of DATA_TYPES in code.gs
@@ -184,34 +224,8 @@ function warmTypeCache_(type, ttlSeconds) {
     var fakeEvent = { parameter: { type: type } };
     var output = doGet(fakeEvent, ttlSeconds);
     var content = output.getContent();
-    var elapsed = Date.now() - start;
-    var size = content ? content.length : 0;
 
-    /* A failed build answers with an envelope instead of throwing, and that reply is
-       never cached (code.gs returns from its guard before the cache write). Reporting it
-       as a warm success would be the silent-lie shape this project keeps having to hunt:
-       "the module is warmed every five minutes" while a renamed tab sends every user to
-       an empty payload or a cold build. */
-    if (isBuildErrorEnvelope_(content)) {
-      Logger.log('❌ warmCache ' + type + ': the build answered with an error envelope — ' +
-                 'NOTHING was cached for it (' + size + ' bytes, ' + elapsed + 'ms). ' +
-                 'Look for the matching "❌ Build failed" line above it.');
-      return -1;
-    }
-
-    Logger.log('✅ warmCache ' + type + ': warmed in ' + elapsed + 'ms (' +
-               size + ' bytes, TTL ' + ttlSeconds + 's)');
-
-    // Same warning the OLT warmer makes, for the same reason: a build that cannot finish
-    // inside the interval it covers cannot keep the cache warm at this cadence, and the
-    // schedule becomes a fiction.
-    if (elapsed > OLT_WARM_INTERVAL_SECONDS * 1000) {
-      Logger.log('⚠️ warmCache ' + type + ': build took ' + elapsed +
-                 'ms — longer than the ' + OLT_WARM_INTERVAL_SECONDS +
-                 's interval it covers. The cache cannot stay warm at this cadence.');
-    }
-
-    return elapsed;
+    return judgeWarmResponse_('warmCache ' + type, content, Date.now() - start, ttlSeconds);
   } catch (err) {
     /* Per type, not per run. This is the only thing keeping any of these modules warm,
        so a module that cannot be built must not take the four behind it down with it. */
@@ -229,12 +243,11 @@ function warmTypeCache_(type, ttlSeconds) {
  * event type and never the schedule.
  *
  * OLT is built through warmOltCache(), the function that already existed and is already
- * asserted: it owns shape=3, its own TTL constant and its own log line, and this pass
- * does not restate any of that. What it does NOT get is the error-envelope check that
- * warmTypeCache_ makes: warmOltCache predates it and is left byte-identical here, so an OLT
- * build that fails still logs as a success with a small byte count. That asymmetry is
- * recorded as an open item rather than fixed by rewriting a tested function in the same
- * change that adds its replacement.
+ * asserted: it owns shape=3 and its own TTL constant, and this pass does not restate
+ * either. It reports through judgeWarmResponse_() like every other type, so the pass counts
+ * it from the same evidence as the rest: an OLT build that answered with an error envelope
+ * comes back as -1 and is named in the FAILED list instead of being counted as a rebuild.
+ * The count therefore describes what happened, not what was scheduled.
  */
 function warmDataCaches() {
   var start = Date.now();
@@ -245,8 +258,11 @@ function warmDataCaches() {
      miss. Wrapped on its own so anything thrown outside warmOltCache's own try/catch
      still leaves the four behind it scheduled. */
   try {
-    warmOltCache();
-    built++;
+    /* Counted from the warmer's own verdict, not from "it did not throw": a failed OLT
+       build returns -1 and threw nothing, and calling that a rebuild would put a green
+       "5 of 5" line over a module nobody warmed. */
+    if (warmOltCache() >= 0) built++;
+    else failed.push('olt');
   } catch (err) {
     failed.push('olt');
     Logger.log('❌ warmDataCaches: warmOltCache threw: ' + err.message);

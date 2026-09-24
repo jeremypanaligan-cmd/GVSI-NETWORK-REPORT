@@ -459,6 +459,30 @@ test('a pass where OLT throws still warms the four behind it', () => {
   assert.strictEqual(logMatching(s, 'FAILED: olt').length, 1, 'and OLT must be named as the failure');
 });
 
+test('a pass whose OLT build fails names OLT, and counts only what it rebuilt', () => {
+  /* OLT's build failure is the one that throws nothing: code.gs answers with an error
+     envelope and a 200. Counting the run from "warmOltCache did not throw" would print a
+     green "5 of 5" over a module nobody warmed, so the count has to come from the same
+     verdict every other type is judged by. */
+  const envelope = JSON.stringify({ error: 'build_failed', type: 'olt', message: 'boom', retryable: true });
+  const s = freshSandbox();
+  const realDoGet = s.doGet;
+  s.doGet = (e, ttl) => (e.parameter.type === 'olt')
+    ? { getContent: () => envelope }
+    : realDoGet(e, ttl);
+
+  s.warmDataCaches();
+
+  assert.strictEqual(s.__store['cache_v2_olt_c3'], undefined,
+    'nothing may be cached from a failed OLT build');
+  assert.strictEqual(logMatching(s, '❌ warmOltCache').length, 1,
+    'the failed OLT build must be logged as a failure');
+  assert.strictEqual(logMatching(s, 'FAILED: olt').length, 1,
+    'the pass summary must name OLT as what it could not warm');
+  assert.strictEqual(logMatching(s, '4 of 5 module(s) rebuilt').length, 1,
+    'the count must come from the verdicts, not from the schedule: OLT was not rebuilt');
+});
+
 /* ------------------------------------------------------------------ *
    4. The plan tie, and the rules the numbers have to obey
  * ------------------------------------------------------------------ */
