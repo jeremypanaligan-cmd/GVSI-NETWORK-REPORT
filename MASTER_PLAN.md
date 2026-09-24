@@ -75,6 +75,20 @@ Outcome: A build that fails answers with an envelope instead of throwing, so the
 the module it could not warm rather than logging a small byte count over an empty cache; one
 module's failure never stops the four behind it, and the healthy fleet is never warmed.
 
+### SCN-016: A failing module is named, without a client release
+Outcome: An admin can ask the server which module is failing and get the same four facts
+that exist today on one Executions log line — which sheet, which stage, which revision, how
+long it had been running — plus whether that module's cache is even holding a payload. The
+route reads nothing, builds nothing and moves no revision, so asking while something is
+broken cannot make it worse.
+
+### SCN-017: The cadence's own numbers are kept, and the request path pays nothing
+Outcome: The per-type build times the warm pass already computes stop being discarded, so
+the four never-measured build times become measurable without a synthetic load test. A
+successful build stores nothing, a failed one always does, and a slow one is written with
+no read at all — the measurement lives in the trigger that was already running rather than
+in the request an operator is waiting on.
+
 ## Phase 1: OLT zero state
 
 - [x] Part 1: Read `plans/PART1_PLAN.ai.md`
@@ -215,6 +229,39 @@ path — this phase is a `.gs` paste plus one manual `setupAllTriggers()`.
     one.
   - Evidence: PART-020 in `PLAN_EVIDENCE.md` — **262 tests across 16 suites** (3 new, 259 →
     262), **5/5 mutations caught, 0 missed, 0 unproven**
+
+## Phase 7: module diagnostics, server side only — PLANNED
+
+**Why this phase exists.** The ask was *"dagdagan ng function ang admin module na kaya nitong
+idetect ang module na nagca-cause ng pag bagal"*. The facts already exist and nothing can read
+them: `buildCtx_` carries type, stage, sheet, rev and elapsed ms through every build and spends
+them on one `❌ Build failed | …` line in the Executions log, and `warmDataCaches` computes a
+per-type build time every five minutes and throws every number away.
+
+**Why it is server-only.** The client half — sampling every call in `fetchWithRetry`, reading
+the edge's `x-netpulse-origin-ms` and `x-netpulse-attempts`, the Module Health card — is a
+release: a version bump and an update path across seven devices. This half is three files
+pasted into the editor, reaches nobody's phone, and answers the question that a field report
+actually asks first: which sheet and which module.
+
+**The design decision that matters, and the mistake it corrects.** A first version of this
+part recorded a sample after every successful build. That is one property read on the
+coldest, slowest path in the app — a diagnostic that makes the slow thing slower. It is
+removed by construction here: successes store nothing, failures always store, and a slow
+build is written from a comparison against a constant with no read at all. Build times come
+from the warm pass, which runs in its own trigger execution.
+
+**What this phase does NOT do:** it does not fix the **21 s origin 404**, and it does not make
+any module faster. It makes the next report attributable.
+
+- [ ] Part 14: Read `plans/PART14_PLAN.ai.md`
+  - Scenario: SCN-016, SCN-017
+  - Outcome: An admin-gated read-only `?action=diag` naming the sheet, stage, revision,
+    elapsed time and cache state per module; a failure recorded whenever a build cannot run;
+    a slow build recorded with no read on the hot path; and the warm pass keeping the
+    per-type build times it already computes — all of it in one `.gs` paste, with no version
+    bump, no client byte, no new trigger and no new query parameter
+  - Evidence: PLAN_EVIDENCE.md#PART-021
 
 ## Notes
 
