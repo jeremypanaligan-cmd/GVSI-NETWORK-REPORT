@@ -29,7 +29,10 @@ const ROOT = path.join(__dirname, '..');
    a change to the plan has to be a deliberate change here too. */
 const EXPECTED_PLAN = [
   { fn: 'updateAgingDurationStatic', cadence: 'everyMinutes(15)' },
-  { fn: 'warmOltCache',              cadence: 'everyMinutes(5)' },
+  /* Was warmOltCache. The warmer now rebuilds all five modules in one execution, and
+     this entry is the only written record of that cadence, so the rename is the plan
+     change — not a detail of how the function happens to be named in code. */
+  { fn: 'warmDataCaches',            cadence: 'everyMinutes(5)' },
   { fn: 'updateAgingDurationColP',   cadence: 'everyMinutes(30)' },
   { fn: 'processBackboneTickets',    cadence: 'everyHours(1)' },
   { fn: 'autoExportSheetToExcel',    cadence: 'atHour(6)+everyDays(1)+tz(Asia/Manila)' },
@@ -168,7 +171,7 @@ console.log('\nTrigger setup\n');
 
 test('a missing handler aborts WITHOUT deleting any live trigger', () => {
   const s = freshSandbox({
-    handlers: ALL_HANDLERS.filter((f) => f !== 'warmOltCache'),
+    handlers: ALL_HANDLERS.filter((f) => f !== 'warmDataCaches'),
     live: ['updateAgingDurationStatic', 'processBackboneTickets']   // real ones, must survive
   });
 
@@ -178,7 +181,7 @@ test('a missing handler aborts WITHOUT deleting any live trigger', () => {
     'nothing may be removed when the plan cannot be satisfied');
   assert.deepStrictEqual(s.__created, [],
     'nothing may be created when the plan cannot be satisfied');
-  assert.ok(s.__logs.some((l) => l.indexOf('warmOltCache') !== -1),
+  assert.ok(s.__logs.some((l) => l.indexOf('warmDataCaches') !== -1),
     'the missing handler should be named in the log');
   assert.ok(s.__logs.some((l) => l.indexOf('NOTHING was removed') !== -1),
     'the log should say plainly that nothing was removed');
@@ -263,7 +266,7 @@ test('every planned handler really exists in the .gs sources', () => {
  * ------------------------------------------------------------------ */
 
 test('listTriggers reports a planned trigger that is not live', () => {
-  const s = freshSandbox({ live: ['warmOltCache'] });
+  const s = freshSandbox({ live: ['warmDataCaches'] });
   s.listTriggers();
   const out = s.__logs.join('\n');
   assert.ok(out.indexOf('Planned but NOT live') !== -1, 'should flag the gap');

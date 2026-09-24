@@ -242,14 +242,20 @@ test('the warmer actually passes the override — not just a TTL constant that e
 
 /* The cadence is read out of TRIGGER_PLAN as data rather than scraped from the
    source text, so the two files stay tied together by the schedule itself and
-   not by how it happens to be written. */
+   not by how it happens to be written.
+
+   The entry is warmDataCaches, not warmOltCache. The warmer now rebuilds every module in
+   one execution and OLT is its first step, so the pass is what carries the OLT cadence.
+   warmOltCache() itself is deliberately unchanged and still owns shape=3, its own TTL
+   constant and its log line — the four extra modules do not restate any of that.
+   tests/cache-warmer.test.js covers the pass; this suite keeps covering OLT. */
 function warmPlanEntry() {
   const sandbox = { console };
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'triggers.gs'), 'utf8'), sandbox, { filename: 'triggers.gs' });
 
-  const entry = sandbox.TRIGGER_PLAN.filter((e) => e.fn === 'warmOltCache')[0];
-  assert.ok(entry, 'TRIGGER_PLAN has no warmOltCache entry');
+  const entry = sandbox.TRIGGER_PLAN.filter((e) => e.fn === 'warmDataCaches')[0];
+  assert.ok(entry, 'TRIGGER_PLAN has no warmDataCaches entry');
   return { entry, sandbox };
 }
 
@@ -266,7 +272,7 @@ function warmIntervalSecondsFromTriggerPlan() {
   };
   entry.apply({ timeBased: () => clock });
 
-  assert.ok(minutes, 'the warmOltCache entry does not use everyMinutes()');
+  assert.ok(minutes, 'the warmDataCaches entry does not use everyMinutes()');
   return minutes * 60;
 }
 
@@ -278,7 +284,7 @@ test('the warmer and TRIGGER_PLAN state the same interval', () => {
     'says ' + intervalSeconds + 's — the Apps Script UI cannot show the cadence, so ' +
     'these two are the only record of it');
   assert.strictEqual(warmPlanEntry().entry.event, 'clock',
-    'warmOltCache is time-driven; the plan must say so for the drift report');
+    'the warm pass is time-driven; the plan must say so for the drift report');
 });
 
 test('the warm TTL is deliberately SHORTER than the interval it sits under', () => {

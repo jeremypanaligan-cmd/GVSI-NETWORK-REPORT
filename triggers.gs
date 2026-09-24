@@ -13,7 +13,7 @@
  *
  * SCHEDULE
  *   updateAgingDurationStatic   every 15 min    OLT aging            (AgingDurationColX.gs)
- *   warmOltCache                every 5 min     OLT cache pre-warm   (olt-cache-warmer.gs)
+ *   warmDataCaches              every 5 min     cache pre-warm, all 5 modules  (olt-cache-warmer.gs)
  *   updateAgingDurationColP     every 30 min    Node/Backbone aging  (AgingDurationColP(BBxNODE).gs)
  *   processBackboneTickets      every hour      Backbone link extract(ExtractLinksinBB.gs)
  *   autoExportSheetToExcel      daily 06:00 PHT Excel backup         (autoBackupsheet.gs)
@@ -75,15 +75,16 @@ var TRIGGER_PLAN = [
     schedule: 'every 15 minutes',
     apply: function (t) { return t.timeBased().everyMinutes(15); }
   },
-  {
-    /* Freshness is the cadence: the warm override now rebuilds unconditionally
-       (code.gs), so every run overwrites the entry and the snapshot a user can
-       be shown is at most one interval old. 5 min = 288 runs/day ≈ 19 min/day of
-       trigger runtime against the 90 min/day consumer budget. The TTL it writes
-       is deliberately SHORTER than this interval — see olt-cache-warmer.gs for
-       why that is now the right way round, and
-       tests/olt-warm-ttl.test.js asserts this number and that file agree. */
-    fn: 'warmOltCache',
+  {    /* Freshness is the cadence: the warm override now rebuilds unconditionally
+       (code.gs), so every run overwrites the entry and the snapshot a user can be
+       shown is at most one interval old. 5 min = 288 runs/day, and the pass now
+       rebuilds ALL FIVE modules in one execution (~46 min/day of trigger runtime
+       against the 90 min/day consumer budget; read the pass line in the Executions
+       log and recompute before changing either number). The TTL it writes is
+       deliberately SHORTER than this interval — see olt-cache-warmer.gs for why
+       that is now the right way round, and tests/olt-warm-ttl.test.js asserts this
+       number and that file agree. */
+    fn: 'warmDataCaches',
     event: 'clock',
     schedule: 'every 5 minutes',
     apply: function (t) { return t.timeBased().everyMinutes(5); }
