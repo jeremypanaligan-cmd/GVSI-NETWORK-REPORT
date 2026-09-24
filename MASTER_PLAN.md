@@ -206,6 +206,16 @@ because the throwing-sheet case and the error-envelope case fail by different me
 **No client bytes changed.** No version bump, no `sw.js` cache-generation move, no PWA update
 path — this phase is a `.gs` paste plus one manual `setupAllTriggers()`.
 
+- [x] Part 13: Read `plans/PART13_PLAN.ai.md`
+  - Scenario: SCN-015
+  - Outcome: OLT's own warmer reports through the same judgement as the other four, so a failed
+    OLT build is named in the log instead of being logged as a success with a small byte count,
+    and the pass counts what it rebuilt rather than what it attempted. This supersedes the
+    "byte-identical" sentence in Part 12 — that was true of that change, and is not true of this
+    one.
+  - Evidence: PART-020 in `PLAN_EVIDENCE.md` — **262 tests across 16 suites** (3 new, 259 →
+    262), **5/5 mutations caught, 0 missed, 0 unproven**
+
 ## Notes
 
 - Authored by hand from `templates/` — the `plannable` CLI is not runnable in this

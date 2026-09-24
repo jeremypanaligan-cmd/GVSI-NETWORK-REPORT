@@ -663,8 +663,10 @@ this app for three minutes, checks the picture and closes it.
 
 Now one clock trigger (`warmDataCaches`, every 5 min) rebuilds **all five in one execution** —
 `olt → nap → lcp → node → backbone`, sequentially, TTL 180 s each, OLT first because it is the
-heaviest and the one a three-second budget can actually miss. `warmOltCache()` is left
-**byte-identical**: it still owns `shape=3`, its own TTL constant and its own log line.
+heaviest and the one a three-second budget can actually miss. `warmOltCache()` still owns `shape=3`
+and its own TTL constant, and since **PART-013** it also reports through the same judgement as the
+other four (`judgeWarmResponse_`) — so a failed OLT build is named `❌` instead of logged as a
+success with a small byte count.
 
 **Measured gain is small.** Same cache key, OLT, 461 rows:
 
@@ -684,8 +686,8 @@ measured; the other four are estimates and the pass log is what replaces them.**
 the constraint, not request volume, because every run is a full rebuild.
 
 Read the Executions log and set the interval from the arithmetic, not from this paragraph. One line
-per type — `✅ warmCache <type>: warmed in Nms (N bytes, TTL Ns)`, with OLT keeping its own
-`✅ warmOltCache: ...` — and the run closes with
+per type — `✅ warmOltCache: warmed in Nms (N bytes, TTL Ns)` and
+`✅ warmCache <type>: warmed in Nms (N bytes, TTL Ns)` — and the run closes with
 `✅ warmDataCaches: pass finished in Nms — N of 5 module(s) rebuilt`. Every 10 min halves the cost
 and the coverage; every 3 min is ~77 min/day. A module named under `FAILED:` is not warm, whatever
 the cadence says: the origin answers a failed build with a 200 and an envelope, which is why the

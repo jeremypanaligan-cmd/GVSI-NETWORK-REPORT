@@ -964,3 +964,55 @@ warm that was not warm before, and `TODO.md`'s freshness item still waits on the
 module as a red *"Error loading data."* row. Warming cannot touch an error path, and at ~7× the
 worst cold build it remains the largest single source of a bad experience in this system. The
 three-second goal is only partly served by this part, and the rest of it is a client release.
+
+### PART-020 — one judge for every warm build (2026-09-24)
+
+**The asymmetry PART-019 recorded as open, and why it was not cosmetic.** PART-012 left
+`warmOltCache()` byte-identical on purpose — rewriting a function that five assertions cover, in
+the same change that adds its replacement, is how a rename turns into a rewrite. The cost of that
+deferral was specific and worth writing down: OLT's build failure was the one failure in the pass
+that **threw nothing**, because `code.gs` catches it and answers the envelope with a 200. So a
+failed OLT build logged *"✅ OLT cache warmed in 3120ms (74 bytes)"* and the closing line read
+**"5 of 5 module(s) rebuilt"** with nothing under `FAILED:`. Both of those are the numbers an
+operator reads to decide the cadence, and OLT's build time is the only one of the five that is
+actually measured — so the one module whose result nobody verified was the module the whole
+budget is sized around.
+
+**What changed.** One function, `judgeWarmResponse_(label, content, elapsed, ttlSeconds)`, is now
+the single place that decides what "warmed" means: envelope check, success line, cadence warning,
+and the return value (`ms`, or `-1` when nothing was cached). `warmOltCache()` and
+`warmTypeCache_()` both report through it — the OLT warmer keeps the two things its assertions are
+actually about (`shape=3` and `OLT_WARM_TTL_SECONDS`) and gives up its own verdict. The pass then
+counts OLT from that verdict rather than from *"it did not throw"*, which is what turns the
+closing line back into a description of what happened: **"4 of 5 module(s) rebuilt — FAILED:
+olt"**.
+
+**The assertion that keeps the detector honest.** OLT's payload is an object envelope beginning
+with a brace — exactly the shape `isBuildErrorEnvelope_()` looks for — so *"a real OLT build is
+still read as a success, and writes its entry"* is not decoration. Without it, a detector that
+fired on any object payload would report every healthy OLT run as a failure and the mutation pass
+would not notice.
+
+**Files.** `olt-cache-warmer.gs` (`judgeWarmResponse_` added; `warmOltCache`, `warmTypeCache_` and
+`warmDataCaches` all rewired; the docstring paragraph that recorded the asymmetry replaced by what
+is now true) · `tests/olt-warm-ttl.test.js` (+2) · `tests/cache-warmer.test.js` (+1) ·
+`plans/PART13_PLAN.ai.md` · `MASTER_PLAN.md` (Part 13) · `TODO.md` and `.freebuff/run.md` (the log
+lines an operator will actually see). **No client file changed** — no version bump, no `sw.js`
+generation move, no PWA update risk.
+
+**Checks.** Full suite **262 passed across 16 suites, 0 failed** (259 → 262; 3 new). **Mutation
+check 5/5 caught, 0 missed, 0 unproven**, baseline verified green in the mutation workspace before
+any mutation was believed. The five mutations: the judge returning `elapsed` instead of `-1` for
+an envelope; `warmOltCache()` bypassing the judge entirely with the old unconditional success
+line; the detector returning `true` for everything; OLT counted from the absence of a throw; and
+the throw path no longer naming OLT. The second of those is the one that proves the wiring rather
+than the helper — it restores the pre-change body verbatim and the new assertion still fails.
+
+**Still not run.** The same Apps Script hand-off PART-019 left open: paste `olt-cache-warmer.gs`,
+run `warmDataCaches()` **once by hand** (still the only source of the four unmeasured build
+times), then `listTriggers()` → `setupAllTriggers()` → `listTriggers()`. Until that happens the
+live project runs the old warmer, and its log will look correct for a reason that is no longer
+true.
+
+**Still not fixed.** The **21 s origin 404** behind *"Error loading data."* — untouched here, as
+in PART-019, and still the largest single source of a bad experience in this system.

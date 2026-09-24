@@ -236,13 +236,14 @@ cp olt-cache-warmer.gs _chk.js && node --check _chk.js && rm _chk.js && echo OK
 **Order of operations, PART-012 as the example.** Step 2 exists to produce a measurement, and no
 trigger is touched until step 4:
 
-1. **Paste** the changed files — PART-012: `olt-cache-warmer.gs`, `triggers.gs`.
+1. **Paste** the changed files — PART-012 and PART-013 both change `olt-cache-warmer.gs`;
+   PART-012 also needs `triggers.gs`.
 2. **Run `warmDataCaches()` by hand.** Nothing but cache entries changes. The editor's execution log
    prints the pass immediately, and this single run is the measurement the interval should come
    from:
 
    ```
-   ✅ warmOltCache: OLT cache warmed in 3120ms (629 bytes, TTL 180s)
+   ✅ warmOltCache: warmed in 3120ms (629 bytes, TTL 180s)
    ✅ warmCache nap: warmed in 1310ms (742 bytes, TTL 180s)
    ✅ warmCache lcp: warmed in 1290ms (512 bytes, TTL 180s)
    ✅ warmCache node: warmed in 1740ms (1980 bytes, TTL 180s)
@@ -252,8 +253,10 @@ trigger is touched until step 4:
 
    (Those numbers are **illustrative** — the shape of the lines is the point, and only OLT's build
    time was measured before this ran.) If a type answers with
-   `❌ warmCache <type>: the build answered with an error envelope`, nothing was cached for it and
-   the matching `❌ Build failed | type=… | stage=… | sheet="…"` line above it names the sheet.
+   `❌ warmCache <type>: the build answered with an error envelope` — or, for OLT,
+   `❌ warmOltCache: …`, since every build is judged in the same place — nothing was cached for it
+   and the matching `❌ Build failed | type=… | stage=… | sheet="…"` line above it names the sheet.
+   A type named under `FAILED:` in the closing line was not rebuilt, whatever the cadence says.
 3. **`listTriggers()`** — read-only drift report. PART-012 changed the plan entry from
    `warmOltCache` to `warmDataCaches`, so a live project still showing the old name is expected
    before this step and wrong after it.

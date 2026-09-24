@@ -110,6 +110,9 @@ DONE
   The client-side half of the three-second goal (the 21 s error path, and instant first paint from
   the device's last good payload) is out of scope here by the user's choice and stays queued.
 
-  Open, recorded rather than fixed: warmOltCache still logs success when its build answers with an
-  error envelope. It predates the check, and rewriting a function in the same change that adds its
-  replacement is how a rename turns into a rewrite.
+  Open at the time, recorded rather than fixed: warmOltCache still logged success when its build
+  answered with an error envelope. It predated the check, and rewriting a function in the same
+  change that adds its replacement is how a rename turns into a rewrite.
+
+  CLOSED by plans/PART13_PLAN.ai.md. The rewrite was its own change, on its own day, with the
+  mutation pass re-run — which is the point of having deferred it rather than bundled it.
