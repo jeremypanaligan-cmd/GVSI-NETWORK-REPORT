@@ -65,6 +65,16 @@ Outcome: The all-clear reads as a steady signal being watched rather than a box 
 ticked once; the pulse is the slowest thing on the page, stops entirely for
 `prefers-reduced-motion`, and never beats over missing data.
 
+### SCN-014: The first request after an idle period is answered from the cache
+Outcome: Every module is rebuilt on a clock, not only OLT. An operator who opens the app
+for three minutes and closes it is served a warm entry instead of paying a cold build, and
+what remains of the wait is the ~1.1 s floor that no warming removes.
+
+### SCN-015: A warm run reports what it actually warmed
+Outcome: A build that fails answers with an envelope instead of throwing, so the pass names
+the module it could not warm rather than logging a small byte count over an empty cache; one
+module's failure never stops the four behind it, and the healthy fleet is never warmed.
+
 ## Phase 1: OLT zero state
 
 - [x] Part 1: Read `plans/PART1_PLAN.ai.md`
@@ -162,6 +172,39 @@ the card's own circle.
     that yields to `prefers-reduced-motion` and refuses to beat over missing data
   - Evidence: PART-011 in `PLAN_EVIDENCE.md` — 196 tests, 18/18 mutations caught, the pulse
     sampled live in both themes, `is-missing` proved still
+
+## Phase 6: the warm pass — IN THE REPO, WAITING ON THE APPS SCRIPT HAND-OFF
+
+**Why this phase exists.** OLT was the only module with a warmer. The other four relied on real
+traffic — the app prefetches all five on every load — so the gap was the FIRST request after an
+idle period, which is the whole of a session for an operator who opens this app for three minutes,
+checks the picture and closes it. Measured: OLT cold **2.97 / 3.21 s** against a warm hit
+**1.09–1.52 s**; a cold-ish five-module burst at **3.235 s** and the same burst warm at
+**1.156 s**. The ask was *"i-warm ang apat pang module"*, and the stated goal was data on screen
+within about three seconds.
+
+**What this phase does NOT fix, stated before the work:** the intermittent **21 s origin 404**
+that reaches a module as a red *"Error loading data."* row. That is an error path, not a cache
+miss, and `TODO.md` already calls it the largest single source of a bad experience in the system.
+Warming cannot touch it; it needs a client release and stays queued.
+
+- [x] Part 12: Read `plans/PART12_PLAN.ai.md`
+  - Scenario: SCN-014, SCN-015
+  - Outcome: One clock trigger rebuilds all five modules in one execution, sequentially,
+    OLT first; OLT's own warmer is left byte-identical, each type is wrapped on its own, and
+    an error envelope is reported as a failure instead of a success
+  - Evidence: PART-019 in `PLAN_EVIDENCE.md` — **259 tests across 16 suites** (13 new, 246 →
+    259), **15/15 mutations caught, 0 missed, 0 unproven**, and the Apps Script hand-off
+    checklist below, which has **not** been run yet
+
+**Deviation, recorded rather than quietly taken:** the suite landed at **13 assertions** instead
+of the 10 sketched in the plan. Two were added while writing it — a pass where OLT throws still
+warms the four behind it, and the pass touches no revision counter and spends no forced-rebuild
+claim — and one sketched assertion ("one module failing does not starve the four") was split,
+because the throwing-sheet case and the error-envelope case fail by different mechanisms.
+
+**No client bytes changed.** No version bump, no `sw.js` cache-generation move, no PWA update
+path — this phase is a `.gs` paste plus one manual `setupAllTriggers()`.
 
 ## Notes
 

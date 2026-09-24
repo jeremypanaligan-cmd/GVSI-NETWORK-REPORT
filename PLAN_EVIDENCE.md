@@ -899,3 +899,68 @@ hand-sent `SKIP_WAITING` promoted it. I did not explain that, and did not chase 
 same sequence on a clean origin behaves exactly as designed. Two things follow: a verification
 origin must be **pristine** (a second `python -m http.server` on a free port is the cheap way), and
 that stuck `waiting` state is not hypothetical — it is the state the nudge exists for.
+
+---
+
+# PART-019 — the warm pass: five modules, one run (2026-09-24)
+
+**The question that led here.** *"Kung ginawan ko ng tig-i-isang database sheet ang bawat module sa
+NetPulse, makakatulong ba ito sa pagbilis ng data loading?"* — **no**, and the evidence is the
+reason: every module already reads only its own sheet, so splitting the file removes no read; the
+cost that dominates is the **~1.1 s floor** (Apps Script startup plus the `302 →
+googleusercontent` echo hop), which is paid whether a call hits the cache or not and is untouched
+by the number of spreadsheets; and `CacheService`, `PropertiesService` and the two invalidation
+triggers are scoped to the **script**, not the spreadsheet, so a split breaks the change-notification
+path that closed the 11-minute staleness incident. The measured shape of the same five calls is the
+cleanest answer: **one warm module (1,096 ms) costs about what all five warm together cost
+(1,156 ms)**.
+
+**What was built instead.** The user's stated goal was *data on screen within about three seconds*
+for operators who open the app for three minutes at a time. One clock trigger, `warmDataCaches`,
+now rebuilds every module in one execution — `olt → nap → lcp → node → backbone`, sequentially,
+TTL 180 s per type, OLT first. `warmOltCache()` is left **byte-identical**; it still owns `shape=3`,
+`OLT_WARM_TTL_SECONDS` and its log line, and the five assertions that cover it keep their meaning.
+TTL stays **below** the interval — the rule the 2026-09-18 incident was closed with — so a dead
+warmer decays to slow-but-current rather than stale.
+
+**Files.** `olt-cache-warmer.gs` (`warmDataCaches`, `warmTypeCache_`, `isBuildErrorEnvelope_`, two
+constants, and a header that now states the pass, the floor and the budget) · `triggers.gs`
+(`TRIGGER_PLAN` entry renamed, SCHEDULE header) · **new** `tests/cache-warmer.test.js` ·
+`tests/triggers.test.js` and `tests/olt-warm-ttl.test.js` (the plan entry they assert).
+**No client file changed** — no version bump, no `sw.js` generation move, no PWA update risk.
+
+**One thing found while writing it, and it is the reason the detector exists.** A failed build does
+not throw out of `doGet`: `code.gs` catches it and answers `{error:"build_failed", retryable:true}`
+with a **200**. So a warmer that only wrapped `doGet` in a `try` would have logged a 74-byte
+*success* over an empty cache, every five minutes, while every user paid a cold build — the same
+silent-lie shape as the stale chip and the silent empty payload this project has had to hunt
+twice. `isBuildErrorEnvelope_()` classifies the answer by its leading bytes and the pass reports
+`FAILED: <type>` instead. (The OLT warmer predates the check and still logs success on a failed
+build; that asymmetry is deliberate — changing a tested function in the same change that adds its
+replacement is how a rename turns into a rewrite — and it is recorded rather than fixed here.)
+
+**Checks.** Full suite **259 passed across 16 suites, 0 failed** (246 → 259; 13 new).
+**Mutation check 15/15 caught, 0 missed, 0 unproven**, baseline verified green in the mutation
+workspace before any mutation was believed. The mutations were aimed at the assertions that would
+otherwise be decorative: a module dropped from the pass; OLT warmed with the wrong shape; a
+secondary handed a shape; a secondary TTL outside the range `doGet` accepts; a type warmed whose
+payload nobody reads; the build override no longer rebuilding; every call rebuilding (the cache
+stopping caching); the pass stopping at the first failure; the error envelope ignored, **and** the
+detector firing on any object payload; OLT's own throw no longer contained; the plan cadence
+drifting from the file; the OLT TTL growing past the interval; the healthy fleet warmed; and the
+pass bumping a revision counter (which would send every open dashboard to the sheet for nothing).
+
+**The assertion that carries the change** is the one that would fail if the pass were writing a key
+nobody reads: *after a pass, an HTTP call for any type is a HIT that touches no sheet*. It is run
+per type, over the exact key the HTTP path computes, and it is what makes "warmed" a claim about
+the request path rather than about a byte count in a log.
+
+**Not run yet.** The Apps Script hand-off: paste `olt-cache-warmer.gs` and `triggers.gs`, run
+`warmDataCaches()` **once by hand** (which is what produces the four unmeasured build times), then
+`listTriggers()` → `setupAllTriggers()` → `listTriggers()` off-peak. Until that happens nothing is
+warm that was not warm before, and `TODO.md`'s freshness item still waits on the same hand-off.
+
+**Not fixed, and this is the honest part.** The intermittent **21 s origin 404** that reaches a
+module as a red *"Error loading data."* row. Warming cannot touch an error path, and at ~7× the
+worst cold build it remains the largest single source of a bad experience in this system. The
+three-second goal is only partly served by this part, and the rest of it is a client release.

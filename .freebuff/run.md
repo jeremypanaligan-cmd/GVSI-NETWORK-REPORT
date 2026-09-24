@@ -213,3 +213,68 @@ the point: the same script URL now answers with new bytes, as a real deploy does
 - **`preview_logs` will not show the `sw.js` fetch.** The registration and update fetches are
   browser-internal, so "did the launch ask?" cannot be answered from the network log — that claim
   belongs to `tests/sw-update.test.js`, which counts the calls.
+
+## 7. The Apps Script hand-off (every backend change)
+
+Nothing in a `.gs` file is live until it is pasted into the Apps Script editor, and **there is no
+`clasp` in this repo** — `dir /a` finds no `.clasp.json` and no `appsscript.json`. So a backend
+change is always: edit the `.gs` here (it is the source of truth and the thing the tests read),
+then paste, then run.
+
+The editor's project is **container-bound** to the same spreadsheet the app reads. That is why
+`SpreadsheetApp.getActiveSpreadsheet()` appears across eleven `.gs` files, and it is why
+`CacheService`, `PropertiesService` and the two invalidation triggers live with the script rather
+than with the data — a fact that decides most architecture questions about this backend.
+
+**Syntax-check before pasting.** The extension `.gs` is not something `node --check` accepts, so
+copy it (the `.gitignore` already has `_chk.js` for exactly this):
+
+```bash
+cp olt-cache-warmer.gs _chk.js && node --check _chk.js && rm _chk.js && echo OK
+```
+
+**Order of operations, PART-012 as the example.** Step 2 exists to produce a measurement, and no
+trigger is touched until step 4:
+
+1. **Paste** the changed files — PART-012: `olt-cache-warmer.gs`, `triggers.gs`.
+2. **Run `warmDataCaches()` by hand.** Nothing but cache entries changes. The editor's execution log
+   prints the pass immediately, and this single run is the measurement the interval should come
+   from:
+
+   ```
+   ✅ warmOltCache: OLT cache warmed in 3120ms (629 bytes, TTL 180s)
+   ✅ warmCache nap: warmed in 1310ms (742 bytes, TTL 180s)
+   ✅ warmCache lcp: warmed in 1290ms (512 bytes, TTL 180s)
+   ✅ warmCache node: warmed in 1740ms (1980 bytes, TTL 180s)
+   ✅ warmCache backbone: warmed in 1660ms (1640 bytes, TTL 180s)
+   ✅ warmDataCaches: pass finished in 9120ms — 5 of 5 module(s) rebuilt
+   ```
+
+   (Those numbers are **illustrative** — the shape of the lines is the point, and only OLT's build
+   time was measured before this ran.) If a type answers with
+   `❌ warmCache <type>: the build answered with an error envelope`, nothing was cached for it and
+   the matching `❌ Build failed | type=… | stage=… | sheet="…"` line above it names the sheet.
+3. **`listTriggers()`** — read-only drift report. PART-012 changed the plan entry from
+   `warmOltCache` to `warmDataCaches`, so a live project still showing the old name is expected
+   before this step and wrong after it.
+4. **`setupAllTriggers()`** — off-peak. It deletes and recreates **every** trigger, including the
+   two invalidation handlers, so there are a few seconds with no `onEdit`/`onChange` coverage. It
+   validates every handler name before it deletes anything, so a forgotten paste is a no-op rather
+   than a trigger wipe.
+5. **`listTriggers()` again** — it must say `✅ In sync`.
+
+**Verifying the warming from outside.** A warmed entry must be the bytes an HTTP caller is served,
+so compare the two:
+
+```bash
+EXEC="https://script.google.com/macros/s/<id>/exec"
+for t in nap lcp node backbone; do
+  curl -sL "$EXEC?type=$t" -o /dev/null -w "$t %{time_total}s %{size_download}B\n"
+done
+```
+
+Right after a warm run the byte count must equal what the pass logged, and the time must sit near
+the ~1.1 s floor instead of a cold 2–3 s. Two things that look like success and are not: a
+`Cache write skipped` line means an edit landed mid-build and **nothing** was cached, and
+`⚠️ Sheet not found` means a renamed tab answered `[]` — an empty payload that caches exactly as
+happily as a real one.

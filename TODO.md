@@ -557,7 +557,7 @@ releases, `.freebuff/run.md` records how to see unpublished bytes locally.
 
 | handler | type | what it is for |
 |---|---|---|
-| `warmOltCache` | clock, **every 5 min** (was 15) | covers what a trigger cannot see; freshness = cadence now |
+| `warmDataCaches` | clock, **every 5 min** (was 15) | rebuilds all five modules in one execution; covers what a trigger cannot see — freshness = cadence now |
 | `handleSheetEdit` | **On edit** (installable) | drops one module's cache, bumps its rev |
 | `handleSheetChange` | **On change** (installable) | structure change: drops every module's cache |
 
@@ -603,8 +603,12 @@ Why it dominates:
 The `triggers.gs` safety fix **is in the repo but has not been pasted into Apps Script**, and nothing changes in the live project until `setupAllTriggers()` is run manually once.
 
 1. Paste the current `triggers.gs`, `olt-cache-warmer.gs`, `code.gs` **and the new `cache-invalidation.gs`**.
-2. Run **`listTriggers()` first** — read-only drift report.
-3. Then run `setupAllTriggers()`.
+2. Run **`warmDataCaches()` once by hand** — nothing but the cache changes yet, and this is the run
+   that produces the five per-type build times the interval should be chosen from (PART-012).
+3. Run **`listTriggers()`** — read-only drift report.
+4. Then run `setupAllTriggers()`. It now expects **`warmDataCaches`**, not `warmOltCache`, and it
+   deletes and recreates **every** trigger including the two invalidation handlers — off-peak, for
+   that few seconds with no `onEdit`/`onChange` coverage.
 
 The plan now also installs two **installable** spreadsheet triggers (`handleSheetEdit` → On edit, `handleSheetChange` → On change). `setupAllTriggers()` validates both handlers before it deletes anything, so a forgotten paste is a no-op rather than a trigger wipe — but a missing `cache-invalidation.gs` means the fastest freshness path silently does not exist.
 
@@ -649,9 +653,18 @@ A pre-existing `setInterval` that polls `getSettings` and reloads. Unrelated to 
 
 ---
 
-## 🟢 P3 — Generic scheduled warmer for nap / lcp / node / backbone
+## ✅ Done (Sept 24, 2026) — the warm pass covers all five modules
 
-Today **only OLT is warmed** (`warmOltCache`); the other four rely on real traffic. Every app load already prefetches all five modules (`prefetchOtherTabsInBackground`, `index.html:1060`, staggered 400 ms), so each user session warms everything — the gap is only the first request after an idle period.
+**Shipped as PART-012, in the repo and waiting on the Apps Script hand-off.** Before: only OLT was
+warmed (`warmOltCache`); the other four relied on real traffic, and every app load already prefetches
+all five (`prefetchOtherTabsInBackground`, `index.html:1060`, staggered 400 ms) — so the gap was only
+the first request after an idle period. That gap *is* the whole session for an operator who opens
+this app for three minutes, checks the picture and closes it.
+
+Now one clock trigger (`warmDataCaches`, every 5 min) rebuilds **all five in one execution** —
+`olt → nap → lcp → node → backbone`, sequentially, TTL 180 s each, OLT first because it is the
+heaviest and the one a three-second budget can actually miss. `warmOltCache()` is left
+**byte-identical**: it still owns `shape=3`, its own TTL constant and its own log line.
 
 **Measured gain is small.** Same cache key, OLT, 461 rows:
 
@@ -663,7 +676,20 @@ Today **only OLT is warmed** (`warmOltCache`); the other four rely on real traff
 
 **~1.5–2.1 s saved, against a ~1.1 s irreducible floor** (Apps Script startup + the 302 → `googleusercontent` echo round trip). That floor is why warming is not the lever it looks like.
 
-If pursued: warm sequentially (not in parallel — the echo endpoint 404s under parallel hits), reuse the `doGet(e, warmTtlOverride)` TTL override, and **check the trigger-runtime quota first**. Five builds per run against the ~90 min/day trigger budget is the constraint, and the real build time is logged by the warmer itself (`✅ warmOltCache: OLT cache warmed in Nms`) — read that from the Executions page before choosing an interval.
+**What the pass costs, and the retune that is part of it.** Per run, sequentially: ~3.5 s (olt,
+measured) + ~1.3 s (nap) + ~1.3 s (lcp) + ~1.8 s (node) + ~1.8 s (backbone) **≈ 10 s**, so
+~**46 min/day** at 288 runs — against **90 min/day** on consumer accounts (6 h/day Workspace),
+alongside the aging writers and the hourly backbone job at ~10 min/day. **Only OLT's ~3.5 s is
+measured; the other four are estimates and the pass log is what replaces them.** Trigger runtime is
+the constraint, not request volume, because every run is a full rebuild.
+
+Read the Executions log and set the interval from the arithmetic, not from this paragraph. One line
+per type — `✅ warmCache <type>: warmed in Nms (N bytes, TTL Ns)`, with OLT keeping its own
+`✅ warmOltCache: ...` — and the run closes with
+`✅ warmDataCaches: pass finished in Nms — N of 5 module(s) rebuilt`. Every 10 min halves the cost
+and the coverage; every 3 min is ~77 min/day. A module named under `FAILED:` is not warm, whatever
+the cadence says: the origin answers a failed build with a 200 and an envelope, which is why the
+pass recognises it instead of logging a small byte count over an empty cache.
 
 **Note:** the 11–25 s figures from the original investigation were measured during a degraded period (deployment/origin problem), **not** steady state. Do not size this work against them.
 
