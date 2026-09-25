@@ -103,6 +103,11 @@ function freshSandbox(opts) {
 
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'code.gs'), 'utf8'), sandbox, { filename: 'code.gs' });
+  /* code.gs calls recordBuildFailure_/recordSlowBuild_ out of diagnostics.gs. Loading
+     code.gs alone would exercise an INERT hook and stay green about it — the slow-build
+     hook sits inside doGet, so its absence is swallowed. tests/diagnostics.test.js
+     asserts this line exists in every suite that runs a build. */
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'diagnostics.gs'), 'utf8'), sandbox, { filename: 'diagnostics.gs' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'cache-invalidation.gs'), 'utf8'), sandbox, { filename: 'cache-invalidation.gs' });
 
   sandbox.__store = store;

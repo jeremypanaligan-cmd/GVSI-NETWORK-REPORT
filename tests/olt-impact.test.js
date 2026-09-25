@@ -161,6 +161,9 @@ function freshSandbox() {
 
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'code.gs'), 'utf8'), sandbox, { filename: 'code.gs' });
+  /* See the note in tests/diagnostics.test.js: code.gs calls into diagnostics.gs, and a
+     suite that loads only one of the two is green about a hook that never ran. */
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'diagnostics.gs'), 'utf8'), sandbox, { filename: 'diagnostics.gs' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'olt-module.js'), 'utf8'), sandbox, { filename: 'olt-module.js' });
 
   sandbox.__puts = puts;

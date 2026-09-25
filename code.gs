@@ -62,11 +62,26 @@ function doGet(e, warmTtlOverride) {
   if (action === "keepalive")      return handleKeepAlive();
   if (action === "getSettings")    return handleGetSettings(e);
   if (action === "setMaintenance") return handleSetMaintenance(e);
+  /* Read-only, admin-gated and manual only. Nothing here is polled: a diagnostics card
+     that refreshed itself would be the load it exists to measure. See diagnostics.gs. */
+  if (action === "diag") {
+    /* Two separate pastes. An admin who curls this before pasting diagnostics.gs should get
+       an envelope that says so, not an HTML error page. */
+    if (typeof handleDiagnostics !== 'function') {
+      return jsonOut({ error: "diagnostics_unavailable", retryable: false });
+    }
+    return handleDiagnostics(e);
+  }
   // Data-freshness revision. One PropertiesService read, no sheet access, no
   // build — cheap enough for the app to poll, and the only thing it can learn
   // from it is that the sheet changed, which is already public in the data
   // routes below.
   if (action === "rev")            return handleGetRev();
+  /* The whole opening of the app, in one execution and one round trip. Additive: a client
+     that does not know this route is unaffected, and a client that asks an older
+     deployment for it gets the unknown-action envelope below and falls back to the five
+     routes it used before. See handleBundle(). */
+  if (action === "bundle")         return handleBundle();
   // An action we do NOT recognise must never fall through to the data branch below:
   // `type` defaults to "nap" there, so a typo — or a route that has been RETIRED, as
   // the presence routes were (heartbeat / getActiveUsers / removeActiveUser) — would
@@ -103,10 +118,13 @@ function doGet(e, warmTtlOverride) {
   // ---------------- DATA FETCHING ----------------
   // ---------------- 1. Cache Check ----------------
   var cache = CacheService.getScriptCache();
-  var cacheKey = "cache_v2_" + type + (oltShape >= 2 ? "_c" + oltShape : "");
+  var cacheKey = cacheKeyFor_(type, oltShape);
 
-  // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries
-  var cacheTTL = (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
+  // Differentiable TTL: 60s para sa critical tickets, 180s para sa summaries.
+  // Stated once, in cacheTtlFor_(): the bundle route below has to judge an expired
+  // PropertiesService entry by the same number, and two copies of this rule is how the two
+  // routes would come to disagree about whether a payload is still alive.
+  var cacheTTL = cacheTtlFor_(type);
 
   /* ---------------- REBUILD INTENT ----------------
 
@@ -146,7 +164,7 @@ function doGet(e, warmTtlOverride) {
 
   // PropertiesService has no TTL of its own, so a payload stored there is
   // stamped with its write time and expired here by hand.
-  var PROP_TS_KEY = cacheKey + "_cached_at";
+  var PROP_TS_KEY = propStampKey_(cacheKey);
 
   try {
     // Try CacheService first (100KB limit)
@@ -605,6 +623,28 @@ if (!oltSheet) {
     Logger.log("Caching failed: " + err.message);
   }
 
+  /* THE SLOW-BUILD HOOK — the only line of this feature that runs on every build.
+
+     It sits here because this is the one position every build passes through, after the
+     cache write and before the response. It costs one integer comparison: the recorder
+     compares against DIAG_SLOW_BUILD_MS and writes nothing below it, so a healthy build
+     never touches the property store at all.
+
+     A cache HIT never reaches this line — doGet returns at the top of the cache block,
+     before beginBuild_() — so this is paid only on a MISS, which is the whole reason it
+     is here rather than next to a successful build's first line.
+
+     Known without being fixed here: this hook sits after the cache try/catch, so a missing
+     diagnostics.gs cannot take the request down, and the loud-once warning below is what
+     stops that from being a silent dead hook. tests/diagnostics.test.js asserts the five
+     build-running suites load diagnostics.gs for the same reason. */
+  if (typeof recordSlowBuild_ === 'function') {
+    recordSlowBuild_(type, Date.now() - buildCtx_.startedAt, buildCtx_.stage, buildCtx_.sheet);
+  } else if (!diagMissingWarned_) {
+    diagMissingWarned_ = true;
+    Logger.log("⚠️ diagnostics.gs is not deployed — the slow-build hook is inert");
+  }
+
   return ContentService.createTextOutput(jsonResponse)
     .setMimeType(ContentService.MimeType.JSON);
 }
@@ -622,6 +662,10 @@ if (!oltSheet) {
    first (beginBuild_), so a value can only ever describe the current build. */
 
 var buildCtx_ = { type: "", stage: "", sheet: "", rev: 0, startedAt: 0 };
+
+/* Said once per execution, not once per build: the slow-build hook is reached on every
+   cache MISS, and a warning repeated five times a pass is a warning nobody reads. */
+var diagMissingWarned_ = false;
 
 function beginBuild_(type) {
   buildCtx_.type = type;
@@ -707,6 +751,22 @@ function buildFailedOut_(type, err) {
   if (err && err.stack) {
     var frames = String(err.stack).split("\n").slice(1, 4).join(" | ").replace(/\s+/g, " ").trim();
     if (frames) Logger.log("   frames: " + frames);
+  }
+
+  /* The same facts as the line above, made readable over HTTP instead of only from the
+     Executions page — see diagnostics.gs. Guarded on existence because the two files are
+     separate pastes: a code.gs without diagnostics.gs must still answer the caller, and
+     must say it is not recording rather than being quietly inert. */
+  if (typeof recordBuildFailure_ === 'function') {
+    recordBuildFailure_(type, {
+      message: msg,
+      stage: buildCtx_.stage,
+      sheet: buildCtx_.sheet,
+      rev: buildCtx_.rev,
+      elapsedMs: elapsedMs
+    });
+  } else {
+    Logger.log("⚠️ diagnostics.gs is not deployed — this failure was logged but not recorded");
   }
 
   return jsonOut({
@@ -854,6 +914,193 @@ function currentDataRev_() {
 
 function handleGetRev() {
   return jsonOut({ ok: true, rev: currentDataRev_() });
+}
+
+/* ---------------- The three key/TTL rules, in one place each ----------------
+
+   Both the request path and the bundle route need to answer "which key is this module
+   stored under, how long may an entry live, and what is its timestamp stored as". Two
+   copies of any of those is how the two routes would come to disagree — one of them
+   serving a payload the other calls expired. */
+
+function cacheKeyFor_(type, shape) {
+  return "cache_v2_" + type + (shape >= 2 ? "_c" + shape : "");
+}
+
+/* The TTL a build that no warmer asked for is cached with. */
+function cacheTtlFor_(type) {
+  return (type === "node" || type === "olt" || type === "backbone") ? 60 : 180;
+}
+
+/* CacheService has no TTL of its own, so the PropertiesService fallback is stamped with
+   its write time and expired by hand against cacheTtlFor_(). */
+function propStampKey_(cacheKey) {
+  return cacheKey + "_cached_at";
+}
+
+/* ==================== THE OPENING BUNDLE ====================
+
+   index.html fetches ONE module on load (nap); lcp, node and backbone arrive on their first
+   tab click, and olt through its own loader. So a session that glances at three tabs spends
+   four round trips — and every one of them pays Apps Script's fixed cost in full: ~1.1-1.5 s
+   of startup plus the 302 -> googleusercontent echo hop, whatever the payload is. Measured
+   sizes from the warm pass:
+
+       olt 629 B    nap 742 B    lcp 512 B    node 1980 B    backbone 1640 B
+       ------------------------------------------------------------- 5,503 bytes total
+
+   So the opening was spending ~6 s of protocol overhead to move 5.5 KB — and, before the
+   warm TTL was raised to outlive its interval, whichever of those requests landed in the
+   cold window paid a full build on top of it (see olt-cache-warmer.gs).
+
+   This route answers all five in ONE execution: one floor instead of four or five, and every
+   tab the operator switches to afterwards is already in memory.
+
+   READ-ONLY, and that is the whole design. It never builds, never touches the
+   spreadsheet, never writes a cache entry and never moves a revision — so asking for
+   everything is incapable of adding load. A warm cache is answered with a handful of
+   CacheService reads; a cold one is answered with `missing`, which is the truth, and the
+   client fetches what is missing over the routes it already has. A version that built the
+   missing modules inline would be a second, slower copy of the request path, and it would
+   put up to five full builds between an operator and the screen they just opened.
+
+   Shape: OLT comes from cache_v2_olt_c3, the shape the dashboard actually asks for, via
+   the same dashboardShapeFor_() the diagnostics report uses. shape=4 is deliberately
+   absent — nothing warms it and its view is lazy by design.
+*/
+
+/* The one OLT shape the dashboard reads.
+
+   Stated once, and asked for by name — warmOltCache() states shape=3 for the same reason.
+   The bundle route and the diagnostics report both have to read the payload the APP reads,
+   and "which shape is that" is exactly the kind of fact that gets copied and then drifts. */
+var DASHBOARD_OLT_SHAPE = 3;
+
+/**
+ * The shape a module is stored and read in. Only OLT has more than one.
+ * @return {number}
+ */
+function dashboardShapeFor_(type) {
+  return (type === 'olt') ? DASHBOARD_OLT_SHAPE : 1;
+}
+
+/**
+ * The key each module is read from.
+ *
+ * Derived from DATA_TYPES rather than restated. That list is already the one the
+ * invalidation trigger and the rev route share; a second copy here would be a second
+ * thing to forget to update, and the failure it produces is silent — a module that the
+ * bundle never asks for simply reports itself missing forever.
+ *
+ * @return {Array<{type: string, key: string}>}
+ */
+function bundleKeys_() {
+  var entries = [];
+  for (var i = 0; i < DATA_TYPES.length; i++) {
+    var type = DATA_TYPES[i];
+    entries.push({ type: type, key: cacheKeyFor_(type, dashboardShapeFor_(type)) });
+  }
+  return entries;
+}
+
+/**
+ * The PropertiesService fallback for one key, applying doGet's expiry rule.
+ *
+ * Expired or unstamped counts as MISSING, exactly as it does on the request path. The
+ * one deliberate difference: this route does not DELETE the entry it rejected. Dropping
+ * a dead entry is the next real request's job — a read-only route must not be the thing
+ * that mutates state, or "asking what is cached" becomes a write.
+ *
+ * @return {string|null} the stored payload, or null when there is nothing live
+ */
+function bundlePropertyEntry_(props, key, type) {
+  var value = props.getProperty(key);
+  if (!value) return null;
+
+  /* The stamp IS the age, so there is no separate "unstamped" case to handle: a missing
+     stamp reads as 0, and 0 against any TTL is 19700 days old. Written as one comparison
+     rather than a guard plus a comparison, because the extra guard was a branch nothing
+     could observe — the mutation pass is what said so. */
+  var cachedAt = Number(props.getProperty(propStampKey_(key))) || 0;
+  if ((Date.now() - cachedAt) / 1000 >= cacheTtlFor_(type)) return null; // expired
+  return value;
+}
+
+/**
+ * Every module's live payload, in one response.
+ *
+ * @return {ContentService.TextOutput} { ok, at, bundle, missing }
+ */
+function handleBundle() {
+  var start = Date.now();
+  var entries = bundleKeys_();
+
+  var keys = [];
+  for (var i = 0; i < entries.length; i++) keys.push(entries[i].key);
+
+  /* One read for all five. CacheService.getAll() answers with only the keys that are
+     present, so a miss is an absent key rather than a null value — read it that way. */
+  var found = {};
+  try {
+    found = CacheService.getScriptCache().getAll(keys) || {};
+  } catch (err) {
+    /* Fail open onto the slower path, never onto an error: with `found` empty every
+       module is reported missing, and the client falls back to fetching them one by one
+       exactly as it did before this route existed. */
+    Logger.log('\u26a0\ufe0f bundle: cache read failed (' + err.message +
+               ') — every module will be reported missing');
+    found = {};
+  }
+
+  var bundle = {};
+  var missing = [];
+  var props = null;
+
+  for (var e = 0; e < entries.length; e++) {
+    var type = entries[e].type;
+    var raw = found[entries[e].key];
+
+    if (!raw) {
+      try {
+        if (!props) props = PropertiesService.getScriptProperties();
+        raw = bundlePropertyEntry_(props, entries[e].key, type);
+      } catch (err) {
+        Logger.log('\u26a0\ufe0f bundle: property fallback failed for ' + type +
+                   ' (' + err.message + ')');
+        raw = null;
+      }
+    }
+
+    if (!raw) { missing.push(type); continue; }
+
+    /* Parsed rather than passed through as a string. An escaped JSON string inside JSON
+       roughly doubles those bytes and hands the client a second parse to do; the whole
+       point of this route is to move less, not more. A value that will not parse is
+       treated as missing for the same reason doGet treats an unreadable stamp as
+       expired: the honest answer is "not available", not a broken payload. */
+    try {
+      bundle[type] = JSON.parse(raw);
+    } catch (err) {
+      Logger.log('\u26a0\ufe0f bundle: cached payload for ' + type + ' is not JSON (' +
+                 err.message + ') — reporting it missing');
+      missing.push(type);
+    }
+  }
+
+  var sent = entries.length - missing.length;
+
+  /* One line per open, and the only evidence there is that the app is actually using
+     this route — plus, when something is cold, which module it was. */
+  Logger.log('\ud83d\udce6 bundle: ' + sent + ' of ' + entries.length + ' published' +
+             (missing.length ? ' — missing: ' + missing.join(', ') : '') +
+             ' in ' + (Date.now() - start) + 'ms');
+
+  return jsonOut({
+    ok: true,
+    at: Date.now(),
+    bundle: bundle,
+    missing: missing
+  });
 }
 
 /* The response fields of an OLT row, in the order the compact shape positions

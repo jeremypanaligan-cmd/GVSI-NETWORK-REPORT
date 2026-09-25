@@ -6,26 +6,44 @@
  * by setupAllTriggers() in triggers.gs.
  *
  * ---------------------------------------------------------------------------
- * WHY THE TTL IS NOW SHORTER THAN THE INTERVAL (it used to be the other way)
+ * WHY THE TTL NOW OUTLIVES THE INTERVAL (it was the other way round)
  *
- * The old rule was "TTL must exceed the trigger interval, or a run that is late
- * leaves a gap" — true of a warmer that only builds on a MISS. This one does not
- * build on a miss; it builds unconditionally (doGet's warm override now means
- * "ignore the cache and rebuild"), which changes what the TTL is for:
+ * The rule used to be the opposite — TTL below the interval, so a dead warmer decayed
+ * to "slow but current" instead of "stale". The cost of that choice was never measured,
+ * and it is paid on every single cycle:
  *
- *   - Freshness is the CADENCE, not the TTL. Every run overwrites the entry, so
- *     the snapshot a user can be shown is at most one interval old.
- *   - The TTL only bounds the DEGRADED case: if this trigger dies, the entry it
- *     left behind stays served until it expires. 180 s — shorter than the 300 s
- *     interval — means the entry dies before the next run, so a client that asks
- *     after it expires pays a rebuild and gets CURRENT data (slow, recoverable)
- *     instead of an ever-older snapshot (wrong). The old 1080 s made that window
- *     18 minutes, which is how a deleted DOWN ticket stayed on a dashboard for
- *     11 minutes on 2026-09-18 with the app refreshing the whole time.
- *   - The cost of the shorter TTL is one small share of requests paying a cold
- *     build instead of a hit. Measured on the live route: ~4 s cold, ~1.3 s hit,
- *     510 bytes for shape=3. That trade is the right way round for an outage
- *     dashboard: never freeze, even at the price of speed.
+ *     TTL 180 s under a 300 s interval leaves 120 s with NO entry at all.
+ *     120 / 300 = 40% of every five minutes, with all five modules cold.
+ *
+ * An operator who opens the app inside that window pays a full build for every module
+ * instead of a hit — which is exactly the complaint the warmer was built to remove —
+ * and it is the window the app's own prefetch sweep lands in, three modules at a time.
+ *
+ * Shortening the interval is not the fix: the pass is a full rebuild of five modules
+ * (~9.1 s measured) and a 2-minute cadence would spend ~109 min/day against the
+ * documented 90 min/day trigger quota. Making the TTL outlive the interval is the fix:
+ *
+ *   - Freshness is the CADENCE, not the TTL, and it always was. Every run overwrites
+ *     the entry unconditionally (doGet's warm override means "ignore the cache and
+ *     rebuild"), so what a user can be shown is at most one interval old — 5 minutes —
+ *     whether the TTL is 180 or 1800. That is asserted rather than assumed: see "a warm
+ *     run REBUILDS even while a live cache entry exists" in tests/olt-warm-ttl.test.js.
+ *   - So the TTL only bounds the DEGRADED case: if this trigger dies, how long can the
+ *     last payload it wrote still be served? At 180 s that ceiling was 3 minutes; at
+ *     330 s it is 5.5 minutes. Nothing real lives between those two numbers — a trigger
+ *     that has been dead for 3 minutes has already been dead for 5.
+ *   - The binding constraint is the LAST write of a pass, not the first. The pass builds
+ *     five modules sequentially (~9.1 s), so the entry written last must outlive
+ *     interval - pass_duration = 300 - 9.1 ~= 291 s. 330 s leaves ~39 s for a late or
+ *     drifted run, which time-driven triggers do.
+ *
+ * The 2026-09-18 incident is NOT re-opened by this. That was a 1080 s TTL — an 18-minute
+ * window — and its fix has two other halves that do not depend on this number:
+ * cache-invalidation.gs drops the entry when the sheet is edited (seconds), and the app's
+ * rev poll notices that it moved. The TTL is the backstop for what a trigger cannot see,
+ * not the notification path.
+ *
+ * Measured on the live route: ~4 s cold, ~1.3 s hit, 510 bytes for shape=3.
  *
  * NOTIFICATION DOES THE FAST PATH
  *
@@ -37,10 +55,10 @@
  * THE PASS — five builds in one run, because the other four were never warmed
  * ---------------------------------------------------------------------------
  *
- * OLT was the only module with a warmer. The other four relied on real traffic: the
- * app prefetches all five on every load, so the gap is the FIRST request after an idle
- * period — and for an operator who opens this app for three minutes, checks the picture
- * and closes it, that gap is the whole of a session. Measured: OLT cold 2.97 / 3.21 s
+ * OLT was the only module with a warmer. The other four relied on real traffic: the app
+ * fetches ONE module on load and each of the rest on its first tab click, so the gap is the
+ * FIRST request after an idle period — and for an operator who opens this app for three
+ * minutes, checks the picture and closes it, that gap is the whole of a session. Measured: OLT cold 2.97 / 3.21 s
  * against a warm hit 1.09-1.52 s, a cold-ish five-module burst at 3.235 s and the same
  * burst warm at 1.156 s.
  *
@@ -88,9 +106,10 @@
    copy cannot drift from it unnoticed. */
 var OLT_WARM_INTERVAL_SECONDS = 300;
 
-/* Cache lifetime for a warmed entry, in seconds. Deliberately BELOW the
-   interval: see the header. Ceiling in doGet() is 1800 s. */
-var OLT_WARM_TTL_SECONDS = 180;
+/* Cache lifetime for a warmed entry, in seconds. Deliberately ABOVE the
+   interval, so no cycle contains a moment without an entry: see the header.
+   Ceiling in doGet() is 1800 s. */
+var OLT_WARM_TTL_SECONDS = 330;
 
 function warmOltCache() {
   // Build the problem-only compact payload (shape=3) — the shape the OLT
@@ -129,22 +148,21 @@ function warmOltCache() {
    shape, and the shape a warm run must write is the one the app reads — which is why
    warmOltCache() states shape=3 itself instead of being folded into warmTypeCache_().
 
-   TTL is the same 180 s the OLT warmer writes, and it is deliberately BELOW the 300 s
-   interval. That is the rule the 2026-09-18 incident was closed with: with a TTL longer
-   than one cycle a cache HIT can be served for longer than the cadence that refreshes
-   it, which is exactly how a deleted ticket stayed on a dashboard for 11 minutes. A dead
-   warmer then decays to slow-but-current rather than stale. The alternative — TTL >=
-   interval, so a hit exists at every moment and an open is never cold — is a real option
-   and is NOT taken here, because it trades a documented fix away for coverage of four
-   build costs that are still unmeasured. */
+   TTL is the same 330 s the OLT warmer writes, and it is deliberately ABOVE the 300 s
+   interval. A TTL below the interval is a guaranteed cold window on every cycle — for
+   these four that was 120 s of every 300 s, all of them cold at once, which is the
+   window the app's prefetch sweep walks into. Above the interval there is no such
+   window, and the only thing bought back is the ceiling for a dead warmer (3 min ->
+   5.5 min). See the header for why that is the right way round. */
 
 /* The modules this pass adds to the warmer, in the order they are built. */
 var SECONDARY_WARM_TYPES = ['nap', 'lcp', 'node', 'backbone'];
 
 /* Cache lifetime for a warmed secondary entry, in seconds. Same value as
    OLT_WARM_TTL_SECONDS on purpose — one number for "warm entry life" is one thing to
-   reason about, and both sit under the one interval above. Ceiling in doGet() is 1800 s. */
-var SECONDARY_WARM_TTL_SECONDS = 180;
+   reason about, and both now sit ABOVE the one interval above rather than under it.
+   Ceiling in doGet() is 1800 s. */
+var SECONDARY_WARM_TTL_SECONDS = 330;
 
 /**
  * Is this response the origin's "the build could not run" envelope?
@@ -200,8 +218,9 @@ function judgeWarmResponse_(label, content, elapsed, ttlSeconds) {
 
   // A build that cannot finish inside the interval it covers cannot keep the cache warm
   // at this cadence, and the schedule becomes a fiction. Compared against the INTERVAL,
-  // not the TTL: the TTL is deliberately shorter than a build's own order of magnitude
-  // and would warn on every healthy run.
+  // not the TTL: the question is whether one pass finishes before the next one is due.
+  // (The TTL is 330 s and the interval 300 s, so a TTL-keyed threshold would answer a
+  // different question than the one this line is asking.)
   if (elapsed > OLT_WARM_INTERVAL_SECONDS * 1000) {
     Logger.log('⚠️ ' + label + ': build took ' + elapsed +
                'ms — longer than the ' + OLT_WARM_INTERVAL_SECONDS +
@@ -254,6 +273,12 @@ function warmDataCaches() {
   var failed = [];
   var built = 0;
 
+  /* Every build time recorded below was ALREADY being computed — judgeWarmResponse_()
+     returns it — and every one of them was thrown away. Four of the five module build times
+     in this app have never been measured anywhere, and this pass is the only place they
+     ever are. See recordWarmPass_() in diagnostics.gs. */
+  var ms = {};
+
   /* OLT first: the heaviest build, and the one the three-second budget can actually
      miss. Wrapped on its own so anything thrown outside warmOltCache's own try/catch
      still leaves the four behind it scheduled. */
@@ -261,7 +286,8 @@ function warmDataCaches() {
     /* Counted from the warmer's own verdict, not from "it did not throw": a failed OLT
        build returns -1 and threw nothing, and calling that a rebuild would put a green
        "5 of 5" line over a module nobody warmed. */
-    if (warmOltCache() >= 0) built++;
+    var oltMs = warmOltCache();
+    if (oltMs >= 0) { built++; ms.olt = oltMs; }
     else failed.push('olt');
   } catch (err) {
     failed.push('olt');
@@ -270,7 +296,8 @@ function warmDataCaches() {
 
   for (var i = 0; i < SECONDARY_WARM_TYPES.length; i++) {
     var type = SECONDARY_WARM_TYPES[i];
-    if (warmTypeCache_(type, SECONDARY_WARM_TTL_SECONDS) >= 0) built++;
+    var typeMs = warmTypeCache_(type, SECONDARY_WARM_TTL_SECONDS);
+    if (typeMs >= 0) { built++; ms[type] = typeMs; }
     else failed.push(type);
   }
 
@@ -286,5 +313,22 @@ function warmDataCaches() {
     Logger.log('⚠️ warmDataCaches: the pass took longer than the ' +
                OLT_WARM_INTERVAL_SECONDS + 's interval it covers. The cache cannot stay ' +
                'warm at this cadence — raise the interval or find the slow module above.');
+  }
+
+  /* ONE WRITE PER RUN, in an execution this trigger owns. It is not gated behind the
+     request-path switch in diagnostics.gs on purpose: it costs the request path nothing,
+     and it is the evidence the TTL decision in this file was made from. A missing
+     diagnostics.gs is named rather than ignored — two separate pastes. */
+  if (typeof recordWarmPass_ === 'function') {
+    recordWarmPass_({
+      at: start,
+      totalMs: total,
+      built: built,
+      of: SECONDARY_WARM_TYPES.length + 1,
+      failed: failed,
+      ms: ms
+    });
+  } else {
+    Logger.log('⚠️ diagnostics.gs is not deployed — this pass was logged but not recorded');
   }
 }

@@ -48,6 +48,21 @@
     tickerClearDeferred(type);
   }
 
+  /* A payload the OPENING BUNDLE delivered counts as a successful fetch of that type.
+
+     Without this the module's own loader would see no fetch history and go straight back to
+     the network for bytes it already has — the one request that replaced five would be
+     followed by five more. It is the same bookkeeping run() does on a response, said out
+     loud, because the bundle is not a per-type call the gate can see.
+
+     builtAtMs is the server's build time for that payload. The four modules that carry no
+     stamp pass 0, and noteBuiltAt() ignores a non-positive value, so this cannot turn into a
+     weaker claim than "we asked recently" for them. */
+  function noteHydrated(type, builtAtMs) {
+    stampSuccess(type);
+    noteBuiltAt(type, builtAtMs);
+  }
+
   /* Rejects if the underlying fetch outlives TIMEOUT_MS, so a hung request can
      never wedge a module's loading state forever. */
   function withTimeout(promise, type) {
@@ -287,6 +302,9 @@
     /* Server build time for the payload a module is showing. Modules call this
        with meta.builtAt from the response they just rendered. */
     noteBuiltAt: noteBuiltAt,
+
+    /* The opening bundle delivered this type. See noteHydrated(). */
+    noteHydrated: noteHydrated,
 
     /* Introspection / tuning */
     isBusy: function (type) { return !!inflight[type]; },

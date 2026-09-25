@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Module Health — render check</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { padding: 20px; background: var(--app-bg, #f1f5f9); }
+  </style>
+</head>
+<body>
+  <div class="table-card" style="max-width: 1100px;">
+    <div style="padding: 20px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <span id="glyph"></span>
+        <div>
+          <div style="font-size: 16px; font-weight: 700; color: var(--dark-charcoal);">Module Health</div>
+          <div style="font-size: 12px; color: var(--text-muted);">What THIS device waited on, this session. Held in memory only — nothing is stored and nothing is sent.</div>
+        </div>
+      </div>
+      <div id="moduleHealthBody"></div>
+    </div>
+  </div>
+
+  <script src="lucide-icons.js"></script>
+  <script src="diag-store.js"></script>
+  <script src="admin-module.js"></script>
+  <script>
+    function iconMarkup(name, options) {
+      return (window.lucide && typeof window.lucide.icon === 'function') ? window.lucide.icon(name, options) : '';
+    }
+    function sanitizeHTML(s) { return String(s); }
+    function showToast(m) { console.log('[toast] ' + m); }
+    document.getElementById('glyph').innerHTML = iconMarkup('activity', { size: 24 });
+
+    /* A session that looks like the field: the live case (no edge headers, because the proxy
+       is off), one module that retried and failed, and one fast admin call. */
+    var now = Date.now();
+    for (var i = 0; i < 7; i++) {
+      window.diagStore.record('?type=backbone', { ms: 5400 + i * 320, attempts: i === 6 ? 3 : 1, ok: i !== 6, error: i === 6 ? 'Failed after 3 attempts: https://script.google.com/.../exec?token=[redacted] (HTTP 502)' : '', at: now - 40000 + i * 1000 });
+    }
+    for (var j = 0; j < 5; j++) {
+      window.diagStore.record('?type=lcp', { ms: 1900 + j * 200, attempts: 1, ok: true, at: now - 20000 + j * 1000 });
+    }
+    window.diagStore.record('?type=nap', { ms: 1150, attempts: 1, ok: true, at: now - 12000 });
+    window.diagStore.record('?type=olt&shape=3', { ms: 4120, attempts: 2, ok: true, at: now - 9000 });
+    window.diagStore.record('?action=rev', { ms: 260, attempts: 1, ok: true, at: now - 3000 });
+    window.diagStore.record('?action=getSettings', { ms: 310, attempts: 1, ok: true, at: now - 1200 });
+
+    window.renderModuleHealth();
+  </script>
+</body>
+</html>

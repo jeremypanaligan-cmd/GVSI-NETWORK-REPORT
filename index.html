@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.20">
+  <link rel="stylesheet" href="styles.css?v=3.9.22">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -887,6 +887,12 @@
 <script src="lucide-icons.js"></script>
 <script src="db.js"></script>
 <script src="fetch-gate.js"></script>
+<!-- Diagnostics: a bounded in-memory record of what THIS device waited on. Loaded before
+     anything can make a call, because every request through fetchWithRetry writes one
+     sample into it. It reads nothing back and shows nothing on its own; the admin screen
+     is the only surface that draws it. -->
+<script src="diag-store.js"></script>
+<script src="boot-bundle.js"></script>
 <!-- After fetch-gate.js: it reads that gate's build stamps, and uses the shared
      fetchWithRetry/BASE_API_URL from the page script above. -->
 <script src="rev-watch.js"></script>
@@ -1068,6 +1074,38 @@
   //    as data: an empty table with no error on it. `retryable:false` (an unknown
   //    type) fails identically every time, so it stops the loop rather than
   //    spending the budget on it.
+  // --- DIAGNOSTICS: one sample per call, recorded where every call already passes ---
+  /* The edge (the Cloudflare worker) measures every call and publishes these two on the
+     response, exposed to JavaScript in its CORS headers. They are read here and nowhere
+     else. The proxy is OFF right now, so both are absent on live calls and these return
+     null — deliberately not 0, because "the origin took no time" and "the origin did not
+     say" are different facts and the card prints them differently. */
+  function edgeNumber(res, name) {
+    try {
+      if (!res || !res.headers || typeof res.headers.get !== 'function') return null;
+      const raw = res.headers.get(name);
+      if (raw === null || raw === undefined || raw === '') return null;
+      const n = Number(raw);
+      return (isFinite(n) && n >= 0) ? Math.round(n) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* One reason to return early, and no try/catch: this runs on the request path of every
+     module, so a summary of the response is written only when there IS a store to write it
+     to (a device still on an older shell has no diag-store.js, and that is not an error).
+
+     The guard against a store that RAISES lives at the call site instead, deliberately —
+     see recordDiag() in fetchWithRetry. It has to be there, because the call sits inside
+     the try that decides whether to retry: an exception thrown here would be caught as an
+     origin failure, spend two more requests, and end with the module reported as having no
+     data — for a request that succeeded. */
+  function noteApiCall(url, sample) {
+    if (typeof window === 'undefined' || !window.diagStore) return;
+    window.diagStore.record(url, sample);
+  }
+
   async function fetchWithRetry(url, retries = 2, delay = 500) {
     // Attached in ONE place, so no caller has to remember: any API call made through
     // here carries the session token the deployment issued at login. A call with no
@@ -1079,9 +1117,29 @@
        request would send the next reader looking for two that never happened. */
     let attempts = 0;
     const logUrl = safeApiUrlForLog(url);
+    /* WALL CLOCK, not the origin's build time: this is the number the operator actually
+       waits, and it includes the retry backoff and the network. The origin's own time
+       arrives separately as an edge header when the proxy is in front. */
+    const startedAt = Date.now();
+    let originMs = null;
+    let originAttempts = null;
+    /* Wrapped HERE as well as inside diagStore, and that is not belt-and-braces: both calls
+       below sit inside the try that decides whether to RETRY. Anything a diagnostic raises
+       there would be caught as an origin failure — three attempts spent, two requests sent,
+       and the module finally reported as having no data, for a request that succeeded. The
+       measurement breaking the thing it measures is the one thing this feature may not do,
+       so the guard lives on both sides of the boundary. tests/origin-resilience.test.js
+       drives a store whose record() throws and holds that line. */
+    const recordDiag = (sample) => {
+      try { noteApiCall(url, sample); } catch (e) { /* never reaches the retry policy */ }
+    };
     for (let i = 0; i <= retries; i++) {
       try {
         const res = await fetch(url, { cache: 'no-store' });
+        /* Read BEFORE the ok check: a 500 from the edge still carries the timing of the
+           attempt that produced it, and that is exactly the case worth having. */
+        originMs = edgeNumber(res, 'x-netpulse-origin-ms');
+        originAttempts = edgeNumber(res, 'x-netpulse-attempts');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data && typeof data.error === 'string') {
@@ -1089,6 +1147,7 @@
           envelopeErr.fatal = data.retryable === false;
           throw envelopeErr;
         }
+        recordDiag({ ok: true, ms: Date.now() - startedAt, attempts: i + 1, originMs, originAttempts });
         return data;
       } catch (err) {
         console.warn(`[Retry ${i + 1}/${retries + 1}] ${logUrl}:`, err.message);
@@ -1099,6 +1158,10 @@
         await new Promise(r => setTimeout(r, wait));
       }
     }
+    /* Recorded before the throw, so a module that never gets its data is still the module
+       the card names — and it carries the attempts, which is the difference between a
+       slow origin and a phone retrying into a bad network. */
+    recordDiag({ ok: false, ms: Date.now() - startedAt, attempts, originMs, originAttempts, error: lastErr ? lastErr.message : 'unknown' });
     throw new Error(`Failed after ${attempts} attempt${attempts === 1 ? '' : 's'}: ${logUrl} (${lastErr ? lastErr.message : 'unknown'})`);
   }
 
@@ -1192,6 +1255,21 @@ function toggleDarkMode() {
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
 }
 
+/* Draw one tab from whatever is already in memory. Each module's loader answers out of
+   dataCache when it has something and goes to the network when it does not, so this is the
+   same call a tab click makes and the name says only what the caller is entitled to expect.
+
+   Used by the opening — the bundle has just filled dataCache for every module it could
+   answer — and by switchTab, so the two cannot drift into two different ideas of what loading
+   a tab means. */
+function renderTabFromCache(tabName) {
+  if (tabName === 'nap') fetchNapData();
+  else if (tabName === 'lcp') fetchLcpData();
+  else if (tabName === 'olt') fetchOltData();
+  else if (tabName === 'node') fetchNodeData();
+  else if (tabName === 'backbone') fetchBackboneData();
+}
+
 function switchTab(tabName, event) {
   currentTab = tabName;
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -1212,13 +1290,9 @@ function switchTab(tabName, event) {
   const selectedTab = document.getElementById(`tab-${tabName}`);
   if (selectedTab) selectedTab.classList.add('active');
 
-  if (tabName === 'nap') fetchNapData();
-  else if (tabName === 'lcp') fetchLcpData();
-  else if (tabName === 'olt') fetchOltData();
-  else if (tabName === 'node') fetchNodeData();
-  else if (tabName === 'backbone') fetchBackboneData();
-  else if (tabName === 'analytics') fetchAnalyticsData();
+  if (tabName === 'analytics') fetchAnalyticsData();
   else if (tabName === 'admin') renderAdminTab();
+  else renderTabFromCache(tabName);
 
   // Sync bottom nav
   syncBottomNav(tabName);
@@ -1245,41 +1319,20 @@ function refreshCurrentTab() {
   }, 500);
 }
 
-  // 1. NAP Data Fetcher
+  /* The staggered per-tab prefetch that used to live here is gone, for two reasons.
 
-  function prefetchOtherTabsInBackground() {
-  // Staggered prefetch: one module every 400ms after NAP loads instead of a
-  // simultaneous burst — Apps Script's echo endpoint intermittently 404s when
-  // hammered with parallel hits. The gate also dedupes against any fetch the
-  // user's own tab clicks already put in flight.
-  /* OLT is prefetched through its own loader instead of this sweep, because it is
-     the only module whose payload is a compact envelope rather than a row array:
-     a plain "?type=" + type fetch here asked for the wrong shape AND stored the
-     raw envelope where a decoded array belongs, with `oltMeta` still holding the
-     previous response's summary — so the OLT tables and its summary cards could
-     describe two different payloads. Same stagger, same shared gate, right shape,
-     and the route still gets warmed. */
-  const allModules = ['lcp', 'node', 'backbone'];
+     It was DEAD: nothing called it, and its 5 s timer was the only caller of the daily
+     snapshot writer — so the snapshot, which is history the sheet can no longer be asked for,
+     stopped being written without anything saying so. That call now sits in loadInitialData(),
+     where its reason is visible as a line rather than as a side effect of a function nobody
+     ran. (Its name is spelled out only at that one call site: the suite pins the count, because
+     a second call would double-write the same day.)
 
-  allModules.forEach((type, i) => {
-    if (!dataCache[type]) {
-      setTimeout(() => {
-        fetchGate.fetchQueued(type, BASE_API_URL + "?type=" + type, data => {
-          if (data) dataCache[type] = data;
-        });
-      }, i * 400);
-    }
-  });
-
-  if (!dataCache.olt) {
-    setTimeout(() => fetchOltData(false), allModules.length * 400);
-  }
-
-  // Save daily snapshot after initial data is loaded
-  setTimeout(() => {
-    if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
-  }, 5000); // buffer covers the 400ms×4 stagger plus fetch time
-}
+     And the thing it existed to do is now one request: ?action=bundle answers all five modules
+     in a single execution and a single round trip, so there is nothing left to stagger. The
+     wrong-shape OLT lesson its comment carried is not lost either — boot-bundle.js states it
+     and enforces it, by sending OLT through applyOltPayload() instead of storing a payload
+     itself. */
       
 
 
@@ -1415,7 +1468,28 @@ function closeNodeModal(event) {
   function loadInitialData() {
     window._dataLoaded = true;
     showLoader();
-    fetchNapData();
+
+    /* ONE request for the whole opening, then draw the tab the user is on.
+
+       bootFromBundle() never rejects: it answers with what it got and names what it did not,
+       so a module it could not answer — and every module on a deployment that does not have
+       the route yet — is loaded by its own loader, exactly as this app did before the bundle
+       existed. renderTabFromCache() is the same call either way, because a module with nothing
+       in dataCache fetches. See boot-bundle.js. */
+    var opening = (typeof window.bootFromBundle === 'function')
+      ? window.bootFromBundle()
+      : Promise.resolve({ used: false, hydrated: [] });
+
+    opening.then(function () { renderTabFromCache(currentTab); });
+
+    /* The daily snapshot is written once per day and never rewritten, so it is history the
+       sheet can no longer be asked for. This call used to live inside the staggered per-tab
+       prefetch below, which stopped being called at some point — and nothing said so, so the
+       snapshot quietly stopped being written. It lives here now, where its reason is visible. */
+    setTimeout(function () {
+      if (typeof saveDailySnapshot === 'function') saveDailySnapshot();
+    }, 5000);                      // after the opening has had time to fill dataCache
+
     // I-refresh ang BAWAT tab sa sarili nitong interval
     setInterval(() => backgroundRefresh('nap'),  60 * 60 * 1000);
     setInterval(() => backgroundRefresh('lcp'),  30 * 60 * 1000);
@@ -1489,7 +1563,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.20').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.22').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an

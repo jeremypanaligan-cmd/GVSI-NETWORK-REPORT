@@ -111,6 +111,10 @@ function originSandbox(opts) {
 
   vm.createContext(sandbox);
   vm.runInContext(CODE_SRC, sandbox, { filename: 'code.gs' });
+  /* This suite drives FAILED builds through buildFailedOut_, which calls
+     recordBuildFailure_ — so it is one of the five that must load the recorder rather than
+     exercise a hook that is inert. See the assertion in tests/diagnostics.test.js. */
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'diagnostics.gs'), 'utf8'), sandbox, { filename: 'diagnostics.gs' });
 
   sandbox.__logs = logs;
   sandbox.__counters = counters;
@@ -134,31 +138,52 @@ function logged(s, needle) {
 
 function extractFetchWithRetry() {
   const lines = HTML_SRC.split('\n');
-  const start = lines.findIndex((l) => l.indexOf('async function fetchWithRetry') !== -1);
-  assert.ok(start !== -1, 'fetchWithRetry is not in index.html');
+  const fnStart = lines.findIndex((l) => l.indexOf('async function fetchWithRetry') !== -1);
+  assert.ok(fnStart !== -1, 'fetchWithRetry is not in index.html');
+
+  /* The slice starts at the diagnostics banner rather than at the function, because
+     fetchWithRetry now calls two helpers defined just above it. Pulling the function out
+     WITHOUT them would run a client this app does not have: one that cannot record, with
+     its recording call raising inside the retry try. That is not a hypothetical — it is
+     exactly what this suite caught when the hooks were first added. */
+  const start = lines.findIndex((l) => l.indexOf('// --- DIAGNOSTICS: one sample per call') !== -1);
+  assert.ok(start !== -1, 'the diagnostics hooks are not in index.html');
+  assert.ok(start < fnStart, 'the hooks must be defined before fetchWithRetry');
 
   /* Line-based, not brace-matched: the function's own closing brace is the first
      line that is exactly two spaces and a brace, because every brace inside it is
      indented further. The assertions below then pin what was extracted, so a drift
      in either direction fails here instead of passing quietly. */
-  const end = lines.findIndex((l, i) => i > start && l.replace(/\r$/, '') === '  }');
-  assert.ok(end > start, 'fetchWithRetry has no closing brace at function indent');
+  const end = lines.findIndex((l, i) => i > fnStart && l.replace(/\r$/, '') === '  }');
+  assert.ok(end > fnStart, 'fetchWithRetry has no closing brace at function indent');
 
   const src = lines.slice(start, end + 1).join('\n');
   assert.ok(src.indexOf('retries = 2') !== -1, 'the default retry budget must be 2');
   assert.ok(src.indexOf('retryable') !== -1, 'the origin envelope must be classified');
   assert.ok(src.indexOf('lastErr = err') !== -1, 'the last failure must be reported');
   assert.ok(src.indexOf('withAuthToken') !== -1, 'the token must still be attached');
+  assert.ok(src.indexOf('function noteApiCall') !== -1, 'the diagnostics hook was not extracted');
+  assert.ok(src.indexOf('x-netpulse-origin-ms') !== -1, 'the edge header read was not extracted');
+  assert.ok(src.indexOf('const recordDiag') !== -1, 'the call-site guard was not extracted');
   return src;
 }
 
-function clientHarness(responses) {
+function clientHarness(responses, opts) {
+  opts = opts || {};
   const calls = [];
   const waits = [];
   const warnings = [];
+  const recorded = [];
   let i = 0;
 
+  /* What the diagnostics store receives from this suite. `broken` is the case that matters:
+     a store that raises, to prove the request path survives it. */
+  const diagStore = opts.brokenStore
+    ? { record: () => { throw new Error('the diagnostics store is broken'); } }
+    : { record: (url, sample) => recorded.push({ url: url, sample: sample }) };
+
   const sandbox = {
+    diagStore: diagStore,
     console: {
       log: () => {},
       error: () => {},
@@ -184,6 +209,8 @@ function clientHarness(responses) {
     safeApiUrlForLog: (u) => u.replace(/token=[^&]*/, 'token=[redacted]')
   };
 
+  /* In a browser `window` IS the global, and noteApiCall looks for the store there. */
+  sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(
     extractFetchWithRetry() + '\n;globalThis.fetchWithRetry = fetchWithRetry;',
@@ -191,7 +218,7 @@ function clientHarness(responses) {
     { filename: 'index.html:fetchWithRetry' }
   );
 
-  return { sandbox, calls, waits, warnings };
+  return { sandbox, calls, waits, warnings, recorded };
 }
 
 async function callFetch(h, url) {
@@ -492,6 +519,63 @@ async function test(name, fn) {
     assert.ok(h.warnings.every((w) => w.indexOf('token=[redacted]') !== -1));
     assert.ok(h.warnings.every((w) => w.indexOf('SESSION123') === -1),
       'the session token must never be printed');
+  });
+
+  /* ------------------------------------------------------------------ *
+     THE DIAGNOSTICS HOOK, driven through the same real function. It sits inside the
+     try that decides whether to retry, so the two properties that matter are that it
+     records the right thing and that it can NEVER change what the request does.
+   * ------------------------------------------------------------------ */
+
+  await test('a call that succeeds records ONE sample, with its wall clock and attempts', async () => {
+    const h = clientHarness([{ body: { A: 'AREA-1' } }]);
+    await callFetch(h, URL_NAP);
+
+    assert.strictEqual(h.recorded.length, 1, 'one call, one sample');
+    assert.strictEqual(h.recorded[0].sample.ok, true);
+    assert.strictEqual(h.recorded[0].sample.attempts, 1);
+    assert.ok(typeof h.recorded[0].sample.ms === 'number' && h.recorded[0].sample.ms >= 0,
+      'the wait must be measured: ' + h.recorded[0].sample.ms);
+    assert.strictEqual(h.recorded[0].sample.originMs, null,
+      'the response carries no edge header here, and absent must be null rather than 0');
+  });
+
+  await test('a call that gives up records the attempts it spent, not one sample per attempt', async () => {
+    const h = clientHarness([{ status: 500 }]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.ok(r.error, 'it still fails');
+    assert.strictEqual(h.recorded.length, 1, 'three attempts are one call');
+    assert.strictEqual(h.recorded[0].sample.ok, false);
+    assert.strictEqual(h.recorded[0].sample.attempts, 3,
+      'and the count is what tells a retry loop apart from a slow origin');
+    assert.ok(h.recorded[0].sample.error.indexOf('HTTP 500') !== -1,
+      'the last failure must be readable: ' + h.recorded[0].sample.error);
+  });
+
+  await test('a diagnostics store that THROWS cannot turn a working call into a failure', async () => {
+    /* The line this feature may not cross, and the reason the guard lives at the call site:
+       that call is inside the try that decides whether to retry. Without the guard this
+       module would spend three attempts on a request that succeeded on the first one and
+       then report no data — a diagnostic that breaks the thing it measures. */
+    const h = clientHarness([{ body: { A: 'AREA-1' } }], { brokenStore: true });
+    const r = await callFetch(h, URL_NAP);
+
+    assert.deepStrictEqual(r.data, { A: 'AREA-1' }, 'the data must still reach the caller');
+    assert.strictEqual(h.calls.length, 1, 'and no extra request may be spent on it');
+    assert.deepStrictEqual(h.waits, [], 'nor any backoff');
+  });
+
+  await test('a device with no store at all records nothing and behaves exactly as before', async () => {
+    /* The live case on a phone still running the previous shell when a new index.html
+       arrives before diag-store.js is cached — the hook must be inert, not fatal. */
+    const h = clientHarness([{ body: { A: 'AREA-1' } }]);
+    delete h.sandbox.window.diagStore;
+    const r = await callFetch(h, URL_NAP);
+
+    assert.deepStrictEqual(r.data, { A: 'AREA-1' });
+    assert.strictEqual(h.calls.length, 1);
+    assert.strictEqual(h.recorded.length, 0, 'and there was nowhere to write, so nothing was written');
   });
 
   /* ------------------------------------------------------------------ */

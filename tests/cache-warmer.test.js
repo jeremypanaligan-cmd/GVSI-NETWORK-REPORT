@@ -211,6 +211,10 @@ function freshSandbox(opts) {
 
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'code.gs'), 'utf8'), sandbox, { filename: 'code.gs' });
+  /* code.gs calls recordBuildFailure_/recordSlowBuild_ out of diagnostics.gs, and
+     warmDataCaches calls recordWarmPass_. Without this the pass would run with its
+     recorder inert and stay green about it. tests/diagnostics.test.js asserts this line. */
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'diagnostics.gs'), 'utf8'), sandbox, { filename: 'diagnostics.gs' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'olt-cache-warmer.gs'), 'utf8'), sandbox, { filename: 'olt-cache-warmer.gs' });
 
   sandbox.__puts = puts;
@@ -499,18 +503,33 @@ test('the warmer and TRIGGER_PLAN state the same interval', () => {
     'the warm pass is time-driven; the plan must say so for the drift report');
 });
 
-test('every warmed TTL stays under the interval, and the interval is at most 5 minutes', () => {
+test('every warmed TTL outlives the interval, so the pass never leaves a cold window', () => {
   const intervalSeconds = warmIntervalSecondsFromTriggerPlan();
   const s = freshSandbox();
 
+  /* The inversion of the previous rule, held here as arithmetic. Freshness is the
+     cadence (every run rebuilds unconditionally), so the TTL only bounds the degraded
+     case — a dead trigger. A TTL UNDER the interval bounds nothing useful and costs a
+     cold window on every cycle: 180 under 300 was 120 s of every 300 s with every module
+     cold, which is what an operator feels as the app being slow to show anything. */
   [s.OLT_WARM_TTL_SECONDS, s.SECONDARY_WARM_TTL_SECONDS].forEach((ttl) => {
-    assert.ok(ttl > 0 && ttl < intervalSeconds,
-      'warm TTL ' + ttl + 's must stay under the ' + intervalSeconds + 's interval: a TTL ' +
-      'longer than one cycle lets a HIT be served for longer than the cadence that ' +
-      'refreshes it, which is the 11-minute staleness this project already fixed once');
+    assert.ok(ttl - intervalSeconds >= 30,
+      'warm TTL ' + ttl + 's clears the ' + intervalSeconds + 's interval by only ' +
+      (ttl - intervalSeconds) + 's. The last write of a pass lands ~9.1 s in, so this ' +
+      'margin is the entire tolerance for a late or drifted run');
   });
+
+  /* One number for "warm entry life" is one thing to reason about; if they ever need to
+     differ, this is the assertion that says so out loud rather than silently. */
+  assert.strictEqual(s.OLT_WARM_TTL_SECONDS, s.SECONDARY_WARM_TTL_SECONDS,
+    'the two warm TTLs describe one thing — how long a warmed entry lives — so a ' +
+    'difference is either a typo or a decision nobody has argued yet');
+
   assert.ok(intervalSeconds <= 300,
-    'a warm cadence above 5 min leaves formula-driven changes uncovered for too long');
+    'a warm cadence above 5 min leaves formula-driven changes uncovered for too long, ' +
+    'and shortening the cadence is not the way to close a cold window: the pass is a ' +
+    'full rebuild of five modules, so 2 minutes would be ~109 min/day of trigger ' +
+    'runtime against a documented 90 min/day quota');
 });
 
 /* ------------------------------------------------------------------ *

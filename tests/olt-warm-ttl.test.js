@@ -13,6 +13,9 @@
 //   4. The build stamp rides inside the cached bytes, so a hit reports the
 //      original build time.
 //   5. A build whose revision moved while it was reading is never cached.
+//   6. The warm TTL OUTLIVES the cadence, so no cycle contains a cold window —
+//      asserted as arithmetic, because a TTL under the interval is 40% of every
+//      cycle with every module cold and nothing in the code would have said so.
 //
 // Claim 1 used to be asserted the other way round — "a warmed entry inside its
 // own TTL must be served, not rebuilt" — and that assertion was the bug. It made
@@ -166,6 +169,11 @@ function freshSandbox(opts) {
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'code.gs'), 'utf8'), sandbox, { filename: 'code.gs' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'olt-cache-warmer.gs'), 'utf8'), sandbox, { filename: 'olt-cache-warmer.gs' });
+  /* Every build in this suite runs through code.gs, which calls recordSlowBuild_ — and the
+     slow-build hook sits inside doGet, so a missing diagnostics.gs is swallowed rather
+     than fatal. tests/diagnostics.test.js asserts this line exists in all five suites that
+     run a build. */
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'diagnostics.gs'), 'utf8'), sandbox, { filename: 'diagnostics.gs' });
 
   sandbox.__puts = puts;
   sandbox.__removes = removes;
@@ -237,7 +245,8 @@ test('the warmer actually passes the override — not just a TTL constant that e
   assert.strictEqual(calls.length, 1, 'warmer should call doGet exactly once');
   assert.strictEqual(calls[0].e.parameter.type, 'olt');
   assert.strictEqual(calls[0].e.parameter.shape, '3', 'must warm the shape users request');
-  assert.strictEqual(calls[0].ttl, 180, 'warmer must pass its TTL as the 2nd positional arg');
+  assert.strictEqual(calls[0].ttl, s.OLT_WARM_TTL_SECONDS,
+    'warmer must pass its TTL as the 2nd positional arg');
 });
 
 test('an OLT build that answers with an error envelope is a failure, not a warm success', () => {
@@ -319,21 +328,42 @@ test('the warmer and TRIGGER_PLAN state the same interval', () => {
     'the warm pass is time-driven; the plan must say so for the drift report');
 });
 
-test('the warm TTL is deliberately SHORTER than the interval it sits under', () => {
+test('the warm TTL deliberately OUTLIVES the interval, so no cycle has a cold window', () => {
   const intervalSeconds = warmIntervalSecondsFromTriggerPlan();
   const s = freshSandbox();
-  /* This inverts the rule the previous release was built on, so it is worth
-     stating as an assertion rather than a comment: the warmer no longer needs a
-     live entry to exist (it rebuilds unconditionally), so the TTL's job is now
-     to bound how stale a HIT can be and to make a dead trigger decay to
-     slow-but-fresh instead of stale. 1080 s is what let a deleted ticket stay on
-     screen for 11 minutes. */
-  assert.ok(s.OLT_WARM_TTL_SECONDS < intervalSeconds,
-    'warm TTL ' + s.OLT_WARM_TTL_SECONDS + 's must stay under the ' + intervalSeconds +
-    's interval: longer lets a hit be served for longer than one cycle, which is ' +
-    'the staleness this release exists to remove');
+
+  /* This is the inversion of the rule the PREVIOUS release was built on, and the
+     reason is arithmetic rather than taste.
+
+     The warmer rebuilds unconditionally, so freshness is the CADENCE — a hit can never
+     be older than one interval, whatever the TTL says (the test below this one is what
+     holds that up). That leaves the TTL only one job: bound the degraded case, how long
+     the last payload it wrote may still be served if the trigger dies.
+
+     A TTL under the interval therefore buys nothing except a guaranteed cold window on
+     every single cycle. 180 s under 300 s is 120 s of every 300 s — 40% of the time, all
+     five modules cold — which is exactly what an operator experiences as "sobrang tagal
+     ng paglabas ng data": a request that lands in that window pays a full build (~1.3 s
+     for nap/lcp, ~1.7 s for node/backbone) instead of a hit.
+
+     The margin is not decoration either. The pass builds five modules sequentially, so
+     the entry written LAST has to outlive interval - pass_duration (300 - ~9.1 = ~291 s),
+     and time-driven triggers drift. 30 s is the floor for tolerating a late run. */
+  const deadWindowSeconds = intervalSeconds - s.OLT_WARM_TTL_SECONDS;
+  assert.ok(deadWindowSeconds <= 0,
+    'warm TTL ' + s.OLT_WARM_TTL_SECONDS + 's under a ' + intervalSeconds + 's interval ' +
+    'leaves a ' + deadWindowSeconds + 's cold window in EVERY cycle, with every module ' +
+    'in it: that is a full build for whoever opens the app in those seconds');
+
+  assert.ok(s.OLT_WARM_TTL_SECONDS - intervalSeconds >= 30,
+    'the TTL only clears the interval by ' + (s.OLT_WARM_TTL_SECONDS - intervalSeconds) +
+    's. The last write of a pass lands ~9.1 s in, so the margin is the only tolerance ' +
+    'there is for a late or drifted run');
+
   assert.ok(intervalSeconds <= 300,
-    'a warm cadence above 5 min leaves formula-driven changes uncovered for too long');
+    'a warm cadence above 5 min leaves formula-driven changes uncovered for too long, ' +
+    'and shortening it instead of lengthening the TTL is not the way out: the pass is a ' +
+    'full rebuild (~9.1 s), so 2 minutes would be ~109 min/day against a 90 min/day quota');
 });
 
 /* ------------------------------------------------------------------ *
