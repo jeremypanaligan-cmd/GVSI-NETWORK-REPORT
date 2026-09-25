@@ -281,3 +281,199 @@ the ~1.1 s floor instead of a cold 2–3 s. Two things that look like success an
 `Cache write skipped` line means an edit landed mid-build and **nothing** was cached, and
 `⚠️ Sheet not found` means a renamed tab answered `[]` — an empty payload that caches exactly as
 happily as a real one.
+
+## 8. The cold window, the bundle and the diagnostics hand-off (Sept 26, 2026)
+
+Four steps, in this order. Each one pays off on its own, so a stop after any of them leaves the live
+project better than it was.
+
+### 8.1 Paste `olt-cache-warmer.gs` — thirty seconds, and the 40% is gone
+
+The two warm TTLs are now **330 s** (`OLT_WARM_TTL_SECONDS`, `SECONDARY_WARM_TTL_SECONDS`) against the
+**300 s** cadence. Nothing else in that file changed shape, no trigger moved, and
+`setupAllTriggers()` is **not** needed.
+
+Run `warmDataCaches()` by hand once and read the log — the TTL printed in it is the proof the paste
+landed:
+
+```
+✅ warmOltCache: warmed in 3120ms (629 bytes, TTL 330s)
+✅ warmDataCaches: pass finished in 9120ms — 5 of 5 module(s) rebuilt
+```
+
+Then measure the thing the change is actually about, **from outside and more than once**:
+
+```bash
+EXEC="https://script.google.com/macros/s/<id>/exec"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  for t in nap lcp node backbone; do
+    curl -sL "$EXEC?type=$t" -o /dev/null -w "$t %{time_total}s %{size_download}B\n"
+  done
+  sleep 30
+done
+```
+
+A HIT sits near the ~1.1 s floor; a MISS is a cold 2–3 s. Spread over six minutes, count the slow rows:
+before this change roughly **40%** of them are (that is the 120 s of every 300 s with no entry at all),
+and after it there should be none. **One pair of calls cannot tell you this** — the entire claim is
+about timing, and a single sample of a 40% window misses it 60% of the time.
+
+### 8.2 Run the gate before enabling anything
+
+Paste `diagnostics.gs` and `code.gs`, then run this once in the editor:
+
+```
+measurePropertyCost()
+```
+
+It prints three medians (single `getProperty`, whole-store `getProperties()`, `setProperty`), the share
+of the shortest measured build the whole-store read represents, and a verdict. **It has already been
+run three times on the live project — 1.9%, 2.7%, 2.9% — so `DIAG_REQUEST_HOOKS_ENABLED` ships
+`true`** and the pasted copy is recording; this section stays because the verdict is state-aware and
+because a re-run is how you would find out that the store changed:
+
+```
+🔬 measurePropertyCost: 30 samples per operation
+   single getProperty  median 30ms  (worst 77ms)
+   getProperties()     median 38ms  (worst 102ms) — the PESSIMISTIC bound the verdict uses
+   setProperty         median 54ms  (worst 119ms)
+   the shortest measured cold build is 1290ms, so the whole-store read is 2.9% of one (ceiling 5%)
+✅ GATE GO: the whole-store read is 2.9% of a 1290ms cold build (ceiling 5%) and the write median is
+   inside its backstop
+   → nothing to do: DIAG_REQUEST_HOOKS_ENABLED is already true and the hooks are recording
+```
+
+The three runs behind that line — **1.9%** (25/25/51), **2.7%** (35/35/53), **2.9%** (30/38/54),
+twenty-five minutes apart on the same store in the same hour — are the whole justification for the 5%
+ceiling, and they are read below.
+
+On a copy that has not been flipped yet, the last line reads `→ set DIAG_REQUEST_HOOKS_ENABLED = true`
+instead — an instrument that tells you to do a thing you have already done is how a healthy system
+teaches an operator to stop reading it.
+
+or
+
+```
+❌ GATE NO-GO: <which measurement failed, and by how much>
+   → do NOT enable the request-path hooks: a read that costs this much of a build is not a fraction of
+     one, so the pass record and this report are the whole diagnostic
+```
+
+**The verdict is the SHARE, not the milliseconds, and that is a correction rather than a preference.**
+The first version of this compared the medians against absolute numbers (20 ms, 50 ms) and came back
+NO-GO on a live store whose whole-store read was **1.9%** of a build — while printing a reason that
+said the measurement "is not a fraction of a build". Those lines were above and below each other in
+the same log. What the design needs is not "PropertiesService is fast" but "a read is negligible
+against a build", and only the share answers that. The write keeps an absolute backstop because a
+write happens on a rare path rather than per read; the numbers above are pinned by a test, so a future
+run that fails them means the gate was mis-set, not that the store got slower.
+
+**Three runs chose the ceiling, and the third corrected a claim.** Run 1 read 25/25/51 ms; run 2,
+nine minutes later on the same idle store, 35/35/53 ms — the single-read median moved 40%; run 3,
+fifteen minutes after that, 30/38/54 ms. All under 3% of a build, but the old absolute thresholds
+would have failed all three, by one millisecond and then by three. Two other things run 3 settled:
+
+  - **`getProperties()` is not the cheap one.** Runs 1 and 2 had it level with a single `getProperty`
+    (25/25, then 35/35); run 3 had it **dearer** (38 against 30 ms median, 102 against 77 ms worst).
+    The verdict was already reading the pessimistic bound, which is the one that turned out to be
+    expensive — that is the bracketing doing its job rather than a lucky guess.
+  - **the ceiling has to clear everything measured, not the first reading.** 5% against a worst of
+    2.9% is about 1.7x. Re-tune these numbers only from fresh runs, never from one, and re-run the
+    instrument before touching the ceiling at all.
+
+The verdict is taken on the **pessimistic** bound — `getProperties()` reads the whole store and cannot
+be served from an in-execution cache — so a GO is a GO even if the cheaper number looked better. Run 3
+is why that is not a formality: the two were level on the first two runs and the whole-store read was
+the dearer one on the third, which is exactly the case an optimistic verdict would have missed.
+
+**Turning the request-path hooks off again** is one line, `DIAG_REQUEST_HOOKS_ENABLED = false`, and
+must be paired with a reason written next to it. The pass record and the report keep working either
+way; only the failed-build record and the slow-build record stop, and a failed build still answers the
+same envelope to the client.
+
+### 8.3 The two new routes, by curl
+
+```bash
+ADMIN_TOKEN="<a token from a real login as an admin>"
+
+# The whole opening in one response: { ok, at, bundle:{...}, missing:[...] }
+curl -sL "$EXEC?action=bundle" -o /dev/null -w "bundle %{time_total}s %{size_download}B\n"
+
+# The report. Admin only: the first two must answer unauthorized and leak nothing.
+curl -sL "$EXEC?action=diag"
+curl -sL "$EXEC?action=diag&token=not-an-admin"
+curl -sL "$EXEC?action=diag&token=$ADMIN_TOKEN"
+```
+
+What to read in the report, in the order it matters:
+
+| field | what it answers |
+|---|---|
+| `status.hooks` | whether the request-path recorders are live, with the measurement they were flipped on. If it says `off`, the failed-build and slow-build records are simply absent — and absent is not the same as none. |
+| `warm.verdict` | whether the current TTL still clears the interval, in seconds. This is the check that would have named 180-under-300. |
+| `warmPass.ms` | the five build times, per module — the four secondary ones are measured nowhere else. |
+| `failures[]` | the last five failed builds with stage, sheet, rev and elapsed ms: the `❌ Build failed` line, readable over HTTP. |
+| `cache.<type>.rows` | whether the cache is holding a PAYLOAD, not just bytes. An empty cached payload behind a green warm line is the shape of every silent failure here. |
+| `cache.<type>.expired` | a property-backed entry the request path would refuse to serve. |
+| `slowLast` | the last build over `DIAG_SLOW_BUILD_MS`, which cost the request path no read at all. |
+
+The route is read-only in the strict sense: no spreadsheet, no build, no cache write, no revision
+move. It is **manual only** and must stay that way — a card that refreshed itself would be the load it
+exists to measure.
+
+`?action=bundle` costs one `CacheService.getAll` for five modules and answers `missing` for whatever is
+cold rather than building it. A `bundle: 3 of 5 published — missing: node, backbone` line in the
+Executions log means the warmer is not keeping up, not that the route is broken.
+
+### 8.4 The release
+
+`boot-bundle.js`, `fetch-gate.js`, `diag-store.js`, `index.html`, `sw.js` and the five version labels
+are **one commit**. The labels were moved by `node scripts/bump-version.mjs patch` (3.9.20 → **3.9.22**,
+guard untouched at 3.10.0), and moving the labels without the bytes — or the bytes without the labels —
+is a publish that delivered nothing. §6 is how you prove the new bytes reached an installed device.
+
+**One push carries three parts**, because 3.9.21 was never pushed and therefore never existed in the
+field: the `?action=bundle` opening, the warmer's 180 → 330 s TTL, and the Module Health card. If one
+of them has to be backed out, each is independently removable — the server routes are additive, the
+TTL is two constants, and `diag-store.js` is one `<script>` tag plus one call site.
+
+### 8.5 The Module Health card — what to read, and what “—” means
+
+Admin tab → **Module Health**. It is drawn from `diag-store.js` and it costs **no request and no
+timer**: the samples were already being taken by the calls the app was making.
+
+| column | what it answers |
+|---|---|
+| `Wait p50` / `p95` / `Worst` | this device's own wall clock for that module's calls, retries and backoff included. The top row is the worst module by p95, so the answer is the first line. |
+| `Calls` | how many samples the row rests on. `p95 4s` from one call is a different claim from the same number from twenty. |
+| `Origin p50` / `Overhead` | the edge's own timing, and the difference between it and the wait — the only way to tell a slow deployment from a slow phone. |
+| `Retries` | calls that took more than one attempt, highlighted. Three attempts through the backoff looks exactly like a slow module from the server side; here it does not. |
+| `Failed` | calls that never returned data, with the last error on hover. |
+| `Last` | how long ago, so a stale row is visibly stale. |
+
+**`Origin p50` and `Overhead` are `—`, and that is the honest reading, not a bug.** Both come from the
+Cloudflare worker's headers, and the proxy has been OFF since Sept 15, so no live response carries
+them. The card says *edge timing unavailable* and shows the wait anyway. The day the proxy is turned
+back on they fill themselves in — the headers are already read on every response, and absent is
+recorded as `null`, never as `0`.
+
+The footer counts what the store dropped, because it is bounded on purpose: **20 samples per module,
+24 labels**, in memory, this session, sent nowhere. Reloading the app is a clean slate; `Clear` is a
+before/after in one tap, which is the way to compare a paste against the state before it.
+
+### 8.6 Looking at the card without a login
+
+`test-module-health.html` draws the card with the **real** `styles.css`, `diag-store.js` and
+`admin-module.js`, against a seeded fake session — no route, no token, no login. Serve the folder
+(§2, port 8080) and open `/test-module-health.html`.
+
+**Why this exists and why it is not optional.** Rendered for the first time, the card had **ten
+columns** and pushed `Retries`, `Failed` and the age off the right edge behind a horizontal scroll —
+on the screen the card is read from. Every assertion in `tests/diag-store.test.js` was green at the
+time. A DOM assertion can prove a card drew a number; only looking at it proves a person can see it.
+
+**Use it for colour and theme too.** The card is drawn inside `styles.css`, so this is also the
+fastest way to check it in the dark theme (`test-olt-shape3.html` is the same idea for a table).
+
+If the bundle has to be backed out in a hurry: delete the `<script src="boot-bundle.js"></script>`
+line and move the label. The server route is additive and can stay — an older client never asks for it.

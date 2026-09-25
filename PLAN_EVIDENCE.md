@@ -1016,3 +1016,348 @@ true.
 
 **Still not fixed.** The **21 s origin 404** behind *"Error loading data."* — untouched here, as
 in PART-019, and still the largest single source of a bad experience in this system.
+
+### PART-021 — module diagnostics, server side only (2026-09-26)
+
+**The ask, and what it turned out to need.** *"Dagdagan ng function ang admin module na kaya
+nitong idetect ang module na nagca-cause ng pag bagal."* The facts already existed and nothing could
+read them: `buildCtx_` carries type, stage, sheet, rev and elapsed ms through every build and
+spends them on one `❌ Build failed | …` line in the Executions log, and `warmDataCaches` computes a
+per-type build time every five minutes and throws every number away. What was missing was a reader —
+and the discipline that the reader must not cost the thing it measures.
+
+**The cost model, which is the design.** A first version of this recorded a sample after every
+SUCCESSFUL build: one property read on the coldest, slowest path in the app, which is a diagnostic
+that makes the slow thing slower. It is removed by construction rather than by care. Successes store
+nothing. A failure stores — one read plus one write, rare, and it is the sample being looked for. A
+slow build is written with **no read at all**: the elapsed time is compared against a constant and
+only a build over it writes, so a healthy build pays one integer comparison. The warm pass writes
+once per run, in the trigger's own execution, and it is the only source of the four build times
+nothing had ever measured. Against the documented 50,000 properties/day that is ~288 writes, sharing
+the budget with the ~14,000/day rev poll.
+
+**The claim that had to be measured before it could be relied on.** "A property read is a fraction
+of a 1.5 s build" was a hypothesis, so it shipped with an instrument instead of an argument:
+`measurePropertyCost()`, run by hand, with a GO/NO-GO verdict. It is deliberately BRACKETED — one
+`getProperty` can be answered from an in-execution cache and understate the cost, while
+`getProperties()` reads the whole store and cannot — and the verdict is taken on the **pessimistic**
+bound, so a GO is a GO even if the optimistic number was a lie. `DIAG_REQUEST_HOOKS_ENABLED` shipped
+`false` while the gate was unrun; it now ships **`true`**, because the gate has been run on the live
+store three times and every run after the first passed — and run 3's own `→ nothing to do` line proves
+the deployed copy carries the constant. (It proves nothing about the `code.gs` side: the two hook call
+sites live there, and only the `code.gs` paste and a `?action=diag` read show that they are called.) The pass record and the report were never gated behind that switch,
+because neither of them runs on a request — gating them would hide the very number the switch is
+waiting for.
+
+**It was run on the live project three times in one hour — and the first verdict was wrong about
+itself.**
+
+```
+                        run 1 (12:33)   run 2 (12:42)   run 3 (12:57)
+   single getProperty   25ms (worst 50)  35ms (worst 58)  30ms (worst 77)
+   getProperties()      25ms (worst 40)  35ms (worst 52)  38ms (worst 102)  <- the PESSIMISTIC bound
+   setProperty          51ms (worst 134) 53ms (worst 111) 54ms (worst 119)
+   share of a build     1.9%             2.7%             2.9%             (ceiling 5%)
+❌ GATE NO-GO on all three, against thresholds that were guesses (20 ms read, 50 ms write)
+✅ GATE GO on runs 2 and 3: 2.7% and then 2.9% of a 1290ms cold build, writes inside their backstop
+```
+
+The premise the design rests on came back at **1.9%**, then **2.7%**, then **2.9%** — a property read
+is a fraction of a build. The NO-GO came from the thresholds being absolute numbers I had picked (20
+ms, 50 ms) while the claim is relative, and from a failure message that said the measurement "is not
+a fraction of a build" when the line directly above it printed 1.9%. **An instrument whose reason
+contradicts its own reading is measuring the wrong question**, and one of those thresholds failed by a
+single millisecond — a limit a healthy system fails by 2% is not a safety limit, it is a coin toss
+with a comment on it.
+
+**Runs 2 and 3 are what turned that from a correction into evidence.** Nine minutes after run 1 the
+single-read median had moved **40%** (25 → 35 ms) with every absolute number moving up with it, so the
+discarded thresholds would have failed **all three** runs, by one millisecond and then by three. A
+healthy system failing the same limit three times, by different amounts, is not a slow store: that is
+a mis-set limit, and it is the recorded reason the verdict is a share plus one write backstop rather
+than three invented ceilings. The three readings are also why the ceiling is **5%** and not 3%: the
+observed range is 1.9% to 2.9%, so the limit has to clear everything the instrument has ever said —
+about **1.7x** the worst reading — and anyone re-tuning it should re-run it first.
+
+**Run 3 also corrected a note I had already written, and the correction is kept visible.** The note
+said a single-key `getProperty` costs the SAME as a whole-store `getProperties()` (25 ms both on run
+1, 35 ms both on run 2), and concluded that there is no cheap single-key read. On run 3 the
+whole-store read came out **dearer** — 38 ms against 30 ms median, 102 ms against 77 ms worst. The
+honest statement is that the two are the same order and which one wins is not stable, which is
+exactly what taking the verdict on the **pessimistic** bound protects against, and it is the bound
+that turned out to be the expensive one. What still follows: anything answerable from one
+whole-store read should use one rather than N single reads, which is what `buildDiagReport_()` does.
+
+The verdict is now the **share of a cold build**, with one absolute backstop on the WRITE and none on
+the read, because once the build is fixed a share limit *is* an absolute limit (5% of 1290 ms is
+64.5 ms) — a second read ceiling could only ever repeat the share's message, never fire alone, and a
+branch that cannot be observed is a branch nothing can test. The recalibration is recorded here and in
+the file's own header rather than quietly applied, and it is **pinned to these numbers by a test**:
+25 ms / 25 ms / 51 ms must come back GO, 35 ms / 35 ms / 53 ms must come back GO with headroom under
+the ceiling, and a ceiling tightened past the observed spread must fail. If a future run of these
+numbers fails, the gate has been mis-set again — not the property store gone bad.
+
+The GO verdict is also **state-aware**, because run 2 exposed a second, smaller version of the same
+illness: the message an operator sees after flipping the switch was still telling them to flip it.
+`judgePropertyCost_()` now answers `nothing to do: DIAG_REQUEST_HOOKS_ENABLED is already true` when it
+is, and the instruction only appears on a copy that has not been flipped. Both arms are asserted — the
+one that keeps an instruction honest is otherwise unobservable.
+
+**Three things the measurement bought, none of which were assumed.**
+
+| | |
+|---|---|
+| a property read is 25–38 ms | not the sub-millisecond a design like this tends to assume, and its own spread between two runs nine minutes apart was 40%. Under 3% of a build in every run, so affordable — but the rev poll (`currentDataRev_()`) and the build-time witness (`dataRevOf_()` twice per build) each pay it on a path that runs constantly, and that number is now their input rather than a guess. |
+| a whole-store read is NOT the cheap one | 25 ms both on run 1 and 35 ms both on run 2 — and then **38 ms against a single read's 30 ms on run 3**, with worst cases 102 ms against 77 ms. The equality did not hold, and this note was corrected rather than quietly edited. The verdict was already reading the pessimistic bound, which is the one that turned out to be dearer; what still follows is that anything answerable from one `getProperties()` should use one call rather than N — which is why `buildDiagReport_()` reads the store once for every key it needs. |
+| `setProperty` is the expensive one | 51–54 ms median, 134 ms worst across three runs. This is the case for the design's central discipline rather than against it: successes write nothing, fast builds write nothing, and only a failed or genuinely slow build reaches a write at all. |
+
+**The silent-lie shape, closed twice.** The slow-build hook sits inside `doGet`, so a suite that
+loads `code.gs` without `diagnostics.gs` exercises a hook that is inert and **stays green about it** —
+the same shape as the 74-byte "warmed" line PART-020 fixed. So: both call sites check the function
+exists and log loudly when it does not (once per execution, not once per build, or the warning
+becomes noise), the recorders catch their own failures so a diagnostics fault cannot turn the one
+path whose job is to answer into an HTML error page, and `tests/diagnostics.test.js` asserts that all
+five suites which run a build load the file. A convention would not have survived the first honest
+refactor; an assertion does.
+
+**The gate is the part that matters most and is the least visible.** `?action=diag` is admin-gated
+with `resolveSession(e, ADMIN_ROLE)` **and refuses a null session as well as an error** — because
+`resolveSession` answers `{session: null, error: null}` for an untokened caller while
+`REQUIRE_SESSION` is false, and a role check that never ran is not a gate. The suite drives that exact
+case by flipping the switch in the sandbox. Both the no-token and the NON-admin cases assert that the
+body carries none of the internals. The route is read-only in the strict sense: no spreadsheet, no
+build, no cache write, no revision move — asking what is slow must be incapable of adding load.
+
+**Found while designing, recorded and not fixed here.** The same null-session hole exists in
+`handleSetMaintenance`, where the actor falls back to `"unknown"`. It is written into the file's own
+header, where the next reader will meet it.
+
+**Files.** `diagnostics.gs` (new: `measurePropertyCost`, `judgePropertyCost_`, `diagMedian_`,
+`recordBuildFailure_`, `recordSlowBuild_`, `recordWarmPass_`, `diagCacheState_`, `buildDiagReport_`,
+`handleDiagnostics`, `diagStatus_`) · `code.gs` (the route line; `recordBuildFailure_` in
+`buildFailedOut_`; `recordSlowBuild_` at the end of every build; `cacheKeyFor_`, `cacheTtlFor_`,
+`propStampKey_` and `dashboardShapeFor_` extracted to one place each) · `olt-cache-warmer.gs`
+(`warmDataCaches` keeps the per-type ms it already computed) · `tests/diagnostics.test.js` (+36) ·
+the five build-running suites load `diagnostics.gs` · `plans/PART14_PLAN.ai.md` · `MASTER_PLAN.md` ·
+`TODO.md` · `.freebuff/run.md`. No client byte, no version bump, no new trigger, no
+`setupAllTriggers()`.
+
+**Checks.** Full suite **336 passed across 19 suites, 0 failed** (262 → 336, together with PART-022).
+30 mutations for this part, every one caught — including the two that guard the flipped switch (a
+`DIAG_REQUEST_HOOKS_ENABLED` turned back to `false`, and a report whose note drops either live
+reading). Three were caught only after something real was fixed, and each one is worth naming because
+none of them was in the feature:
+
+  - the first pass reported **one MISSED** — removing a hook's own off-switch left the suite green —
+    and the cause was in the harness: `__propsWritten` was `writes.map(...)`, a snapshot taken at
+    sandbox creation, so every "it wrote nothing" assertion had been comparing against an empty array
+    forever. It is an accessor now, and that fix immediately exposed a second vacuous assertion in the
+    same file (`measurePropertyCost` obviously writes its own probe; the assertion had to say "wrote no
+    RECORD", not "wrote nothing").
+  - the recalibrated gate's own branch for an unpaid reading — an unmeasured whole-store read while the
+    writes were fine — had **no test**, because the all-empty case is caught by the write backstop and
+    therefore proves nothing about the read. `null > 5` is false, so that shape would have read as a
+    PASS on the strength of a measurement the gate never took.
+
+That is the value of the pass, stated plainly: a mutation nobody notices is the only way to find an
+assertion that cannot fail.
+
+**The gate, closed — and `diagnostics.gs` is pasted.** It has been run three times, the instrument was
+recalibrated against its own numbers rather than the other way round, and every run after the first
+passes. `DIAG_REQUEST_HOOKS_ENABLED` is **`true` in the shipped file**, and run 3 proves the PASTED
+copy agrees: its last line reads `→ nothing to do: DIAG_REQUEST_HOOKS_ENABLED is already true and the
+hooks are recording`.
+
+**What that does and does not prove, because the difference is the whole point of this section.** It
+proves `diagnostics.gs` is deployed and its switch is on. It does **NOT** prove the two request-path
+hooks are being called: those call sites live in `code.gs` (`recordBuildFailure_` inside
+`buildFailedOut_`, `recordSlowBuild_` at the end of a build), and a gate that reads a constant cannot
+see which file the constant was pasted beside. The `code.gs` paste settles it, and `?action=diag`'s
+`failures[]` is how you see that it did — an empty list from a store that has never failed is
+indistinguishable from a hook that is not there, which is why the route is read AFTER a paste and not
+instead of one.
+
+That the repo and the editor agree on the constant matters beyond this repository: a copy flipped by
+hand while the file still said `false` would silently turn the hooks back off at the next paste, which
+is why the constant and its reason live in the file rather than in a note. **Still owed, and it needs
+the operator:** paste `code.gs` + the current `diagnostics.gs` (the routes, the bundle, and the two
+hook call sites — no trigger change, no `setupAllTriggers()`), curl `?action=diag` with an admin token
+to read the new record, and paste `olt-cache-warmer.gs` for PART-022's two constants — see
+`.freebuff/run.md` §8.
+
+### PART-022 — the cold window, and the opening in one request (2026-09-26)
+
+**What the operator reported.** *"Nagkakaproblema ako sa sobrang tagal ng paglabas ng data sa app —
+LCP, NAP, BACKBONE kadalasan itong nangyayari."* Two causes, both arithmetic:
+
+  - `olt-cache-warmer.gs` writes a **180 s** entry on a **300 s** cadence. The entry dies at T+180
+    and the next pass is at T+300, so **120 s of every 300 s has no entry at all** — 40% of the
+    time, all five modules cold, and every request in that window pays a full build instead of a
+    hit. This was not an oversight: PART-012's header argues for it explicitly, and chose it while
+    the four secondary build times were still unmeasured.
+  - index.html fetched **one** module on load. Each of the other four arrived on its first tab click,
+    so a session glancing at three tabs spent four round trips — every one paying the ~1.1-1.5 s
+    floor in full. Measured payload sizes sum to **5,503 bytes**: ~6 s of protocol overhead to move
+    5.5 KB. And lcp's build is **16 rows** — the cost was never the data.
+
+**The finding that decided the shape of this part.** `prefetchOtherTabsInBackground()` — the staggered
+sweep the warmer's own comments still credit with covering the other four modules — **is dead code**.
+It is defined at `index.html:1250` and called from nowhere, so the app had been fetching each module
+on first tab visit for however long, and the comment claiming otherwise was load-bearing fiction in
+`olt-cache-warmer.gs` and in `code.gs`. It was worse than dead: its 5 s timer was the **only** caller
+of the daily snapshot writer, so a once-a-day record that the spreadsheet can no longer be asked for
+had stopped being written, and nothing said so. The call moved to `loadInitialData()`, where its
+reason is a visible line, and `tests/analytics-dashboard.test.js` — which pins the count at exactly
+one — caught the first draft of the comment that moved with it.
+
+**The TTL, and why raising it does not re-open the 2026-09-18 incident.** Freshness is the CADENCE,
+not the TTL: every warm run rebuilds unconditionally and overwrites, so a hit can never be older than
+one interval whatever the TTL says — a claim `tests/olt-warm-ttl.test.js` already asserted before this
+change. That leaves the TTL one job, bounding the DEGRADED case, and a TTL under the interval
+therefore buys nothing except a guaranteed cold window on every cycle. 180 → 330 s. The binding
+constraint is the LAST write of a pass, not the first: five builds take ~9.1 s, so the entry written
+last must outlive `interval - pass_duration ≈ 291 s`, and 330 leaves ~39 s for a late or drifted run.
+Shortening the cadence instead would be ~109 min/day against the documented 90 min/day trigger quota,
+which is asserted rather than remembered.
+
+**Two assertions were INVERTED, not added.** Both suites carried a test that encoded the old rule —
+`assert.ok(OLT_WARM_TTL_SECONDS < intervalSeconds)` and "every warmed TTL stays under the interval" —
+so the change could not be made quietly. They now assert the arithmetic in the other direction, with
+the dead window computed rather than described: `interval - ttl <= 0`, and a margin assertion that
+catches a TTL of exactly 300 as well, because a margin of zero has no tolerance for a late pass.
+
+**The opening, in one request.** `?action=bundle` answers all five modules from cache in one
+execution. It is **read-only**: no spreadsheet, no build, no cache write, no revision move, and it
+does not even delete a property entry it judges expired — dropping a dead entry is the next real
+request's job, or asking what is cached becomes a mutation. A module it cannot answer is named in
+`missing`, and the client fetches it over the route it already had. The keys are derived from
+`DATA_TYPES` rather than restated, and `cacheKeyFor_`/`cacheTtlFor_`/`dashboardShapeFor_` were
+extracted so the two read paths cannot come to disagree about whether a payload is alive.
+
+**The client half fails open, always, and that is the safety argument.** `boot-bundle.js` hydrates
+`dataCache`, sends OLT through the module's **own** `applyOltPayload()`, stamps `fetchGate` so a
+hydrated type does not go straight back to the network, and resolves — never rejects — for a missing
+route, an unknown-action envelope, a rejection, a hang, a wrong-shaped payload, or a type this build
+has no module for. If the route is not there, the app loads exactly as it did before the file existed:
+that makes the deploy order irrelevant and the change removable by one `<script>` tag. The shape
+checks are duplicated from the loaders on purpose, because the bug they prevent is the one this app
+has already shipped — an OLT prefetch that stored the raw compact envelope where a decoded row array
+belongs, leaving the tables and the summary cards describing two different payloads.
+
+**The bug the suite found in my own client code.** The hydrate loop's OLT branch `continue`d before
+stamping the gate, so the one request that replaced five would have been followed by an immediate OLT
+refetch — OLT being the module whose loader queues a refresh every time it draws. "the gate is told
+about every hydrated type" is what caught it.
+
+**Files.** `olt-cache-warmer.gs` (two constants; the header paragraph rewritten around the
+arithmetic) · `code.gs` (the route line, `handleBundle`, the extracted key/TTL/shape helpers; the
+stale "the app prefetches all five on every load" claim corrected) · `boot-bundle.js` (new) ·
+`fetch-gate.js` (`noteHydrated`) · `index.html` (`boot-bundle.js` loaded, `renderTabFromCache()`,
+the opening, the snapshot call restored, the dead sweep removed) · `sw.js` (`boot-bundle.js`
+precached) · `tests/bundle.test.js` (+16) · `tests/boot-bundle.test.js` (+18) · the two TTL
+assertions inverted · `plans/PART15_PLAN.ai.md` · `MASTER_PLAN.md` · `TODO.md` · `.freebuff/run.md`.
+
+**Release.** Version **3.9.20 → 3.9.21** with the guard left at **3.10.0**: `sw.js` generation, both
+`index.html` `?v=` tokens, the three `manifest.json` fields and `version.json`, moved together by
+`scripts/bump-version.mjs`. `--check` confirmed the guard did not move, and confirmed the delivery set
+had changed while the release had not — the failure that produces no error anywhere at runtime.
+
+**Checks.** 19 suites, **336 cases, 0 failed**. 23 mutations for this part, every one caught. Two
+first-pass results are worth recording rather than smoothing over: the array half of the payload shape
+check had **no test at all** (the only wrong-shape case was lcp's, which exercises the other half), and
+it took a mutation to reveal it — a removed check that the suite did not notice because nothing tested
+it. Both halves are covered now. The two cases beyond PART-021's count are the two that close the gate
+over here: the TTL arithmetic (`interval - ttl <= 0`, with a margin assertion that catches a TTL of
+exactly 300) and the inverted `332`-era premise — they live in the suites this part changed.
+
+**Still owed.** The paste (`olt-cache-warmer.gs`, then `code.gs` + `diagnostics.gs` for the routes)
+and the push. Until the push, the live app still loads one module at a time and still has a 120 s cold
+window every cycle. The **gate** is no longer part of what is owed: it read GO three times on the live
+store and the pasted copy is recording, so the request-path hooks are **live**. The release label is
+now **3.9.22** — 3.9.21 was never pushed, so one push carries this part and PART-023 together.
+
+**Still not fixed.** The **21 s origin 404** — untouched by all of this, and the bundle only removes
+one of the conditions that produce it (three concurrent cold builds). The **60 s `cacheTtl`** a
+CLIENT-built `node`/`olt`/`backbone` entry receives is also untouched: it only matters once the warmer
+is dead, and it is a freshness trade of its own rather than a bug.
+
+### PART-023 — what the device waited (2026-09-26)
+
+**What was asked for.** The client half of the diagnostics: read the edge's own timings, sample every
+call in `fetchWithRetry`, and put a Module Health card in the admin module.
+
+**Why the server half was not enough — the whole reason this part exists.** `?action=diag` answers
+what the ORIGIN spent, on which sheet, at which stage, and it never sees the phone. Those are
+different questions with different fixes. A build that takes 3 s on the origin and 9 s on a handset is
+not a slow module; it is a slow phone or a bad cell, and three attempts through a jittered backoff do
+the same thing to a fast origin. The number that separates them is **this device's wall clock minus
+the origin's own time**, and only the device can compute it.
+
+**The measurement was already being taken and read by nothing.** The Cloudflare worker sets
+`x-netpulse-origin-ms` and `x-netpulse-attempts` on every response and already exposes both to
+JavaScript in its CORS headers. `grep` found no reader anywhere in the app — the same shape as
+`buildCtx_`, which carried type/stage/sheet/rev/elapsed through every build and spent them on one log
+line.
+
+**The constraint that chose the design, rather than a caveat about it.** The proxy is OFF
+(`window.NETPULSE_PROXY = ""`, 2026-09-15), so those headers are ABSENT on every live call — which is
+also why this part has to be useful without them. So `originMs` is **null** when the edge did not say,
+the summary **counts** how many samples carried edge timing, and the card says in words that the
+edge numbers are unavailable. `0ms` for a measurement nobody took is one `|| 0` away, and there are
+tests on both sides of that boundary — the parser and the column.
+
+**What shipped.**
+
+| | |
+|---|---|
+| a bounded store | 20 samples per label, 24 labels, and a SHOWN count of what was dropped. Memory only: no localStorage, no IndexedDB, nothing sent anywhere — a persisted history would survive the app wipe and then describe a session that ended days ago as if it were now. |
+| one sample per call, not per attempt | recorded at both exits of `fetchWithRetry` — the one function every module, admin and auth call already passes through. `attempts` is kept because "slow" and "slow but retried" have different fixes. |
+| the label rule | `?type=lcp` → `lcp`, `?action=diag` → `action:diag`, anything else → `other`. Derived from the request the app actually made, so a module added later is measured without anyone remembering; sanitized to `[A-Za-z0-9:_-]` because the label reaches `innerHTML`; and never carrying a query value. The login call the app builds puts the password in its query string, so a test records exactly that URL and searches the whole snapshot for it. |
+| the card | worst module first, with calls, wait p50/p95/worst, the origin's median, the per-call overhead, retries, failures, the last error and the age. Refresh re-reads memory. No timer, no request, no storage. |
+| a released file | `diag-store.js` added to `sw.js` precache, and a test that every local script tag in `index.html` is precached — an invariant that until now depended on a human remembering. |
+
+**Two defects the suite found, neither of them in the feature's happy path.**
+
+  - `tests/origin-resilience.test.js` lifts the real `fetchWithRetry` out of `index.html` by line
+    slicing. Adding two helpers ABOVE the function broke it — and the way it broke was the finding:
+    the recording call sits inside the `try` that decides whether to retry, so the ReferenceError was
+    caught as an origin failure, spent three attempts, and ended with the module reported as having no
+    data for a request that had succeeded. That is a diagnostic breaking the thing it measures. The
+    fix is a guard at the call site as well as inside the store, the slice now starts at the hooks so
+    it cannot silently test a client this app does not have, and a new test drives a store whose
+    `record()` throws and asserts the data still arrives on one request.
+  - the label whitelist and the case fold were composed wrongly: lowercasing the value and then
+    stripping everything outside `[a-z0-9:_-]` would have renamed `action:setMaintenance` to
+    `action:etaintenance`. A mangled name is worse than two spellings of one, because only the intact
+    one is visible on the card.
+
+**Checks.** 20 suites, **384 cases, 0 failed** (336 → 384). 38 mutations for this part, every one
+caught — including the ring bound, the label cap and its counter, the case fold, the `|| 0`
+coercion, the even-count median, nearest-rank p95, per-call overhead, error truncation, a
+`record()` that rethrows, a snapshot that hands back its live arrays, each of the two exits of
+`fetchWithRetry`, the call-site guard, the card's no-store branch, its sort order, its escaping, its
+column count, the call count beside each label, and `diag-store.js` missing from the precache. The
+card is also **drawn** in a sandbox with a stand-in document: reading a template is how a card ships
+with an undefined column that renders as a dash and looks like "no data".
+
+**And it was looked at, which is not the same as being tested.** Rendered in a browser against the
+real `styles.css`, the first version had **ten columns** and pushed `Retries`, `Failed` and the age
+off the right edge behind a horizontal scroll — on the very screen the card is read from. No text
+assertion could have seen that. The fix is not a dropped number: `Calls` folded into the module cell
+where it reads better anyway ("backbone · 7"), `Worst` moved to the p95 cell's title, and the edge
+column labelled and titled rather than spelled out. Eight columns, nothing lost, and the screenshot
+is why.
+
+**The release folds two parts.** 3.9.21 was never pushed — PART-015/022's `?action=bundle` and the
+TTL change have existed only in the working tree — so the label moves once to **3.9.22** and the
+single push delivers the bundle, the warmer TTL and this card together. The guard is untouched at
+3.10.0, as it must be.
+
+**Still owed.** The paste (`olt-cache-warmer.gs`, then `code.gs` + `diagnostics.gs`) and the push.
+`diag-store.js` arrives with the push; a device that gets the new `index.html` before the new file is
+cached has a hook that records nothing rather than one that fails, and that case is asserted.
+
+**Deliberately not here.** Merging `?action=diag` into the same card: it is a request, and this
+card's rule is that opening the tab costs nothing. The two reports are read side by side. And the
+**21 s origin 404** is still open — but the card can now SEE it (attempts above 1 with a large
+overhead), which is the first step toward fixing an error path nobody could attribute.

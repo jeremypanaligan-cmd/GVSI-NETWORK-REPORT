@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 22, 2026 · `main` is live at **3.9.20** (the installer's update trigger — see P2; the Dashboard/OLT batch is in 3.9.19) · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · the live site is at **3.9.20**; **3.9.22 is released in the repo and NOT pushed** (see P1: two pastes and a push — it carries three parts at once) · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -13,6 +13,104 @@
 - **A to-do item lives on disk or it does not exist.** Conversation history does not survive between sessions, so anything decided in chat and worth keeping gets written here.
 
 **Not the same as `GVSI_NetPulse_System_Roadmap.md`.** That file is a **dated audit** (Aug 26, 2026, against app v3.3.0) with its own signature and priority tables. Treat it as history: useful context, but **re-verify each item before working it** — several have already landed (see the bottom of this file).
+
+---
+
+## 🟠 P1 — Ang bagal ng paglabas ng data: fixed in the repo, waiting on two pastes and a push (Sept 26, 2026)
+
+**Status.** In `main` as **3.9.22** (released, **not pushed**) and **not live**: the backend half is a
+paste, the client half needs a push. The complaint was *"nagkakaproblema ako sa sobrang tagal ng
+paglabas ng data sa app — LCP, NAP, BACKBONE kadalasan itong nangyayari"*, and the cause was
+arithmetic rather than luck:
+
+| what | before | after |
+|---|---|---|
+| warm TTL under a 300 s cadence | 180 s → **120 s of every cycle with NO cache entry at all (40%)** | 330 s → no moment without one |
+| modules fetched on load | 1 (nap); the other four on first tab click | all five, in **one** request |
+| round trips to glance at three tabs | 4 | 1 |
+| bytes moved | 5,503, spread across those requests | 5,503, in one response |
+| worst case when the timing is unlucky | a full cold build on top | none — the window is gone |
+
+**Three things to know before touching any of it.**
+
+1. The old TTL was not an oversight: `olt-cache-warmer.gs` argues for it in its own header, and it was
+   chosen while the four secondary build times were still unmeasured. Both suites that encoded the old
+   rule now assert the arithmetic the other way round, with the dead window computed rather than
+   described — so this cannot be reverted quietly.
+2. `prefetchOtherTabsInBackground()` in `index.html` was **dead code** — defined, called from nowhere —
+   and the warmer's comments credited it with covering the other four modules. Worse than dead: its
+   5 s timer was the **only** caller of the daily snapshot writer, so a once-a-day record that the
+   spreadsheet can no longer be asked for had stopped being written, and nothing said so. Fixed: the
+   call moved to `loadInitialData()`, and `tests/analytics-dashboard.test.js` pins the count.
+3. The client half **fails open**. No route, an unknown-action envelope, a rejection, a hang, a
+   wrong-shaped payload → the app loads exactly as it did before `boot-bundle.js` existed. Deploy order
+   does not matter and a rollback is one `<script>` tag.
+
+**Owed, in this order** (procedure in `.freebuff/run.md` §8):
+
+- [x] **`measurePropertyCost()` has been RUN (Sept 26, live project).** Read 25 ms single, 25 ms
+      whole-store, write 51 ms — the whole-store read is **1.9% of a cold build**, so the premise holds
+      with room to spare. The verdict still printed **NO-GO**, because the thresholds were absolute
+      numbers that had been picked (20 ms, 50 ms) and one of them failed by a single millisecond. The
+      verdict is now the SHARE of a build, with one backstop on the write, and it is pinned to these
+      numbers by a test so the calibration cannot drift back to guessing.
+- [x] **`measurePropertyCost()` RUN THREE TIMES (Sept 26, 12:33 / 12:42 / 12:57 AM, live project)
+      — GO.** Read 25/25/51 → 1.9%, then 35/35/53 → 2.7%, then 30/38/54 → **2.9%**, against a 5%
+      ceiling. The single-read median moved **40%** between the first two runs, so the discarded
+      absolute thresholds would have failed **all three** — which is the recorded reason they were
+      replaced by a share rather than re-tuned. The ceiling clears the worst reading by about 1.7x.
+- [x] **`diagnostics.gs` is pasted, with the switch ON.** Run 3's last line reads
+      `→ nothing to do: DIAG_REQUEST_HOOKS_ENABLED is already true and the hooks are recording`.
+      `DIAG_REQUEST_HOOKS_ENABLED` must stay **`true` in the repo** — a copy flipped by hand while the
+      file still said `false` would silently turn the hooks back off at the next paste.
+- [ ] **But that log does not prove the hooks are being CALLED, and it is worth knowing why.** Both
+      call sites live in `code.gs` (`recordBuildFailure_` inside `buildFailedOut_`, `recordSlowBuild_`
+      at the end of every build), and a run of `measurePropertyCost()` cannot see which file its
+      constant was pasted beside. The `code.gs` paste is what makes a failed build write its stage,
+      sheet, rev and elapsed ms — and `?action=diag`'s `failures[]` is how you confirm it did, since
+      an empty list from a store that never failed looks exactly like a hook that is not there.
+- [ ] **Paste `olt-cache-warmer.gs`.** The TTL change alone removes the 40% cold window. No trigger
+      change, no `setupAllTriggers()`.
+- [ ] **Paste `code.gs` + `diagnostics.gs`**, then curl `?action=bundle` and `?action=diag` with an
+      admin token.
+- [ ] **Push the release** so the seven devices receive **3.9.22** (`sw.js` generation, the two `?v=`
+      tokens and the three `manifest.json` fields moved with it; the guard is still 3.10.0). One push
+      delivers all three parts: the bundle route, the warmer TTL, and `diag-store.js` — 3.9.21 was
+      never pushed, so it never existed in the field.
+
+**And the fourth thing, since the last update: what the DEVICE waited (Part 16, same release).** The
+server report names which module failed and on which sheet; it cannot name what this phone waited,
+which is the half that decides what an operator experiences. The admin tab now has a **Module Health**
+card drawn from `diag-store.js`: per module, the calls seen, wait p50/p95/worst, the retries, the
+failures and the last error — in memory, this session, sent nowhere, with **no request and no timer**
+when the tab opens.
+
+  - **Read it like this.** The top row is the slowest module by p95. `Retries` above 0 on a row whose
+    wait is far above its origin time means the phone and its network, not the origin. `Failed` with a
+    hover for the error is a module that never rendered.
+  - **`Origin p50` and `Overhead` are `—` right now, and that is correct, not broken.** Those two come
+    from the Cloudflare worker's own headers (`x-netpulse-origin-ms`, `x-netpulse-attempts`), and the
+    proxy has been OFF since Sept 15 — so the card says *edge timing unavailable* and shows this
+    device's wall clock instead. It will fill itself in the day the proxy is turned back on, with no
+    code change: the headers are already read on every response.
+  - **A missing measurement is never drawn as 0.** That is one `|| 0` away and there is a test on each
+    side of it, because "the origin took no time" is exactly the wrong answer to show a person.
+
+**Measured, and now on the record.** A `PropertiesService` call costs **25–38 ms** across three live
+runs. The first note here said a single-key `getProperty` costs the SAME as a whole-store
+`getProperties()` — run 3 corrected that: the whole-store read came out **dearer** (38 vs 30 ms
+median, 102 vs 77 ms worst), so the honest statement is that the two are the same order and which
+wins is not stable. That is precisely what taking the verdict on the **pessimistic** bound protects
+against. What still follows: anything answerable from one whole-store read should use one call rather
+than N. A write costs **51–54 ms** (worst 134 ms).
+Two live paths pay it constantly: the rev poll is one whole-store read per poll per device, and every
+build spends two `dataRevOf_()` reads as its build-time witness. Both are priced and both are fine —
+the point is that the number is now known rather than assumed, and it is the input to any future tuning
+of either.
+
+**Known and deliberately not fixed here.** The **60 s `cacheTtl`** a client-built `node`/`olt`/
+`backbone` entry gets (against 180 s for nap/lcp, and 330 s when the warmer writes it). It only
+matters once the warmer is dead, and changing it is a freshness trade rather than a bug fix.
 
 ---
 
@@ -595,6 +693,12 @@ Why it dominates:
 ~7× worse than the worst cold build, and it ends in an error rather than a slow success.
 
 **Warming cannot prevent it** — it is an error path, not a cache miss. Attack it with instrumentation: record type, whether the request was cold, how many requests were in flight, and the failure body, then correlate. Note that `fetch-gate.js` uses `retries = 0` and `TIMEOUT_MS = 30000`, so a 21 s failure lands inside the ceiling, is not timed out, and surfaces as a module-level "Error loading data".
+
+**One of its conditions was removed on Sept 26, 2026.** The app used to fire three of its five module
+fetches within 800 ms of each other — three concurrent cold builds against one spreadsheet, which is
+exactly the hammering the comments name as the trigger. `?action=bundle` answers all five in one
+execution instead, so that burst no longer happens. The 404 itself is untouched and still open: this
+narrows when it can occur, and does not fix it.
 
 ---
 

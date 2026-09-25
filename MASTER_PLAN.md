@@ -89,6 +89,21 @@ successful build stores nothing, a failed one always does, and a slow one is wri
 no read at all — the measurement lives in the trigger that was already running rather than
 in the request an operator is waiting on.
 
+### SCN-019: The wait is attributed to the module, on the device that felt it
+Outcome: An admin can open one screen and see, per module, how long THIS device waited, how much
+of that the origin spent and how much the phone and its network added, how many attempts each call
+took, and what failed — measured by the calls the app was already making, held in memory, sent
+nowhere. A missing measurement is reported as missing rather than drawn as zero, and opening the
+screen costs no request and starts no timer.
+
+### SCN-018: The app shows data without paying for it five times, and never lands in a cold window
+Outcome: The opening is one request that answers every module the server already has warm and
+names the ones it does not, so no tab's first visit costs a round trip of its own. The warm
+TTL outlives the cadence it sits under, so no cycle contains a moment with no cache entry and
+a request cannot land on a full build by timing. A payload a module would refuse is refused
+rather than stored, and if the route is not there the app loads exactly as it did before it
+existed — which is what makes the deploy order irrelevant.
+
 ## Phase 1: OLT zero state
 
 - [x] Part 1: Read `plans/PART1_PLAN.ai.md`
@@ -230,7 +245,7 @@ path — this phase is a `.gs` paste plus one manual `setupAllTriggers()`.
   - Evidence: PART-020 in `PLAN_EVIDENCE.md` — **262 tests across 16 suites** (3 new, 259 →
     262), **5/5 mutations caught, 0 missed, 0 unproven**
 
-## Phase 7: module diagnostics, server side only — PLANNED
+## Phase 7: module diagnostics, server side only — BUILT, NOT PASTED
 
 **Why this phase exists.** The ask was *"dagdagan ng function ang admin module na kaya nitong
 idetect ang module na nagca-cause ng pag bagal"*. The facts already exist and nothing can read
@@ -254,14 +269,120 @@ from the warm pass, which runs in its own trigger execution.
 **What this phase does NOT do:** it does not fix the **21 s origin 404**, and it does not make
 any module faster. It makes the next report attributable.
 
-- [ ] Part 14: Read `plans/PART14_PLAN.ai.md`
+- [x] Part 14: Read `plans/PART14_PLAN.ai.md`
   - Scenario: SCN-016, SCN-017
   - Outcome: An admin-gated read-only `?action=diag` naming the sheet, stage, revision,
     elapsed time and cache state per module; a failure recorded whenever a build cannot run;
     a slow build recorded with no read on the hot path; and the warm pass keeping the
     per-type build times it already computes — all of it in one `.gs` paste, with no version
     bump, no client byte, no new trigger and no new query parameter
-  - Evidence: PLAN_EVIDENCE.md#PART-021
+  - Evidence: PART-021 in `PLAN_EVIDENCE.md` — **336 tests across 19 suites** (74 new,
+    262 → 336 for this part together with Part 15), **51/51 mutations caught** across both,
+    and the gate **run on the live project THREE TIMES**: reads of 25 ms, 35 ms and 30 ms,
+    writes of 51, 53 and 54 ms, and a whole-store read at **1.9%**, then **2.7%**, then
+    **2.9%** of a cold build — which is the premise, confirmed with room. The first verdict
+    printed NO-GO anyway, on absolute thresholds one of which failed by a millisecond; runs 2
+    and 3 moved every number by up to 40% and would have failed those same thresholds again,
+    which is what settled it. The verdict is now the share of a build, pinned to all three live
+    readings by a test, and `DIAG_REQUEST_HOOKS_ENABLED` ships **true** — and run 3's own last
+    line (`→ nothing to do`) proves the deployed `diagnostics.gs` carries that constant. The two
+    hook CALL SITES live in `code.gs`, which the measurement cannot see; the `code.gs` paste and
+    a `?action=diag` read are what settle those
+
+**The gate is part of the deliverable, not a formality.** This part's whole cost model rests
+on "a property read is a fraction of a build", which was a hypothesis until `measurePropertyCost()`
+said otherwise. So the instrument ships with the feature, and the verdict is a pure function with its
+own tests (a whole-store read that is NOT a fraction is a NO-GO; the verdict is taken on the
+pessimistic bound; no samples at all is not a pass; the GO message does not tell an operator to do
+what the file already does). The two request-path hooks shipped **off** until it passed. The pass
+record and the report are not gated, because neither of them runs on a request.
+
+**And the runs corrected the instrument rather than the design — and once, corrected the record of
+what was measured.** The live store answered 25/25/51 ms — 1.9% of a cold build, so the premise holds
+— and the verdict said NO-GO on thresholds that were absolute numbers nobody had measured against,
+one of them by a single millisecond. Nine minutes later it answered 35/35/53 ms — 2.7% — and fifteen
+minutes after that 30/38/54 ms — 2.9% — so those thresholds would have failed three times, by
+different amounts, which is what a mis-set limit does and what a slow store does not. The third run
+also broke a claim already written down: the whole-store read was **dearer** than a single-key one
+(38 vs 30 ms, worst 102 vs 77), where the first two runs had them level. The note was corrected
+rather than quietly edited. The verdict is now the share, which is the claim; the write keeps a
+backstop because a write happens on a rare path rather than per read; all three live readings are
+pinned by a test; and the ceiling is 5% rather than 3% so that it clears the worst of them by about
+**1.7x** — enough that crossing it means the store changed.
+
+**A silent-lie shape that was closed by construction.** The slow-build hook sits inside `doGet`,
+so a suite that loads `code.gs` without `diagnostics.gs` exercises a hook that is inert and stays
+green about it. Both call sites therefore check the function exists and log loudly when it does
+not — and `tests/diagnostics.test.js` asserts that all five suites which run a build load the
+file, because a convention is not enough for the failure that no test can see.
+
+**The second half of this phase, and why the first half was not enough.** `?action=diag` could say
+which module failed on which sheet at which stage, and it could not say what the operator waited.
+Those are different questions with different fixes: a build that takes 3 s on the origin and 9 s on
+a phone is not a slow module, it is a slow phone or a bad cell, and no server-side report can tell
+them apart. So the edge's own timings — `x-netpulse-origin-ms` and `x-netpulse-attempts`, set by
+the Cloudflare worker on every response and read by nothing until now — are recorded alongside this
+device's wall clock, and the difference between the two is drawn per module.
+
+**The constraint that shaped the card, not a caveat about it.** The proxy is OFF (`NETPULSE_PROXY`,
+2026-09-15), so those headers are absent on every live call. Every sample therefore keeps `originMs`
+as **null** when the edge did not say, the card counts how many samples had edge timing, and it says
+in words that the edge numbers are unavailable. A missing origin time rendered as `0ms` would be the
+silliest lie in this app's history and it is one `|| 0` away — there is a test whose whole job is
+that coercion.
+
+**Also recorded, not fixed:** `sw.js` still carries `API_PROXY_HOST = 'holy-cloud-1d7a...'` while
+`index.html`'s `NETPULSE_PROXY` is blank, and both files' own comments say the pair must move
+together. Leaving it set is the safe side of that drift — it is inert while the proxy is off, and
+removing it while a human re-enables `NETPULSE_PROXY` is the direction that hands a wall display a
+cached outage.
+
+## Phase 7b: what the device waited — BUILT, NOT PASTED
+
+- [x] Part 16: Read `plans/PART16_PLAN.ai.md`
+  - Scenario: SCN-019
+  - Outcome: `diag-store.js` records one bounded, in-memory sample per API call from the single
+    function every call already passes through; the admin screen draws a Module Health table of
+    wait p50/p95/worst, the origin's own median, the per-call overhead, retries, failures and the
+    last error; absent edge timing is named rather than drawn as 0; and the recording is guarded on
+    both sides of the request path so a diagnostics fault cannot spend a retry or fail a call
+  - Evidence: PART-023 in `PLAN_EVIDENCE.md` — **384 tests across 20 suites** (48 new, 336 →
+    384), **38/38 mutations caught**, the card **looked at in a browser** as well as drawn in a
+    test (which is how a ten-column table was caught hiding three of its columns behind a
+    scroll), and the release label moved to **3.9.22** with the guard untouched at 3.10.0
+
+## Phase 8: the opening, and the cold window — BUILT, NOT PASTED
+
+**Why this phase exists.** The operator reported the app being slow to show anything, LCP/NAP/
+BACKBONE most often. Two causes, both arithmetic rather than mystery:
+
+  - the warm pass writes a **180 s** entry on a **300 s** cadence, which leaves **120 s of every
+    cycle with no entry at all** — 40% of the time, all five modules cold, and a request that
+    lands there pays a full build instead of a hit. That was PART-012's deliberate trade, argued
+    in the file, taken while the four secondary build times were still unmeasured;
+  - the opening fetched ONE module on load and each of the others on its first tab click, so a
+    session glancing at three tabs spent four round trips — each paying the ~1.1-1.5 s floor in
+    full — to move **5,503 bytes** in total.
+
+**The finding that chose the fix.** `prefetchOtherTabsInBackground()` — the sweep the warmer's
+own comments still credit with covering the four secondary modules — **is dead code**: defined at
+`index.html:1250`, called from nowhere. Its 5 s timer was also the only caller of the daily
+snapshot writer, so that had stopped running without anything saying so.
+
+**What is NOT done here.** The **21 s origin 404** is untouched (an error path; the bundle only
+removes one of the conditions that trigger it), and the **60 s `cacheTtl`** a client-built
+`node`/`olt`/`backbone` entry gets is left alone — it only matters once the warmer is dead.
+
+- [x] Part 15: Read `plans/PART15_PLAN.ai.md`
+  - Scenario: SCN-018, and SCN-014 (the wait a warm entry removes)
+  - Outcome: The two warm TTLs (180 → 330) outlive the interval they sit under, with the
+    arithmetic asserted in two suites instead of argued in a comment; `?action=bundle` answers
+    all five modules in one read-only execution; `boot-bundle.js` hydrates them and falls back
+    to the previous path on every failure; the release label moves with the bytes and the guard
+    does not
+  - Evidence: PART-022 in `PLAN_EVIDENCE.md` — **336 tests across 19 suites**, 51 mutations
+    across Parts 14 and 15, and the hand-off still owed: two pastes and one push (the gate is
+    closed — GO on two live runs, so the request-path hooks now ship enabled)
 
 ## Notes
 
