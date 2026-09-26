@@ -599,8 +599,10 @@ problem-only by construction.
     no TOTAL line of zeros, and the release label moves with the precached module files
   - Evidence: PART-028 in `PLAN_EVIDENCE.md` — 15 new cases in `tests/zero-total-rows.test.js`,
     6 mutations all caught, and the four tables driven in a real browser (including the handset-width
-    card view). **Still owed:** the `code.gs` range change is uncommitted and leaves one
-    `tests/cache-warmer.test.js` case red until its fake sheet moves to the new columns
+    card view). The `code.gs` ranges themselves are committed as `69fde49`, with the cache-warmer
+    fixture that had to move with them; that suite's check now parses each band's payload, so a
+    band that reads nothing fails instead of warming an empty payload that still looks cacheable.
+    **Nothing owed on the client** — but that commit is unpushed
 
 ## Notes
 

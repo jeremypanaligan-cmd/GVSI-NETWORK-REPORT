@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.27 is committed and waiting on your push** (the zero-total rows, below), following **3.9.26** (the Module Health header alignment) and 3.9.25, which carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **⚠️ one suite is red on disk right now: the new NAP/LCP sheet ranges in `code.gs` are uncommitted, and `tests/cache-warmer.test.js` still fakes the old columns — see the P1 immediately below** · **the server half is still owed, and all of it is pastes** — see the item after that · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.27 is committed and waiting on your push** (the zero-total rows, below), following **3.9.26** (the Module Health header alignment) and 3.9.25, which carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **⚠️ one commit is unpushed: the NAP/LCP sheet ranges moved to columns A–F, and the cache-warmer fixture moved with them — see the item immediately below** · **the server half is still owed, and all of it is pastes** — see the item after that · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -810,28 +810,37 @@ card, and the numbers could not be attributed one at a time.
 
 ---
 
-## 🔴 P1 — The new NAP/LCP sheet ranges are on disk only, and one suite is red because of it (Sept 26, 2026)
+## 🟢 P2 — The NAP/LCP bands moved to columns A–F, and the fixture moved with them — done, unpushed (Sept 26, 2026)
 
 `code.gs` in the working tree was changed to read **NAP `A2:F19`**, **LCP aging `A24:F39`**, **LCP
 impact `A2:F18`** — from `H2:M19`, `G24:L39` and `G2:K18`. The new Apps Script version is **already
 deployed**, so the live server and the repo now disagree, and the change has never been committed.
 
-**The consequence, measured.** `node tests/cache-warmer.test.js` →
+**The consequence, measured at the time.** `node tests/cache-warmer.test.js` →
 *“the pass writes the key an HTTP caller reads, for every type”* fails with *“cache_v2_nap holds
-nothing that can be served”*. Its fake sheet puts the NAP row in columns H–M (`tests/cache-warmer.test.js`
-line ~111) and the two LCP blocks in column G, and the new ranges never read those columns — so the
+nothing that can be served”*. Its fake sheet put the NAP row in columns H–M
+(`tests/cache-warmer.test.js`, the fixture at line ~119) and the two LCP blocks in column G, and the
+new ranges never read those columns — so the
 warm pass builds an empty payload. **23 suites: 1 failed, and that one is this.** Every other suite
 is green, including the new one from 3.9.27.
 
-**Do not fix it by editing `code.gs` back.** The ranges are the truth; the fixture is what is stale.
-These have to land in one commit:
+**Do not fix it by editing `code.gs` back.** The ranges are the truth; the fixture was what was
+stale. The fixture half is **done and green**, uncommitted, waiting on the `code.gs` commit:
 
-- [ ] Commit the `code.gs` range change (your bytes — nobody else should be committing them).
-- [ ] In `tests/cache-warmer.test.js`, move the fake NAP row from H–M to **A–F** (columns 0–5), and
-      the LCP impact row from G–K to **A–E** at the same row, and the LCP aging row from G–L to
-      **A–F** on row 24 (LCP aging gets row 24; NAP and LCP impact get row 3, since both loops skip
-      their band's first row as a header).
-- [ ] Re-run `node tests/cache-warmer.test.js`, then the full loop over `tests/*.test.js`.
+- [x] `tests/cache-warmer.test.js`: the fake NAP row moved from H–M to **A–F** on sheet row 3, the
+      LCP impact row from G–K to **A–E** on sheet row 3, the LCP aging row from G–L to **A–F** on
+      sheet row 24 — the rows the two loops actually read (both skip their band's first row as a
+      header; LCP aging reads its band from the first row).
+- [x] The suite now **parses what the warm pass actually wrote**, per band: `cache_v2_nap` must be a
+      non-empty list, and `lcpAging` *and* `lcpImpact` each non-empty. The old length check could not
+      see it — a payload of `{"lcpAging":[],"lcpImpact":[]}` is thirty-odd characters, so it passed
+      the assertion and every test behind it while the LCP bands read nothing at all.
+- [x] 4 mutations caught: NAP back on H–M, impact back on G–K, aging back on G–L, and the impact
+      row moved onto the band's header row. **23 suites, 0 failed.**
+- [x] Committed **together** as `69fde49` — the ranges and the fixture cannot be split, because a
+      test-only commit would leave the committed `code.gs` reading `H2:M19` / `G24:L39` / `G2:K18`
+      while the fixture expected the new columns, i.e. HEAD red.
+- [ ] Push it: the repo is **one commit ahead of `origin/main`**.
 
 **Related.** The client half of the same change shipped as 3.9.27 (the item directly above) and does
 not depend on this one landing first: the filter works against the currently deployed server already.

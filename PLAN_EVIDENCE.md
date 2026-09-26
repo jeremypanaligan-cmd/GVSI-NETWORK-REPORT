@@ -1690,7 +1690,12 @@ changed.
 
 **Release.** 3.9.26 → **3.9.27**; the guard stays frozen at 3.10.0.
 
-**Still owed, and it is not this release.** The `code.gs` range change is on disk only, and it leaves
-`tests/cache-warmer.test.js` red on one case: its fake sheet still puts the NAP row in columns H–M,
-so the new range builds an empty payload. That fixture has to move in the same commit as the ranges.
-See P1 in `TODO.md`.
+**And the ranges that started it.** They now live in the repo, not just on the deployed server:
+committed as `69fde49` with the cache-warmer fixture that had to move with them (NAP row to **A–F**
+on sheet row 3, LCP impact to **A–E** on row 3, LCP aging to **A–F** on row 24 — the rows the two
+loops actually read). The suite had been red on one case because a fixture left on the old columns
+builds an EMPTY payload, and the old `length > 2` check could not see it — an empty LCP payload is
+thirty-odd characters, so it passed the assertion and every test behind it. The
+assertion now parses what the warm pass wrote, **per band**, and four mutations are caught — NAP back
+on H–M, impact back on G–K, aging back on G–L, and the impact row moved onto its band's header row.
+**23 suites, 0 failed.**
