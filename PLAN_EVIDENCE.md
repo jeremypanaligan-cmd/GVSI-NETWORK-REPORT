@@ -1637,3 +1637,60 @@ browser's default header alignment is a thing people remember wrongly.
 unversioned entry, so the label moved in the same commit as the bytes. 22 suites, 0 failed.
 
 **Still owed.** The server-side pastes listed under PART-024. Nothing here depends on them.
+
+### PART-028 — a row that reports nothing (2026-09-26)
+
+**What was asked.** The NAP and LCP bands in `code.gs` were widened — NAP `H2:M19` → **`A2:F19`**,
+LCP aging `G24:L39` → **`A24:F39`**, LCP impact `G2:K18` → **`A2:F18`** — a new Apps Script version
+was deployed, and the follow-up was: *“ang magiging adjustment sa site ay dapat hindi ilalabas ng
+nap at lcp module ang 0 ang total sa bawat table.”*
+
+**Why the zeros appear at all.** Both bands are fixed row ranges, and `code.gs` drops a row only when
+its AREA cell is blank. An area with nothing pending is not blank, so it arrives as `0/0/0/0` and the
+table drew it — a line of zeros under AREA / PROVINCE that reads as a count rather than as nothing to
+report. The widened bands add a second source: a label row inside the band (“AREA”, “<24HOURS”, …)
+has a non-blank AREA cell too, so the server keeps it, and every numeric cell of it parses to zero.
+
+**What shipped.** Three render paths filter, not two: NAP aging (`nap-module.js`), LCP aging and LCP
+impact (`lcp-module.js`). The impact table has no TOTAL column, so a row is judged on TT, LCP and
+Clients together — a client count that is still unknown must not hide a ticket line that has one.
+
+**The guard is the computed total, never `row.T`.** Both modules already read the total as
+`parseInt(row.T || (h24 + d13 + d3))`, so a zero or blank TOTAL cell is replaced by the sum of the
+components above it. Filtering on `row.T` would delete rows that carry real 24-hour counts on exactly
+the days that cell is missing — one browser case and one test case pin that.
+
+**When nothing is left.** `No Pending NAP Ticket.` / `No Pending LCP Ticket.`, and the TOTAL line is
+NOT drawn: every figure under it would be zero, which is the fact being reported. The line is a
+`<tr>` carrying the class `table-empty-row` (new rule in `styles.css`, next to `.healthy-olt-empty`)
+rather than an inline style — the OLT empty state was refactored off a bare inline-styled `<td>` for
+the same reason. The selector is qualified as `.data-table td.table-empty-row` because the card view
+at 340 px widens `.data-table td` (right-aligned, flexed) and a bare class would lose to it.
+
+**The keep rule of PART-025 still holds over it.** The empty state is a drawn screen, so
+`napHasDrawn` is set and a refresh that fails afterwards leaves it alone; a first read that fails
+still says `Error loading data.`, which is a different fact from a read that answered with nothing.
+
+**Where the boundaries were drawn.** No server-side filter — `code.gs` was left exactly as handed
+over, since the request was for the site — and no change to OLT, BACKBONE or NODE, which are
+problem-only by construction.
+
+**Verified in a real browser** (fresh origin, `styles.css?v=3.9.27`): four NAP rows in, three rows
+out — the zero row and the label row both dropped, cards `6/1/1/8` — and both LCP tables at 2 rows
+with `lcpCardClients 40`. Then the all-zero payloads: one row each, `No Pending NAP Ticket.` /
+`No Pending LCP Ticket.`, `colspan` 6 / 6 / 5, no TOTAL line, and — under a handset-width cascade
+(the desktop `guardCardView()` override removed, as a phone never injects it) — `display:flex`,
+`justify-content:center`, `text-align:center`, and an empty `::before`, exactly as the CSS comment
+predicts.
+
+**Test.** New suite `tests/zero-total-rows.test.js`, 15 cases. Six mutations, all caught: the NAP
+skip guard removed, the guard shortened to `row.T !== 0`, the empty state made unreachable, the LCP
+impact guard reduced to `clients !== 0`, the LCP aging guard removed, and the empty-state copy
+changed.
+
+**Release.** 3.9.26 → **3.9.27**; the guard stays frozen at 3.10.0.
+
+**Still owed, and it is not this release.** The `code.gs` range change is on disk only, and it leaves
+`tests/cache-warmer.test.js` red on one case: its fake sheet still puts the NAP row in columns H–M,
+so the new range builds an empty payload. That fixture has to move in the same commit as the ranges.
+See P1 in `TODO.md`.

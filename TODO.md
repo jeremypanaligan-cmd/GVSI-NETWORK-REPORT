@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.26 is pushed** (the Module Health header alignment, below), following 3.9.25, which carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **the server half is still owed, and all of it is pastes** — see P1 · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.27 is committed and waiting on your push** (the zero-total rows, below), following **3.9.26** (the Module Health header alignment) and 3.9.25, which carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **⚠️ one suite is red on disk right now: the new NAP/LCP sheet ranges in `code.gs` are uncommitted, and `tests/cache-warmer.test.js` still fakes the old columns — see the P1 immediately below** · **the server half is still owed, and all of it is pastes** — see the item after that · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -807,6 +807,69 @@ card, and the numbers could not be attributed one at a time.
   `Module` right-aligned over left-aligned names).
 
 **Full write-up:** PART-027 in `PLAN_EVIDENCE.md`.
+
+---
+
+## 🔴 P1 — The new NAP/LCP sheet ranges are on disk only, and one suite is red because of it (Sept 26, 2026)
+
+`code.gs` in the working tree was changed to read **NAP `A2:F19`**, **LCP aging `A24:F39`**, **LCP
+impact `A2:F18`** — from `H2:M19`, `G24:L39` and `G2:K18`. The new Apps Script version is **already
+deployed**, so the live server and the repo now disagree, and the change has never been committed.
+
+**The consequence, measured.** `node tests/cache-warmer.test.js` →
+*“the pass writes the key an HTTP caller reads, for every type”* fails with *“cache_v2_nap holds
+nothing that can be served”*. Its fake sheet puts the NAP row in columns H–M (`tests/cache-warmer.test.js`
+line ~111) and the two LCP blocks in column G, and the new ranges never read those columns — so the
+warm pass builds an empty payload. **23 suites: 1 failed, and that one is this.** Every other suite
+is green, including the new one from 3.9.27.
+
+**Do not fix it by editing `code.gs` back.** The ranges are the truth; the fixture is what is stale.
+These have to land in one commit:
+
+- [ ] Commit the `code.gs` range change (your bytes — nobody else should be committing them).
+- [ ] In `tests/cache-warmer.test.js`, move the fake NAP row from H–M to **A–F** (columns 0–5), and
+      the LCP impact row from G–K to **A–E** at the same row, and the LCP aging row from G–L to
+      **A–F** on row 24 (LCP aging gets row 24; NAP and LCP impact get row 3, since both loops skip
+      their band's first row as a header).
+- [ ] Re-run `node tests/cache-warmer.test.js`, then the full loop over `tests/*.test.js`.
+
+**Related.** The client half of the same change shipped as 3.9.27 (the item directly above) and does
+not depend on this one landing first: the filter works against the currently deployed server already.
+
+---
+
+## 🟢 P2 — A row of zeros is not a row of the report — SHIPPED in 3.9.27 (Sept 26, 2026)
+
+**Asked directly.** The NAP and LCP sheet ranges in `code.gs` were widened and a new Apps Script
+version deployed, with the follow-up: *“ang magiging adjustment sa site ay dapat hindi ilalabas ng
+nap at lcp module ang 0 ang total sa bawat table.”*
+
+**Why the zeros were there.** The bands are fixed row ranges, and the server drops a row only when
+its AREA cell is blank. An area with nothing pending is not blank — it arrives as `0/0/0/0` — so the
+table drew a line of zeros under AREA / PROVINCE that reads as a count instead of as nothing to
+report. The widened bands add a second source: a label row inside the band is kept by the same
+non-blank rule, and all of its numeric cells parse to zero.
+
+- **Three tables filter, not two:** NAP aging, LCP aging, and LCP impact — which has no TOTAL column,
+  so its rows are judged on TT, LCP and Clients together, and a still-unknown client count cannot hide
+  a ticket line that has one.
+- **When nothing is left it is said in words:** `No Pending NAP Ticket.` / `No Pending LCP Ticket.`,
+  with **no TOTAL line** — every figure under it would be zero, which is the fact being reported.
+  That line is a `table-empty-row` class now (`styles.css`), muted and centred, not an inline style.
+- **The guard is the computed total, never `row.T`** — both modules already fall back to the sum of the
+  components when the sheet's TOTAL cell is zero or blank, and a `row.T !== 0` guard would silently
+  delete rows that carry real 24-hour counts on exactly those days.
+- **`code.gs` was not touched** and no server-side filter was added; the ask was for the site. OLT,
+  BACKBONE and NODE were left alone — they are problem-only by construction.
+- **The keep rule still holds over it:** the empty state is a drawn screen, so a refresh that fails
+  after it leaves it alone, and a *first* read that fails still says `Error loading data.`
+- 15 new cases in `tests/zero-total-rows.test.js`; 6 mutations all caught (guard removed, guard cut to
+  `row.T`, empty state made unreachable, impact judged on Clients alone, aging guard removed, copy
+  changed); driven in a real browser on a fresh origin — 4 rows in / 3 rows out with cards `6/1/1/8`,
+  then the empty states at `colspan` 6/6/5, centred and muted even in the handset card view.
+
+**Full write-up:** PART-028 in `PLAN_EVIDENCE.md`. **Not part of this release:** the server-side row
+filter and the `code.gs` ranges themselves — the client filter already handles the deployed server.
 
 ---
 

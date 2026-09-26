@@ -89,6 +89,15 @@ successful build stores nothing, a failed one always does, and a slow one is wri
 no read at all — the measurement lives in the trigger that was already running rather than
 in the request an operator is waiting on.
 
+### SCN-024: A table does not list a row that has nothing to report
+Outcome: NAP's aging table and both LCP tables drop any row whose figures are all zero — the fixed
+sheet bands hand an area with nothing pending back as 0/0/0/0 — and when that leaves nothing they say
+*No Pending NAP Ticket.* / *No Pending LCP Ticket.* instead of drawing a TOTAL line whose every figure
+would be zero. The rule judges the computed total rather than the sheet's own TOTAL cell, so a row
+that carries counts is still listed on the days that cell is blank, and the label rows the widened
+bands can surface go with the zeros. Because the empty state is something the tab has drawn, a later
+failed refresh keeps it.
+
 ### SCN-023: A column's header reads the way its own data reads
 Outcome: The Module Health card's header row no longer sits at the opposite end of each column from
 the numbers under it, so a value cannot be attributed to the wrong module. The label and its data
@@ -561,6 +570,37 @@ than assumed.
   - Evidence: PART-027 in `PLAN_EVIDENCE.md` — the card drawn in a real browser and measured
     column by column, **22 suites 0 failed**, 3 mutations caught, and the hand-off still owed:
     the server-side pastes (this part changes no server byte)
+
+## Phase 13: a row that reports nothing — SHIPPED in 3.9.27
+
+**Why this phase exists.** The NAP and LCP bands in `code.gs` are fixed row ranges — NAP `A2:F19`,
+LCP aging `A24:F39`, LCP impact `A2:F18` — and the server drops a row only when its AREA cell is
+blank. An area with nothing pending is not blank, so it arrived as 0/0/0/0 and was drawn as a line of
+zeros under AREA / PROVINCE, which reads as a count instead of as nothing to report.
+
+**What shipped.** The filter runs on the client, in the three render paths that draw these tables:
+NAP aging, LCP aging, LCP impact. A row of zeros is not drawn, a row that carries counts is, and when
+nothing survives the tables say `No Pending NAP Ticket.` / `No Pending LCP Ticket.` with no TOTAL line
+under them. The new `table-empty-row` rule in `styles.css` gives those lines the muted, centred
+reading the OLT empty state already has.
+
+**The load-bearing detail.** The guard is the COMPUTED total, never `row.T`: both modules replace a
+zero or blank TOTAL cell with the sum of the components, so a shorter guard would silently delete real
+rows on the days that cell is missing.
+
+**What was deliberately NOT done.** No server-side filter — `code.gs` was left as handed over, since
+the adjustment was asked for on the site — and nothing outside NAP and LCP, whose tables are
+problem-only by construction.
+
+- [x] Part 21: the filter, the empty state, and the fixture debt it exposes
+  - Scenario: SCN-024, and SCN-021 (the keep rule the empty state inherits)
+  - Outcome: a zero-total row is not drawn in NAP's aging table or in either LCP table, a row that
+    carries counts is never dropped by a missing TOTAL cell, the empty tables say so in words with
+    no TOTAL line of zeros, and the release label moves with the precached module files
+  - Evidence: PART-028 in `PLAN_EVIDENCE.md` — 15 new cases in `tests/zero-total-rows.test.js`,
+    6 mutations all caught, and the four tables driven in a real browser (including the handset-width
+    card view). **Still owed:** the `code.gs` range change is uncommitted and leaves one
+    `tests/cache-warmer.test.js` case red until its fake sheet moves to the new columns
 
 ## Notes
 
