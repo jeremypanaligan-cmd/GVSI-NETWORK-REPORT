@@ -56,6 +56,10 @@ function renderNapReport(data) {
   let tableHtml = '';
 
   let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
+  /* How many rows this draw actually put on the table. It decides the TOTAL line below: a
+     TOTAL of zeros over no rows is not a summary, it is a line of zeros a reader will take
+     for a count. */
+  let drawnRows = 0;
 
   data.forEach(row => {
     const area = typeof sanitizeHTML === 'function' ? sanitizeHTML(row.A || row.AREA || row.Area || '') : (row.A || row.AREA || row.Area || '');
@@ -67,7 +71,16 @@ function renderNapReport(data) {
     const d3 = parseInt(row.D3 || row['>3DAYS'] || 0) || 0;
     const rowTotal = parseInt(row.T || row.TOTAL || (h24 + d13 + d3)) || 0;
 
-    if (area.toString().trim().toUpperCase() !== 'TOTAL') {
+    /* A row whose figures are ALL zero is not a row of this report. The sheet band behind it
+       is fixed (code.gs reads A2:F19), so every area row arrives whether or not anything is
+       pending on it — an area with nothing on it simply reads back 0/0/0/0, and drawing that
+       put a line of zeros under AREA/PROVINCE that reads like a count instead of a blank.
+
+       The guard is on the COMPUTED rowTotal, never on row.T: a zero or blank TOTAL cell is
+       already replaced above by the sum of the components, so a row left blank there while
+       still carrying 24-hour counts stays a row of this report. */
+    if (area.toString().trim().toUpperCase() !== 'TOTAL' && rowTotal !== 0) {
+      drawnRows++;
       total24 += h24;
       total13 += d13;
       total3 += d3;
@@ -84,13 +97,20 @@ function renderNapReport(data) {
     }
   });
 
-  tableHtml += `<tr class="total-row">
-    <td colspan="2">TOTAL</td>
-    <td style="text-align: center;">${total24}</td>
-    <td style="text-align: center;">${total13}</td>
-    <td style="text-align: center;">${total3}</td>
-    <td style="text-align: center;">${grandTotal}</td>
-  </tr>`;
+  if (drawnRows === 0) {
+    /* Every row was a row of zeros, so there is nothing to report — and that is worth saying
+       in words rather than leaving an empty table. The TOTAL line is no substitute for it:
+       every figure under it would be zero anyway. */
+    tableHtml = '<tr><td colspan="6" class="table-empty-row">No Pending NAP Ticket.</td></tr>';
+  } else {
+    tableHtml += `<tr class="total-row">
+      <td colspan="2">TOTAL</td>
+      <td style="text-align: center;">${total24}</td>
+      <td style="text-align: center;">${total13}</td>
+      <td style="text-align: center;">${total3}</td>
+      <td style="text-align: center;">${grandTotal}</td>
+    </tr>`;
+  }
 
   tbody.innerHTML = tableHtml;
   napHasDrawn = true;

@@ -3450,6 +3450,22 @@ body:not(.dark-mode) .ticker-separator {
 .healthy-olt-pageof { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .healthy-olt-pagination .filter-btn:disabled { opacity: .45; cursor: not-allowed; }
 .healthy-olt-empty { text-align: center; color: var(--text-muted); padding: 18px 0; }
+/* The "nothing to report" line of the NAP and LCP tables (nap-module.js / lcp-module.js),
+   drawn when every row of the payload was a row of zeros. It is a class rather than an inline
+   style on purpose — the OLT tab's empty state was refactored away from a bare inline-styled
+   <td> for the same reason — and these two tables should read alike when both are empty.
+
+   The selector is qualified with the table because the card view at 340px widens
+   `.data-table td` (right-aligned, flexed) and a bare class would lose to it. `justify-content`
+   only takes effect in that view; here it is inert. The row carries no data-label, so
+   `td::before { content: attr(data-label) }` has nothing to emit. */
+.data-table td.table-empty-row {
+  text-align: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 18px 0;
+  font-size: 14px;
+}
 .healthy-olt-error { color: var(--badge-red-text) !important; margin: 14px 0 !important; }
 /* Without this the panel would be the one flat, opaque card in a screen of blurred
    ones. Same treatment as body.dark-mode .table-card. */

@@ -34,6 +34,8 @@ function renderLcpReport(agingData, impactData) {
   let agingHtml = '';
 
   let total24 = 0, total13 = 0, total3 = 0, grandTotal = 0;
+  // How many rows this draw actually put on the table; it decides the TOTAL line below.
+  let agingRows = 0;
 
   agingData.forEach(row => {
     const area = typeof sanitizeHTML === 'function' ? sanitizeHTML(row.A || row.AREA || '') : (row.A || row.AREA || '');
@@ -45,7 +47,13 @@ function renderLcpReport(agingData, impactData) {
     const d3 = parseInt(row.D3 || row['>3DAYS'] || 0) || 0;
     const rowTotal = parseInt(row.T || row.TOTAL || (h24 + d13 + d3)) || 0;
 
-    if (area.toString().trim().toUpperCase() !== 'TOTAL') {
+    /* A row whose figures are ALL zero is not a row of this report — see nap-module.js for the
+       full reasoning. The sheet band behind this table is fixed, so every area row arrives
+       whether or not anything is pending on it, and one with nothing on it reads back
+       0/0/0/0. Guarded on the COMPUTED total, so a row whose TOTAL cell is blank or zero
+       while it still carries counts is kept. */
+    if (area.toString().trim().toUpperCase() !== 'TOTAL' && rowTotal !== 0) {
+      agingRows++;
       total24 += h24;
       total13 += d13;
       total3 += d3;
@@ -62,13 +70,19 @@ function renderLcpReport(agingData, impactData) {
     }
   });
 
-  agingHtml += `<tr class="total-row">
-    <td colspan="2">TOTAL</td>
-    <td style="text-align: center;">${total24}</td>
-    <td style="text-align: center;">${total13}</td>
-    <td style="text-align: center;">${total3}</td>
-    <td style="text-align: center;">${grandTotal}</td>
-  </tr>`;
+  if (agingRows === 0) {
+    /* Nothing to report, and that deserves words rather than an empty table. The TOTAL line
+       is no substitute for it: every figure under it would be zero anyway. */
+    agingHtml = '<tr><td colspan="6" class="table-empty-row">No Pending LCP Ticket.</td></tr>';
+  } else {
+    agingHtml += `<tr class="total-row">
+      <td colspan="2">TOTAL</td>
+      <td style="text-align: center;">${total24}</td>
+      <td style="text-align: center;">${total13}</td>
+      <td style="text-align: center;">${total3}</td>
+      <td style="text-align: center;">${grandTotal}</td>
+    </tr>`;
+  }
   agingBody.innerHTML = agingHtml;
 
   if (document.getElementById('lcpCard24')) document.getElementById('lcpCard24').textContent = total24;
@@ -80,6 +94,8 @@ function renderLcpReport(agingData, impactData) {
   let impactHtml = '';
 
   let totalTT = 0, totalLCP = 0, totalClients = 0;
+  // Same rule as the aging table above: a row of zeros is not a row of this report.
+  let impactRows = 0;
 
   impactData.forEach(row => {
     const area = row.A || row.AREA || '';
@@ -90,7 +106,11 @@ function renderLcpReport(agingData, impactData) {
     const lcpCount = parseInt(row.LCP || row['LCP COUNT'] || 0) || 0;
     const clients = parseInt(row.C || row.CLIENTS || 0) || 0;
 
-    if (area.toString().trim().toUpperCase() !== 'TOTAL') {
+    /* This table has no TOTAL column to test, so a row is judged by everything it shows: TT,
+       LCP and CLIENTS all zero means the row reports nothing at all. */
+    if (area.toString().trim().toUpperCase() !== 'TOTAL'
+        && (ttCount !== 0 || lcpCount !== 0 || clients !== 0)) {
+      impactRows++;
       totalTT += ttCount;
       totalLCP += lcpCount;
       totalClients += clients;
@@ -109,7 +129,11 @@ function renderLcpReport(agingData, impactData) {
   if (document.getElementById('lcpCardTT')) document.getElementById('lcpCardTT').textContent = totalTT;
   if (document.getElementById('lcpCardLCP')) document.getElementById('lcpCardLCP').textContent = totalLCP;
 
-  if (impactData.length > 0) {
+  if (impactRows === 0) {
+    /* Same empty state as the aging table, for the same reason. This replaced a check on the
+       payload's length: what decides it is the number of rows that survived the filter. */
+    impactHtml = '<tr><td colspan="5" class="table-empty-row">No Pending LCP Ticket.</td></tr>';
+  } else {
     impactHtml += `<tr class="total-row">
       <td colspan="2">TOTAL</td>
       <td style="text-align: center;">${totalTT}</td>
