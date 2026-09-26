@@ -338,7 +338,7 @@ if (type === "backbone") {
     if (!lcpSheet) {
       resultData = { lcpAging: [], lcpImpact: [] };
     } else {
-      var agingRaw = lcpSheet.getRange("G24:L39").getValues();
+      var agingRaw = lcpSheet.getRange("A24:F39").getValues();
       var lcpAging = [];
       for (var i = 0; i < agingRaw.length; i++) {
         var rowA = agingRaw[i];
@@ -355,7 +355,7 @@ if (type === "backbone") {
         }
       }
 
-      var impactRaw = lcpSheet.getRange("G2:K18").getValues();
+      var impactRaw = lcpSheet.getRange("A2:F18").getValues();
       var lcpImpact = [];
       for (var j = 1; j < impactRaw.length; j++) {
         var rowI = impactRaw[j];
@@ -550,7 +550,7 @@ if (!oltSheet) {
     if (!napSheet) {
       resultData = [];
     } else {
-      var napRaw = napSheet.getRange("H2:M19").getValues(); 
+      var napRaw = napSheet.getRange("A2:F19").getValues(); 
       var napList = [];
 
       for (var r = 1; r < napRaw.length; r++) {

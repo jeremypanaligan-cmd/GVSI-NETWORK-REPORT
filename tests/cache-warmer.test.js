@@ -39,8 +39,9 @@ const ROOT = path.join(__dirname, '..');
    Apps Script service stubs
  * ------------------------------------------------------------------ */
 
-/* "H2:M19" -> { r, c, nr, nc }. Enough of A1 for the two sheets that are
-   addressed that way (the NAP and LCP branches); nothing else in this sandbox needs it. */
+/* "A2:F19" -> { r, c, nr, nc }. Enough of A1 for the three sheet ranges that are
+   addressed that way (the NAP band and the two LCP blocks); nothing else in this sandbox
+   needs it. */
 function a1Range_(a1) {
   const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(a1);
   if (!m) throw new Error('unsupported A1 range in this stub: ' + a1);
@@ -108,20 +109,26 @@ function makeSheets(counters, opts) {
   t[20] = 'cut cable'; t[23] = '12h'; t[25] = '42'; t[27] = 'OLT-A';
   tix[1] = t;
 
-  // ---- NLZ NAP Report: read as H2:M19, whose first row the branch skips as a header
+  /* ---- NLZ NAP Report: read as A2:F19, area in column A, and its first row is skipped as
+     a header, so the one data row lives on sheet row 3. These columns moved in Sept 2026 —
+     the band used to be H2:M19 — and THIS IS THE TRAP: a fixture left on the old columns
+     builds an EMPTY payload, which is still a cacheable payload, so five of this suite's
+     assertions went on passing over a warm pass that had read nothing at all. */
   const nap = [];
   nap[1] = [];
-  const napRow = []; napRow[7] = 'AREA-1'; napRow[8] = 'PROV-A';
-  napRow[9] = 5; napRow[10] = 2; napRow[11] = 1; napRow[12] = 8;
+  const napRow = []; napRow[0] = 'AREA-1'; napRow[1] = 'PROV-A';
+  napRow[2] = 5; napRow[3] = 2; napRow[4] = 1; napRow[5] = 8;
   nap[2] = napRow;
 
-  // ---- NLZ LCP Report: aging at G24:L39, impact at G2:K18
+  // ---- NLZ LCP Report: impact at A2:F18 (header row skipped, so sheet row 3),
+  //      aging at A24:F39 (read from its first row, so sheet row 24). Both blocks used to
+  //      sit in column G of the same sheet.
   const lcp = [];
-  const lcpImpact = []; lcpImpact[6] = 'AREA-1'; lcpImpact[7] = 1; lcpImpact[8] = 2;
-  lcpImpact[9] = 1; lcpImpact[10] = 3;
+  const lcpImpact = []; lcpImpact[0] = 'AREA-1'; lcpImpact[1] = 'PROV-A'; lcpImpact[2] = 2;
+  lcpImpact[3] = 1; lcpImpact[4] = 3;
   lcp[2] = lcpImpact;
-  const lcpAging = []; lcpAging[6] = 'AREA-1'; lcpAging[7] = 1; lcpAging[8] = 2;
-  lcpAging[9] = 3; lcpAging[10] = 4; lcpAging[11] = 5;
+  const lcpAging = []; lcpAging[0] = 'AREA-1'; lcpAging[1] = 'PROV-A'; lcpAging[2] = 2;
+  lcpAging[3] = 3; lcpAging[4] = 4; lcpAging[5] = 5;
   lcp[23] = lcpAging;
 
   // ---- Node DOWN Tickets
@@ -370,6 +377,23 @@ test('the pass writes the key an HTTP caller reads, for every type', () => {
     assert.ok(s.__store[c.key] && s.__store[c.key].length > 2,
       c.key + ' holds nothing that can be served');
   });
+
+  /* A length check is not "the build found a row": `{"lcpAging":[],"lcpImpact":[]}` is
+     thirty-odd characters of nothing, and it is exactly what the LCP branch warmed while its
+     fixture still pointed at the column its blocks used to live in — the length check passed
+     and so did everything behind it. Each band the fake sheet populates has to come back with
+     its row, so a band that moves out from under the fixture fails HERE.
+
+     Per band, not per payload: checking that the LCP payload mentions a row at all would still
+     pass with one of its two blocks reading an empty range. */
+  const payloadOf = (key) => JSON.parse(s.__store[key]);
+  assert.ok(payloadOf('cache_v2_nap').length > 0,
+    'cache_v2_nap warmed an empty list: the fake sheet and the NAP band (A2:F19) have drifted apart');
+  const warmedLcp = payloadOf('cache_v2_lcp');
+  assert.ok(warmedLcp.lcpAging.length > 0,
+    'the LCP aging block warmed empty: the fake sheet and its band (A24:F39) have drifted apart');
+  assert.ok(warmedLcp.lcpImpact.length > 0,
+    'the LCP impact block warmed empty: the fake sheet and its band (A2:F18) have drifted apart');
 });
 
 test('after the pass, an HTTP call for any type is a HIT that touches no sheet', () => {
