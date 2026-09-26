@@ -621,3 +621,37 @@ the rows, set `dataCache.nap = null`, let `fetchNapData(true)` reject, call
 `moduleCache.persistModuleCache()`, and read the key back. The rows must still be in the snapshot at
 their ORIGINAL age — a snapshot that replaced wholesale would have deleted the only copy at exactly
 the moment the next launch needs it.
+
+### 8.10 Judging ALIGNMENT when a screenshot is not available (Sept 26, 2026)
+
+Reported as *"tila'y hindi naka-align yung data sa column?"*, and the honest first problem is that
+`preview_screenshot` here answers **"no frames"** — the preview webview is not composited — so this
+has to be settled by measurement instead of looking.
+
+**The rule being tested:** a header must share an edge with its own column's data. A header can be
+perfectly aligned to its CELL and still read as the wrong column's label, because the cell is wider
+than either of them (`width: 100%`), so cell rects prove nothing:
+
+```js
+// the TEXT box of a cell, not the cell's own box
+const r = document.createRange(); r.selectNodeContents(cell);
+r.getBoundingClientRect();
+```
+
+Compare `getComputedStyle(th).textAlign` with `getComputedStyle(td).textAlign` per column, and the
+text right edges when both read right. Before-and-after on the Module Health card, a value worth
+quoting: 63 px off under `Wait p50`, 71.5 under `Overhead`, 76.9 under `Age` — and 0.0 px after.
+
+**Two traps, both hit the same afternoon.**
+
+1. **A reused port serves the OLD script.** `python -m http.server` sends `Last-Modified`, so a
+   browser heuristically caches an unchanged URL — and `<script src="admin-module.js">` IS unchanged
+   by a fix to its contents. A reload and even a fresh `?v=` on the HTML both kept the old bytes.
+   Serve on a **new port** (§8.9 has the same rule for the service worker) and confirm before
+   concluding anything: `fetch('/admin-module.js').then(r => r.text())` in the page.
+2. **A `<th` in `<thead>` is not a header cell.** Match `<th style="…"` rather than `<th`, or
+   `cellsOf()` silently gains a phantom column and every index is off by one.
+
+**And test it as text, not only in the browser.** `tests/diag-store.test.js` draws the card in its
+sandbox and compares header alignment with data alignment column by column — which is what makes the
+regression catchable by `node tests/diag-store.test.js` in a second, with no server and no port.

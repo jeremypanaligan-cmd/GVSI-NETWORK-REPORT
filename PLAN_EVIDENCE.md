@@ -1598,3 +1598,42 @@ store with 2 rows at its original 20-minute age.
 sites in `index.html`, and the labels that describe them.
 
 **Still owed.** The server-side pastes listed under PART-024. Nothing here depends on them.
+
+---
+
+### PART-027 — a header sits over its own column (2026-09-26)
+
+**What was asked.** *"tila'y hindi naka-align yung data sa column?"* — one screenshot of the admin
+**Module Health** card, and the complaint is exact: the header row was **left-aligned** while every
+number beneath it was **right-aligned**.
+
+**Why that is a reporting defect and not a cosmetic nit.** A column is as wide as the card leaves
+for it, so the label and its value sat at opposite ends of the same column: `10s` floated between
+`Wait p50` and `Wait p95` with nothing saying which one it measured. Comparing modules is the only
+thing this card exists for, and the misalignment made each number unattributable on its own.
+
+**The fix is the rule, not the column.** Numeric headers are now built over their own numbers
+(`headNum_()` in `admin-module.js`); `Module` keeps the left-aligned builder because its data is
+text. Measured in a real browser at the card's own width, the text right edge of each numeric header
+is now **0.0 px** from the right edge of its values, where it had been 41–77 px off (`Wait p50` 63,
+`Overhead` 71.5, `Age` 76.9 — the gap is proportional to how much the column was stretched).
+
+**Test.** `tests/diag-store.test.js` draws the card and compares, column by column, the alignment of
+each header with the alignment of the data drawn under it — and asserts the table is genuinely
+mixed, so an all-left table cannot satisfy the rule while quietly throwing the numbers away. Three
+mutations, all caught: one header flipped back to left (the reported bug), every data cell flipped
+to left (the vacuous case), and `Module` right-aligned over left-aligned names.
+
+**Not reproduced, and named as such.** The card in that same screenshot reports **0 failed calls**
+on every module, and its waits are 1.0–10 s, so nothing here was a broken table: the numbers were
+where they should have been, only unreadable. A `failed` count of zero also means NAP's
+**Error loading data.** row in the earlier screenshot cannot have been written in that page life —
+it is a cold start with nothing to draw, which is the case 3.9.25 addresses. The alignment defect is
+independent of both screens. No table outside this card was touched: the module tables' headers
+already read left with their data, checked against the real stylesheet rather than assumed, since a
+browser's default header alignment is a thing people remember wrongly.
+
+**Release.** 3.9.25 → **3.9.26**; guard untouched at 3.10.0. `admin-module.js` is a precached,
+unversioned entry, so the label moved in the same commit as the bytes. 22 suites, 0 failed.
+
+**Still owed.** The server-side pastes listed under PART-024. Nothing here depends on them.

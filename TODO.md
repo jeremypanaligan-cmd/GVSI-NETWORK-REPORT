@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.25 is pushed**, and it carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **the server half is still owed, and all of it is pastes** — see P1 · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.26 is pushed** (the Module Health header alignment, below), following 3.9.25, which carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **the server half is still owed, and all of it is pastes** — see P1 · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -780,6 +780,33 @@ Logger.log(JSON.stringify(buildDiagReport_(), null, 2))
 
 That report holds `failures[]`, `slowLast`, `cache.<type>` and `warmPass.ms`. What is in the working
 tree *has* been measured from outside instead — see the numbers above.
+
+---
+
+## 🟢 P2 — The Module Health headers did not sit over their own columns — SHIPPED in 3.9.26 (Sept 26, 2026)
+
+**Reported from the live app with a screenshot** and one question: *“tila'y hindi naka-align yung
+data sa column?”* The admin **Module Health** card's header row was left-aligned while every number
+under it was right-aligned.
+
+**Why it was worth fixing rather than shrugging at.** Each column stretches to the card's width, so
+the label and its value sat at opposite ends of the same column: `10s` floated between `Wait p50` and
+`Wait p95` with nothing saying which one it measured. Comparing modules is the whole point of the
+card, and the numbers could not be attributed one at a time.
+
+- **The header now carries its own column's alignment** — numeric headers are built over their own
+  numbers (`headNum_()`), `Module` stays left because its data is text.
+- **Measured, not eyeballed:** in a real browser at the card's width, each numeric header's right
+  edge is **0.0 px** from its column's value right edge (it was 41–77 px off).
+- **No other table was touched.** The module tables' headers already read left with their data —
+  checked against the real stylesheet, not assumed.
+- **It was not a broken table.** That same screenshot reports **0 failed calls** on every module and
+  waits of 1.0–10 s; NAP's earlier `Error loading data.` row is a cold start with nothing to draw,
+  which is what 3.9.25 addresses. The two are independent.
+- 22 suites, 0 failed; 3 mutations all caught (one header flipped back, everything flipped left, and
+  `Module` right-aligned over left-aligned names).
+
+**Full write-up:** PART-027 in `PLAN_EVIDENCE.md`.
 
 ---
 

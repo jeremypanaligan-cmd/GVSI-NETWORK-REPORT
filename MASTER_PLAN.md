@@ -89,6 +89,12 @@ successful build stores nothing, a failed one always does, and a slow one is wri
 no read at all — the measurement lives in the trigger that was already running rather than
 in the request an operator is waiting on.
 
+### SCN-023: A column's header reads the way its own data reads
+Outcome: The Module Health card's header row no longer sits at the opposite end of each column from
+the numbers under it, so a value cannot be attributed to the wrong module. The label and its data
+share an edge — numbers right, module names left — and the one comparison this card exists for is
+readable at a glance instead of measured by eye.
+
 ### SCN-022: A cold start shows the last session's data, and says how old it is
 Outcome: A launch that cannot reach the deployment draws the previous session's payloads in the
 first frame instead of a screen saying the report could not be loaded, because they are read
@@ -530,6 +536,31 @@ only reachable from `showApp()`.
     caught (and one attempted mutation identified as a no-op rather than a gap), the cold start
     driven in a real browser against a stalling origin, and the hand-off still owed: the pastes on
     the server side (this part changes no server byte)
+
+## Phase 12: a header over its own column — SHIPPED in 3.9.26
+
+**Why this phase exists.** One screenshot of the admin Module Health card and one question:
+*"tila'y hindi naka-align yung data sa column?"* The header row was left-aligned while every
+numeric cell under it was right-aligned, and each column stretches to the card's width — so every
+value sat between two headers with nothing naming its column.
+
+**What shipped.** Numeric headers are built over their own numbers (`headNum_()` in
+`admin-module.js`); the `Module` header stays left because its data is text. Measured in a real
+browser at the card's own width, each numeric header's text right edge is now **0.0 px** from its
+column's value right edge, where it had been 41–77 px off.
+
+**What was deliberately NOT done.** No table outside this card was touched — the module tables'
+headers already read left with their data, which was checked against the real stylesheet rather
+than assumed.
+
+- [x] Part 20: the fix, in the card the screenshot showed
+  - Scenario: SCN-023
+  - Outcome: every header is aligned the way its own column's data is aligned, the table stays
+    mixed so an all-left table cannot satisfy the rule while throwing the numbers away, and the
+    release label moves with the precached file
+  - Evidence: PART-027 in `PLAN_EVIDENCE.md` — the card drawn in a real browser and measured
+    column by column, **22 suites 0 failed**, 3 mutations caught, and the hand-off still owed:
+    the server-side pastes (this part changes no server byte)
 
 ## Notes
 
