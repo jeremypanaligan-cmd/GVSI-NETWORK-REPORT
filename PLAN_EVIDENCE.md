@@ -1927,6 +1927,25 @@ is exactly the one nobody can diagnose later. The rest of the live edge was re-m
 time and is healthy: pass-through `200` in 156 ms, `GET /data/nap` without a token `401`,
 `POST /publish` without a secret `401`.
 
+**Which bytes were live — answered to the byte, and it was never a mystery that had to stay one.**
+The evening had been run on an inference: the deployed worker answered `500` to a malformed token, so
+it must predate the guard. It can be *measured* instead. `GET /accounts/{id}/workers/scripts/<name>`
+returns the stored **multipart artifact** — three framing lines, the script, then CRLF and the closing
+boundary — and the body hashes to `4be4d9b5…` at 24,360 bytes: **exactly `proxy/netpulse-proxy.mjs`
+at `ea712a4`**, byte for byte, with nothing hand-edited into the live copy. The committed file from
+`3e6ef9c` on is `d9fd3f3c…` at 25,208 bytes. So the delta between what is running and what is tested
+is one file, two hunks, and it can be *proved* rather than assumed — which is the same discipline the
+suite applies to code, aimed at the deployment instead.
+
+**And the upload cannot be done from here, for an account reason rather than a technical one.**
+`PUT /accounts/{id}/workers/scripts/{name}`, correctly formed (multipart, `main_module`, the `DATA`
+binding restated, and `keep_bindings: ["secret_text","secret_key"]` so the two secrets survive it),
+answers **"No access to the specified resource"**: the connector's credential reads scripts,
+versions, deployments, settings and KV, and cannot write a script. That is the same limit that made
+steps 1 and 2 manual, now measured at the exact operation that would have removed the paste. A future
+where this tree deploys its own worker needs that permission granted; until then the paste is the
+deploy, and the hash comparison is what makes the paste verifiable.
+
 **What the switch-on verification did NOT cover, stated plainly.** The app tries the edge first and
 falls back — observed in a real browser, with a real page, against the live worker. What was not
 observed there is an edge `200` with a token the deployment minted: that needs a login, and the

@@ -285,6 +285,38 @@ guarded in this source now, with `publish-auth` covering six malformed shapes �
 only in the repo until the worker is pasted again.** A deployed copy that answers 500 here needs that
 re-paste, not another secret.
 
+## Which bytes are ACTUALLY live — ask the API, never guess
+
+**MEASURED 2026-09-26.** The dashboard is not the only way to see what is deployed, and it is not the
+most truthful one either. `GET /accounts/{id}/workers/scripts/holy-cloud-1d7a` returns the worker's
+stored **multipart artifact** as a string: a `--<boundary>` line, `Content-Disposition: form-data;
+name="worker.js"`, a blank line, then the script, then CRLF, the closing boundary and a blank. The
+framing uses CRLF; the stored body is LF. So:
+
+```js
+const raw = (await cf(`/accounts/${accountId}/workers/scripts/holy-cloud-1d7a`)).result;
+const body = raw.slice(raw.indexOf('\r\n\r\n') + 4, raw.lastIndexOf('\r\n--'));
+// hash `body` and compare:
+```
+
+| what | sha256 | bytes |
+|---|---|---|
+| `proxy/netpulse-proxy.mjs` at `ea712a4`, and the copy that was live all evening | `4be4d9b5…` | 24,360 |
+| the same file from `3e6ef9c` on (the guarded decode) | `d9fd3f3c…` | 25,208 |
+
+Compute the repo side with `git cat-file -p HEAD:proxy/netpulse-proxy.mjs | sha256sum`. Equal hashes
+mean the dashboard copy **is** the committed file — a stronger statement than any screenshot, and the
+reason "the deployed worker still has the bug" could be pinned to a revision instead of inferred from
+a 500. Two smaller findings fell out of the same call: the live source was **exactly** `ea712a4` with
+nothing hand-edited into it, and the module part is named **`worker.js`**.
+
+**Writing from here is NOT possible, and that is an account limit rather than a mistake in the
+request.** `PUT /accounts/{id}/workers/scripts/{name}` (multipart, `main_module`, the `DATA` binding
+and `keep_bindings: ["secret_text"]` so the two secrets carry over) answers **"No access to the
+specified resource"** with the connector's credential — the same read-only limit that made steps 1
+and 2 manual in the first place. Reading scripts, versions, deployments, settings and KV all work;
+uploading does not.
+
 **In a browser the same bug is worse than a wrong status code — MEASURED with the switch on.** A page
 holding that token recorded `GET …/data/nap → FAILED: net::ERR_FAILED`, with **no status to read at
 all**: Cloudflare builds its exception page outside the Worker handler, so the response arrives

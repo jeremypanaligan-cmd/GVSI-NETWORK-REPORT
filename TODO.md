@@ -129,6 +129,20 @@ placeholder guard), ang 17 linyang pagbabago sa `admin.gs` (token mint sa loob n
 ✏️ → Version: New version** bago tumanggap ng `cdnToken` ang login, at `proxy/netpulse-proxy.mjs` sa
 worker. **Nagbago na ang client bytes sa field:** 3.9.29 na ang live.
 
+**⚠️ Isang paste ang kulang pa: ang worker, para sa malformed-token fix.** Hindi ito hadlang sa app
+(bumabalik sa `/exec` ang anumang pagtanggi), pero ang naka-deploy ay `500` pa rin sa
+`Bearer basura.token` — at sa browser iyon ay **`ERR_FAILED` na walang status na mababasa**, dahil ang
+exception page ng Cloudflare ay walang mga CORS header na itinatalaga ng handler.
+
+**Nasukat, hindi hinulaan — at may bagong paraan para sukatin ito.** Ang
+`GET /accounts/{id}/workers/scripts/<name>` ay nagbabalik ng **buong stored na multipart artifact**, at
+ang body nito ay ang script: `4be4d9b5…` (24,360 bytes) ang naka-deploy ngayon — **eksaktong
+`proxy/netpulse-proxy.mjs` sa `ea712a4`**, walang kahit anong hindi naka-commit. Ang nasa repo
+(`3e6ef9c` pataas) ay `d9fd3f3c…` (25,208 bytes). Kaya pagkakapareho ng hash ang pinakamalinaw na
+sagot sa "ano ba talaga ang live?" — mas malakas pa sa screenshot. **Hindi ko ito mai-upload mula
+dito**: `PUT /workers/scripts/<name>` ay sumasagot ng **"No access to the specified resource"** gamit
+ang credential ng connector (parehong read-only na limitasyon na nagpamanong-mano sa hakbang 1 at 2).
+
 **Test:** tatlong bagong suite — `publish-auth` (20 cases, worker), `cdn-read` (19 cases, client fallback +
 network-only host), `publish-server` (ang `.gs` laban sa fake `UrlFetchApp`/`PropertiesService`/
 `CacheService`, kasama ang **cross-check**: ang token na ini-mint ng `.gs` ay bini-verify ng worker).
