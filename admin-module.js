@@ -278,13 +278,25 @@ function renderModuleHealth() {
     ? 'Origin and Overhead come from the edge\'s own timing headers. Overhead is what this device and its network added on top of the origin\'s work, which is the difference between a slow deployment and a slow phone.'
     : 'Edge timing unavailable: the Cloudflare proxy is off, so the origin\'s own time is not on the response. These are this device\'s wall-clock waits only — still the number that was actually waited.';
 
-  var th = 'text-align: left; font-size: 11px; text-transform: uppercase; color: var(--text-muted); padding: 6px 7px; border-bottom: 1px solid var(--border-color); white-space: nowrap;';
+  /* A header is aligned the way its own column's DATA is aligned, and the data is what decides
+     it. Left-aligned labels over right-aligned numbers leave "10s" floating between "Wait p50"
+     and "Wait p95" with nothing saying which column it belongs to — which is the one comparison
+     this card exists to make, unreadable at a glance. `Module` stays left because its data is
+     text; the rest are numbers and read right. */
+  var thBase = 'font-size: 11px; text-transform: uppercase; color: var(--text-muted); padding: 6px 7px; border-bottom: 1px solid var(--border-color); white-space: nowrap;';
+  var th = 'text-align: left; ' + thBase;
+  var thNum = 'text-align: right; ' + thBase;
   var td = 'font-size: 12px; padding: 6px 7px; border-bottom: 1px solid var(--border-color); white-space: nowrap;';
   var num = 'font-size: 12px; padding: 6px 7px; border-bottom: 1px solid var(--border-color); text-align: right; white-space: nowrap;';
   var btn = 'padding: 8px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg); color: var(--dark-charcoal); font-size: 12px; font-weight: 600; cursor: pointer;';
 
   function head_(label, title) {
     return '<th style="' + th + '"' + (title ? ' title="' + healthEsc_(title) + '"' : '') + '>' + label + '</th>';
+  }
+
+  /* The numeric headers, built over their own numbers rather than beside them. */
+  function headNum_(label, title) {
+    return '<th style="' + thNum + '"' + (title ? ' title="' + healthEsc_(title) + '"' : '') + '>' + label + '</th>';
   }
 
   /* EIGHT columns, and every one of them was earned by a screenshot: ten of them pushed
@@ -296,13 +308,13 @@ function renderModuleHealth() {
      numbers moved to where they cost no width. */
   var table = '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;"><thead><tr>'
     + head_('Module')
-    + head_('Wait p50')
-    + head_('Wait p95', 'the worst call is one hover away')
-    + head_('Edge', 'the edge\'s own median for this module. Absent while the proxy is off, which is why it reads as a dash.')
-    + head_('Overhead', 'median of (this device\'s wait - the edge\'s own time), per call')
-    + head_('Retried')
-    + head_('Failed')
-    + head_('Age')
+    + headNum_('Wait p50')
+    + headNum_('Wait p95', 'the worst call is one hover away')
+    + headNum_('Edge', 'the edge\'s own median for this module. Absent while the proxy is off, which is why it reads as a dash.')
+    + headNum_('Overhead', 'median of (this device\'s wait - the edge\'s own time), per call')
+    + headNum_('Retried')
+    + headNum_('Failed')
+    + headNum_('Age')
     + '</tr></thead><tbody>'
     + rows.map(function (r) {
         var failedCell = r.failed

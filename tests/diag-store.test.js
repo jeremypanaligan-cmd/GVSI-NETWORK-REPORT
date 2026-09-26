@@ -493,6 +493,48 @@ function test(name, fn) {
       'and it must be drawn from waitMaxMs rather than left behind');
   });
 
+  test('a header sits over its own column: each label is aligned the way its data is', () => {
+    /* Reported from a screenshot: "tila'y hindi naka-align yung data sa column?" The header
+       row was left-aligned while the numbers under it were right-aligned, so "10s" floated
+       between "Wait p50" and "Wait p95" with nothing saying which column it belonged to. The
+       columns are stretched to the card's full width, and that stretch is what makes the gap
+       visible at all.
+
+       So this asserts the rule and not one column: a header is aligned the way ITS OWN
+       column's data is aligned. It also asserts the table really is mixed — an all-left table
+       would satisfy the rule while quietly throwing the numbers away. */
+    const h = cardHarness();
+    h.store.record('?type=lcp', { ms: 900, ok: true });
+    h.draw();
+    const html = h.html();
+
+    const alignOf = (style) => {
+      const m = /text-align:\s*(\w+)/.exec(style);
+      return m ? m[1] : 'left';   // a cell that says nothing reads left, like the browser does
+    };
+    const cellsOf = (text, tag) => {
+      const out = [];
+      const re = new RegExp('<' + tag + ' style="([^"]*)"', 'g');
+      let m;
+      while ((m = re.exec(text)) !== null) out.push(alignOf(m[1]));
+      return out;
+    };
+
+    const bodyStart = html.indexOf('<tbody>') + '<tbody>'.length;
+    const heads = cellsOf(html.slice(0, bodyStart), 'th');
+    const row = cellsOf(html.slice(bodyStart, html.indexOf('</tr>', bodyStart)), 'td');
+
+    assert.strictEqual(heads.length, 8, 'the header row was not found: ' + html.slice(0, 120));
+    assert.strictEqual(row.length, 8, 'the drawn row was not found: ' + html.slice(bodyStart, bodyStart + 120));
+    heads.forEach((align, i) => {
+      assert.strictEqual(align, row[i],
+        'column ' + i + ' reads ' + align + ' in the header and ' + row[i] + ' in the data');
+    });
+    assert.strictEqual(heads[0], 'left', 'the module names are text, so they read left');
+    assert.ok(heads.indexOf('right') !== -1 && heads.indexOf('left') !== -1,
+      'the table is no longer mixed, so this check would pass on anything: ' + heads);
+  });
+
   test('the worst module is drawn first, because that is the question', () => {
     const h = cardHarness();
     h.store.record('?type=nap', { ms: 400, ok: true });
