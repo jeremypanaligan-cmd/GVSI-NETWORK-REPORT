@@ -13,7 +13,7 @@
    UNVERSIONED names the page requests (`admin-module.js`, not `admin-module.js?v=...`),
    so for those files `install` re-fetching every entry and `activate` deleting every
    other cache is the whole delivery mechanism. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.28';
+const STATIC_CACHE = 'gvsi-shell-v3.9.29';
 const STATIC_ASSETS = [
   './index.html',
   './lucide-icons.js',
@@ -141,6 +141,10 @@ const API_PROXY_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
    `API_PROXY_HOST` is set, and a data-plane read is a URL that never carries `?type=` at all. Both hosts must stay out of the cache-first branch — the failure this guards
    is a wall display showing a stale outage, which is the one thing this file exists to prevent. */
 const DATA_CDN_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
+
+/* A BARE HOST on purpose, unlike the full URL `window.NETPULSE_CDN` holds. This constant is used
+   with `url.includes(...)`, so the scheme is noise here and a path would break it. The test that
+   guards the pair compares HOSTS rather than strings, for exactly that reason. */
 
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;

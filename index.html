@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.28">
+  <link rel="stylesheet" href="styles.css?v=3.9.29">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -888,7 +888,7 @@
 <script src="db.js"></script>
 <script src="fetch-gate.js"></script>
 <!-- After fetch-gate.js: the gate is what tries the edge first, and this is the only file that
-     knows how to read there. Inert while window.NETPULSE_CDN is blank. -->
+     knows how to read there. Inert only while window.NETPULSE_CDN is blank — it is set now. -->
 <script src="cdn-source.js"></script>
 <!-- After fetch-gate.js: it seeds that gate's clock for a payload restored from storage. It is
      loaded BEFORE the page script and touches no page global at load time — everything it reads
@@ -1018,10 +1018,14 @@
        from Apps Script exactly as it did before any of this existed, which is why this one value
        is the whole rollback.
 
+       ON as of 2026-09-26. The worker is deployed with the DATA binding and both secrets, all five
+       payloads are published to KV, and the 5-minute warm pass republishes them. Blanking the value
+       below is still the entire rollback, and it is the first thing to try if the edge misbehaves.
+
        It has to be the worker's own host: `sw.js` lists it as network-only in the same step, for
        the same reason the Apps Script host is listed there — a cache-first service worker would
        serve a wall display yesterday's outage. */
-    window.NETPULSE_CDN = "";
+    window.NETPULSE_CDN = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev";
 
   window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
@@ -1641,7 +1645,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.28').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.29').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an

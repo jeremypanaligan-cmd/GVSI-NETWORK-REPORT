@@ -428,13 +428,28 @@ function seededToken(expiryOffsetMs) {
       'the network-only branch consults it: a cache-first worker would serve a wall display a ' +
       'stale outage, which is the one failure this app cannot show');
 
+    /* The two values are not written in the same shape, and that is deliberate: index.html wants
+       a URL it can concatenate a path onto (`host() + '/data/nap'`), while sw.js matches with
+       `url.includes(...)` and so wants a bare host — a value carrying the scheme still matches,
+       but one carrying a PATH would not. Comparing them as strings would therefore fail on the
+       correct tree and pass on a wrong one (`workers.dev` is a substring of both this host and
+       every other Cloudflare worker). So the assertions below are the invariant itself: the two
+       name the SAME host, and the string sw.js excludes really does occur in the URL the app
+       builds. A switched-on app whose host sw.js does not exclude is the silent half of the
+       delivery: a cache-first worker serving a wall display yesterday's outage. */
     const swHost = declared[1];
     const appHost = (html.match(/window\.NETPULSE_CDN = "([^"]*)"/) || [])[1];
     assert.notStrictEqual(appHost, undefined, 'index.html has the one-value switch');
     if (appHost) {
-      assert.strictEqual(appHost, swHost,
-        'a switched-on app whose host is not the one sw.js excludes is the silent half of the ' +
-        'delivery: the two values move together or not at all');
+      const appHostname = appHost.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      assert.strictEqual(appHostname, swHost,
+        'the app and the service worker must name the same host — the two values move together or ' +
+        'not at all');
+      assert.ok(appHost.indexOf(swHost) !== -1,
+        'sw.js excludes a host by substring, so the app URL has to contain that exact string: ' +
+        'otherwise the exclusion never fires and the edge response gets cached');
+      assert.ok(appHostname.indexOf('.') !== -1 && appHostname.indexOf('workers.dev') !== -1,
+        'a bare `workers.dev` would match every worker — the exclusion has to name this one');
     }
 
     assert.ok(/STATIC_ASSETS = \[[\s\S]*'\.\/cdn-source\.js'/.test(sw),
