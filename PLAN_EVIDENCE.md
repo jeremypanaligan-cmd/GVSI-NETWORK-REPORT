@@ -1766,11 +1766,11 @@ gained the CDN-aware path; `boot-bundle.js` tries the edge bundle first; `sw.js`
 as network-only. **One value is the switch: `window.NETPULSE_CDN`.** Blank means byte-for-byte the
 old behaviour, which is how it is shipping.
 
-**Tests.** Three new suites. `publish-auth` (18 cases, worker: secret required, wrong secret, type
+**Tests.** Three new suites. `publish-auth` (19 cases, worker: secret required, wrong secret, type
 allow-list, body limits, the token mint/verify boundary, expired and future tokens, and the
-`edge_not_configured` refusal naming the missing field). `cdn-read` (client: CDN-first, `/exec`
+`edge_not_configured` refusal naming the missing field). `cdn-read` (19 cases, client: CDN-first, `/exec`
 fallback on 401/404/500/timeout, no fallback on a good read, and the network-only `sw.js` entry).
-`publish-server` (the `.gs` half driven against a fake `UrlFetchApp`/`PropertiesService`/`CacheService`,
+`publish-server` (10 cases, the `.gs` half driven against a fake `UrlFetchApp`/`PropertiesService`/`CacheService`,
 including a **cross-check that the token minted in the `.gs` verifies in the worker** — the two
 halves are tested against each other, not just against themselves). Mutations were run per suite and
 caught.

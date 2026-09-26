@@ -659,7 +659,7 @@ Properties, and publish once. Until then the app keeps `NETPULSE_CDN` blank.
   - Outcome: a built payload reaches KV under a secret, the login response carries a short-lived
     edge token, an expired or future token is refused, and no publish path can turn a good warm pass
     into a failed one
-  - Evidence: PART-029 in `PLAN_EVIDENCE.md` — `tests/publish-server.test.js` and 18 cases in
+  - Evidence: PART-029 in `PLAN_EVIDENCE.md` — `tests/publish-server.test.js` and 19 cases in
     `tests/publish-auth.test.js`, with mutations caught, and the two halves cross-checked by
     verifying in the worker a token minted in the `.gs`
 

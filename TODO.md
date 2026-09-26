@@ -63,7 +63,7 @@ type. Harder rollback: burahin ang KV keys → 404 `not_published` → bawat typ
 loob ng umiiral na `withLock_`), ang 20 linyang `olt-cache-warmer.gs` (publish hook sa warm pass), at
 `proxy/netpulse-proxy.mjs`. **Walang client byte ang nagbago sa field** hangga't blangko ang switch.
 
-**Test:** tatlong bagong suite — `publish-auth` (18 cases, worker), `cdn-read` (client fallback +
+**Test:** tatlong bagong suite — `publish-auth` (19 cases, worker), `cdn-read` (19 cases, client fallback +
 network-only host), `publish-server` (ang `.gs` laban sa fake `UrlFetchApp`/`PropertiesService`/
 `CacheService`, kasama ang **cross-check**: ang token na ini-mint ng `.gs` ay bini-verify ng worker).
 Lahat may mutation check.
