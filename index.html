@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.27">
+  <link rel="stylesheet" href="styles.css?v=3.9.28">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -887,6 +887,9 @@
 <script src="lucide-icons.js"></script>
 <script src="db.js"></script>
 <script src="fetch-gate.js"></script>
+<!-- After fetch-gate.js: the gate is what tries the edge first, and this is the only file that
+     knows how to read there. Inert while window.NETPULSE_CDN is blank. -->
+<script src="cdn-source.js"></script>
 <!-- After fetch-gate.js: it seeds that gate's clock for a payload restored from storage. It is
      loaded BEFORE the page script and touches no page global at load time — everything it reads
      (`dataCache`, `oltMeta`, `rawOltData`, `fetchGate`) is resolved when it is called, which is
@@ -951,7 +954,7 @@
       }
 
       // Linisin ang storage (preserve essential keys)
-      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry', 'netpulse_session_token'];
+      const _preserveKeys = ['theme', 'notif_enabled', 'fcm_token', 'netpulse_remember', 'netpulse_session', 'netpulse_session_expiry', 'netpulse_session_token', 'netpulse_cdn_token', 'netpulse_cdn_expiry'];
       const _preserved = {};
       _preserveKeys.forEach(k => { _preserved[k] = localStorage.getItem(k); });
       localStorage.clear();
@@ -1006,6 +1009,20 @@
      (it is cache-first for everything that is not a known API host). */
     window.APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby4y2cFYIYvwldcGk2l9FfV7Vd3Bka7ec3tk40h5z7Gb6QjShtVE8BkYw-T_wQMy4h5IA/exec";
     window.NETPULSE_PROXY = "";  // TEMP: disabled while origin is down — re-enable when stable
+
+    /* THE EDGE READ PATH (see cdn-source.js, publish-cache.gs, proxy/README.md).
+
+       The trigger publishes each built payload to the Cloudflare worker; when this names that
+       worker AND a login token is stored, every module read is attempted there first (~30-100 ms)
+       and falls back to /exec on any refusal. BLANK = cdn-source.js is inert and the app reads
+       from Apps Script exactly as it did before any of this existed, which is why this one value
+       is the whole rollback.
+
+       It has to be the worker's own host: `sw.js` lists it as network-only in the same step, for
+       the same reason the Apps Script host is listed there — a cache-first service worker would
+       serve a wall display yesterday's outage. */
+    window.NETPULSE_CDN = "";
+
   window.BASE_API_URL = window.NETPULSE_PROXY || window.APPS_SCRIPT_URL;
   var BASE_API_URL = window.BASE_API_URL;
   
@@ -1624,7 +1641,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.27').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.28').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
@@ -2094,6 +2111,14 @@ function closeNodeModal(event) {
         if (result.token) {
           localStorage.setItem(SESSION_TOKEN_KEY, result.token);
         }
+        /* THE EDGE READ TOKEN, minted by the deployment in the same response (publish-cache.gs).
+
+           Absent on an older deployment, or on one that has not configured the edge — and then
+           every module reads from /exec exactly as it did before this existed. It is kept for the
+           same 24 h as the session, because it is worth nothing after the session it belongs to. */
+        if (result.cdnToken && window.cdnSource && typeof window.cdnSource.adoptToken === 'function') {
+          window.cdnSource.adoptToken(result.cdnToken, SESSION_DURATION);
+        }
         // Save credentials if Remember Me is checked
         if (rememberMe) {
           localStorage.setItem(REMEMBER_KEY, JSON.stringify({ u: username, p: password }));
@@ -2137,6 +2162,12 @@ function closeNodeModal(event) {
     localStorage.removeItem(SESSION_EXPIRY_KEY);
     localStorage.removeItem(SESSION_TOKEN_KEY);
     localStorage.removeItem(REMEMBER_KEY);
+    /* The edge read token goes with the session.
+
+       It expires on its own inside 24 h, but a credential for the data that outlives the screen
+       that hid it is exactly the thing the token was added to avoid — and leaving it would make
+       the next person to open this device read the fleet from the edge. */
+    if (window.cdnSource && typeof window.cdnSource.clearToken === 'function') window.cdnSource.clearToken();
     /* The snapshot goes with the session. It is one user's view of the network, and the next
        person to log in on this device must not be handed it. */
     if (window.moduleCache && typeof window.moduleCache.clearModuleCache === 'function') {

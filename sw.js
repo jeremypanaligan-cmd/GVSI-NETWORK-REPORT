@@ -13,7 +13,7 @@
    UNVERSIONED names the page requests (`admin-module.js`, not `admin-module.js?v=...`),
    so for those files `install` re-fetching every entry and `activate` deleting every
    other cache is the whole delivery mechanism. */
-const STATIC_CACHE = 'gvsi-shell-v3.9.27';
+const STATIC_CACHE = 'gvsi-shell-v3.9.28';
 const STATIC_ASSETS = [
   './index.html',
   './lucide-icons.js',
@@ -31,6 +31,7 @@ const STATIC_ASSETS = [
 './admin-module.js',
 './db.js',
 './fetch-gate.js',
+'./cdn-source.js',
 './cache-store.js',
 './diag-store.js',
 './boot-bundle.js',
@@ -133,6 +134,14 @@ self.addEventListener('notificationclick', (e) => {
    `NETPULSE_PROXY` in index.html is restored — never one without the other. */
 const API_PROXY_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
 
+/* The EDGE DATA host (window.NETPULSE_CDN in index.html) — the same worker, a different job: it
+   serves published payloads under /data/* instead of forwarding to Apps Script.
+
+   A SEPARATE CONSTANT on purpose: the pair above does not cover it. That rule only applies while
+   `API_PROXY_HOST` is set, and a data-plane read is a URL that never carries `?type=` at all. Both hosts must stay out of the cache-first branch — the failure this guards
+   is a wall display showing a stale outage, which is the one thing this file exists to prevent. */
+const DATA_CDN_HOST = 'holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev';
+
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
 
@@ -142,7 +151,9 @@ self.addEventListener('fetch', (e) => {
   }
 
   // 1. Google Apps Script API Requests -> ALWAYS NETWORK (Fresh Data)
-  if (url.includes('script.google.com') || (API_PROXY_HOST && url.includes(API_PROXY_HOST))) {
+  if (url.includes('script.google.com') ||
+      (API_PROXY_HOST && url.includes(API_PROXY_HOST)) ||
+      (DATA_CDN_HOST && url.includes(DATA_CDN_HOST))) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' }).catch(() => fetch(e.request))
     );

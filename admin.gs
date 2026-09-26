@@ -240,7 +240,13 @@ function handleLogin(e) {
 
     if (dbUsername === username && dbPasswordHash === hashedPassword) {
       clearLoginFailures(username);
-      return jsonOut({
+
+      /* THE EDGE READ TOKEN. See publish-cache.gs: the data routes have never been gated (this
+         file gates only the admin routes), so a copy served from a CDN needs a credential of its
+         own — short-lived, HMAC-signed here, verified at the edge without either side calling
+         the other. Omitted when the edge is not configured, and a client that never receives one
+         reads every module from /exec exactly as it does today. */
+      var loginBody = {
         success: true,
         token: issueSessionToken(dbUsername, dbFullName, dbRole),
         user: {
@@ -248,7 +254,14 @@ function handleLogin(e) {
           fullName: dbFullName,
           role: dbRole
         }
-      });
+      };
+
+      if (typeof edgeTokenForLogin_ === 'function') {
+        var edgeToken = edgeTokenForLogin_(dbUsername);
+        if (edgeToken) loginBody.cdnToken = edgeToken;
+      }
+
+      return jsonOut(loginBody);
     }
   }
 

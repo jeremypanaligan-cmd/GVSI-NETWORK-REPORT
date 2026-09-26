@@ -205,10 +205,369 @@ export function createProxy({
   return handle;
 }
 
+/* ==================================================================
+   THE DATA PLANE — the second job this worker does
+
+   The pass-through above exists to absorb a bad hop. This half exists to REMOVE the hop: the
+   trigger publishes each built payload here, the app reads it from the edge in tens of
+   milliseconds, and Apps Script is not in the read path at all.
+
+   Route map
+     POST /publish?type=nap     header x-netpulse-secret      -> KV write, returns {ok,bytes}
+     GET  /data/nap             Authorization: Bearer <tok>   -> the payload, edge-cached 60 s
+     GET  /data/_bundle         same                       -> all five in ONE read
+     GET  /data/_meta           same                       -> {types, builtAt, rev, bytes}
+
+   WHY A TOKEN AND NOT JUST AN OBSCURE PATH
+
+   The app's `?type=` data routes are NOT session-gated today: `resolveSession()` is called
+   only by the admin and diag routes, and index.html says so in its own comment. So "the data
+   is behind the login" is true of the UI only. A CDN path would add the two things the
+   obscure `/exec` URL does not have — it can be found, and it can be cached and copied — so
+   the read is gated by a short-lived HMAC the deployment mints at login. The worker verifies
+   it with no state and no call back to Apps Script, which is the whole point of moving the
+   read out here.
+
+   `u|exp` is signed with READ_SECRET (Utilities.computeHmacSha256Signature on the Apps
+   Script side, crypto.subtle here). The subject is carried IN the token because a signature
+   over an unseen payload cannot be checked.
+
+   WHAT IT REFUSES, AND WHY THAT MATTERS
+
+   - A body that is an ERROR ENVELOPE (`{error:...}`) is never published. An empty payload is
+     still a cacheable payload, and the app has shipped exactly that bug once (a prefetch that
+     stored the raw envelope where a decoded array belongs).
+   - A request without the publish secret is refused BEFORE the body is parsed.
+   - A read without a valid, unexpired token is refused with 401, and the client falls back to
+     the `/exec` path it came from — this worker can never be the reason a screen goes blank.
+   - An unpublished type answers 404 `not_published`, not an error, because "not published
+     yet" is the state every type is in before the first trigger run after a deploy.
+
+   Secrets live in Worker settings (PUBLISH_SECRET, READ_SECRET) and in Script Properties on
+   the Apps Script side. They are deliberately absent from this repository.
+ * ================================================================== */
+
+const DATA_TYPES = ['nap', 'lcp', 'olt', 'node', 'backbone'];
+
+/* How long the EDGE may keep a payload without re-reading KV. Cloudflare's floor is 60 s and
+   the publish cadence is 300 s, so this cannot serve a copy the trigger has already replaced
+   by more than one cycle — and it is what keeps an edge read in the single-digit milliseconds
+   instead of a KV round trip. Freshness for the reader is the chip's job, not the cache's. */
+const READ_CACHE_TTL_SECONDS = 60;
+
+/* The largest payload this app builds is OLT at ~50 KB (shape=2/3). 512 KB leaves room for a
+   shape that grows and still refuses anything that is not this app. */
+const MAX_PUBLISH_BYTES = 512 * 1024;
+
+const TOKEN_SEPARATOR = '.';
+
+function dataCorsHeaders() {
+  return {
+    'access-control-allow-origin': ALLOWED_ORIGIN,
+    'access-control-allow-methods': 'GET,HEAD,OPTIONS,POST',
+    // `authorization` is not a CORS-safelisted header, so without it the preflight fails and
+    // every read arrives as a network error on the client — which the app would then read as
+    // "the CDN is down" and fall back from, silently, forever.
+    'access-control-allow-headers': 'authorization, content-type, x-netpulse-secret',
+    'access-control-max-age': '86400',
+    'access-control-expose-headers': 'x-netpulse-built-at, x-netpulse-rev, x-netpulse-published-at, x-netpulse-attempts'
+  };
+}
+
+function dataJson(body, status, extraHeaders) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: Object.assign({
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store'
+    }, dataCorsHeaders(), extraHeaders || {})
+  });
+}
+
+function b64urlToBytes(text) {
+  const normalized = String(text).replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/* Length-independent, value-independent comparison. The secret's length is not a secret, but
+   "did the first byte match" is the kind of thing a caller can average out over enough
+   requests, so this does not return early on a mismatch. */
+function equalBytes(a, b) {
+  if (!a || !b) return false;
+  const left = a instanceof Uint8Array ? a : new TextEncoder().encode(String(a));
+  const right = b instanceof Uint8Array ? b : new TextEncoder().encode(String(b));
+  let diff = left.length ^ right.length;
+  const len = Math.max(left.length, right.length);
+  for (let i = 0; i < len; i++) {
+    diff |= (left[i] || 0) ^ (right[i] || 0);
+  }
+  return diff === 0;
+}
+
+/* Verify `<b64url(subject)>.<b64url(hmac)>` against the read secret, and check its expiry.
+   Returns { ok, subject } — never throws, so a malformed token is a refusal rather than a
+   500 that the client would read as "the edge is broken". */
+async function verifyReadToken(token, readSecret, now, subtle) {
+  const raw = String(token || '').trim();
+  if (!raw || !readSecret) return { ok: false, reason: 'no_token' };
+
+  const dot = raw.indexOf(TOKEN_SEPARATOR);
+  if (dot <= 0) return { ok: false, reason: 'malformed' };
+
+  const subjectBytes = b64urlToBytes(raw.slice(0, dot));
+  const signature = b64urlToBytes(raw.slice(dot + 1));
+  const subject = new TextDecoder().decode(subjectBytes);
+
+  let key;
+  try {
+    key = await subtle.importKey('raw', new TextEncoder().encode(readSecret),
+                                 { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  } catch (err) {
+    return { ok: false, reason: 'key_unusable' };
+  }
+
+  const valid = await subtle.verify('HMAC', key, signature, subjectBytes);
+  if (!valid) return { ok: false, reason: 'bad_signature' };
+
+  const exp = Number(subject.split('|')[1]);
+  if (!isFinite(exp) || exp <= now()) return { ok: false, reason: 'expired' };
+
+  return { ok: true, subject: subject.split('|')[0], exp: exp };
+}
+
+/**
+ * The data plane, as a factory so the whole thing is testable without a network or a KV.
+ *
+ * @param {Object}   opts
+ * @param {Object}   opts.kv               the KV namespace binding (`env.DATA`)
+ * @param {string}   opts.readSecret       READ_SECRET
+ * @param {string}   opts.publishSecret    PUBLISH_SECRET
+ * @param {Function} [opts.now]
+ * @param {Function} [opts.log]
+ * @param {Object}   [opts.subtle]         crypto.subtle, injectable for tests
+ */
+export function createDataPlane({
+  kv = null,
+  readSecret = '',
+  publishSecret = '',
+  now = () => Date.now(),
+  log = (message) => console.warn(message),
+  subtle = (typeof crypto !== 'undefined' && crypto.subtle) || null
+} = {}) {
+  async function readPayload(type) {
+    const entry = await kv.getWithMetadata(type, { type: 'text', cacheTtl: READ_CACHE_TTL_SECONDS });
+    const value = entry && entry.value;
+    if (typeof value !== 'string' || !value.length) return null;
+    return { value, metadata: (entry && entry.metadata) || {} };
+  }
+
+  function stampHeaders(metadata, extra) {
+    const meta = metadata || {};
+    return Object.assign({
+      'x-netpulse-built-at': meta.builtAt ? String(meta.builtAt) : '',
+      'x-netpulse-rev': (meta.rev === undefined || meta.rev === null) ? '' : String(meta.rev),
+      'x-netpulse-published-at': meta.publishedAt ? String(meta.publishedAt) : ''
+    }, extra || {});
+  }
+
+  /* One place decides whether a caller may read, so every route below cannot forget it. */
+  async function gateRead(request) {
+    if (!kv) return { error: dataJson({ error: 'edge_not_configured', field: 'DATA' }, 503) };
+    if (!readSecret) return { error: dataJson({ error: 'edge_not_configured', field: 'READ_SECRET' }, 503) };
+
+    const header = request.headers.get('authorization') || '';
+    const token = header.toLowerCase().indexOf('bearer ') === 0 ? header.slice(7).trim() : '';
+    const verdict = await verifyReadToken(token, readSecret, now, subtle);
+    if (!verdict.ok) {
+      /* Named, never echoed: the client logs the reason once and stops asking (the token is
+         either expired or the secret moved), and nothing about the token itself is repeated
+         back to the caller. */
+      return { error: dataJson({ error: 'unauthorized', reason: verdict.reason }, 401) };
+    }
+    return { session: { subject: verdict.subject, exp: verdict.exp } };
+  }
+
+  async function handlePublish(request, url) {
+    if (request.method !== 'POST') return dataJson({ error: 'method not allowed' }, 405);
+    if (!kv) return dataJson({ error: 'edge_not_configured', field: 'DATA' }, 503);
+    if (!publishSecret) return dataJson({ error: 'edge_not_configured', field: 'PUBLISH_SECRET' }, 503);
+
+    /* Before the body is read: an unauthenticated caller must not be able to make this worker
+       spend anything at all, including parsing. */
+    const offered = request.headers.get('x-netpulse-secret') || '';
+    if (!equalBytes(offered, publishSecret)) {
+      return dataJson({ error: 'unauthorized' }, 401);
+    }
+
+    const type = url.searchParams.get('type') || '';
+    if (DATA_TYPES.indexOf(type) === -1) {
+      return dataJson({ error: 'unknown type', type: type }, 400);
+    }
+
+    const text = await request.text();
+    if (text.length > MAX_PUBLISH_BYTES) {
+      return dataJson({ error: 'payload too large', bytes: text.length }, 413);
+    }
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      return dataJson({ error: 'body is not JSON' }, 400);
+    }
+
+    /* THE ONE REFUSAL THAT PROTECTS THE READERS. A build that failed answers with
+       {error:...}; publishing that would put a crash on every screen in the fleet and keep
+       serving it until the next successful run. An empty ARRAY or OBJECT is not refused:
+       "nothing to report" is real data (it is how the OLT zero state and the NAP/LCP
+       "no pending" screens are drawn). */
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.error) {
+      return dataJson({ error: 'refused_error_envelope', upstream: String(parsed.error) }, 400);
+    }
+
+    const builtAt = Number(url.searchParams.get('builtAt') || request.headers.get('x-netpulse-built-at') || 0) || 0;
+    const rev = url.searchParams.get('rev') || request.headers.get('x-netpulse-rev') || '';
+
+    await kv.put(type, text, {
+      metadata: {
+        builtAt: builtAt,
+        rev: rev,
+        bytes: text.length,
+        publishedAt: now()
+      }
+    });
+
+    return dataJson({ ok: true, type: type, bytes: text.length, builtAt: builtAt, rev: rev },
+                    200, stampHeaders({ builtAt: builtAt, rev: rev, publishedAt: now() }));
+  }
+
+  async function handleRead(request, url, gate) {
+    const rest = url.pathname.slice('/data/'.length);
+
+    if (rest === '_bundle') {
+      /* ONE read for the whole opening. The five KV reads happen AT THE EDGE, so this costs
+         the caller a single round trip of the same tens of milliseconds a single payload
+         does — and it keeps `?action=bundle`'s one-request property without asking Apps
+         Script to execute anything. */
+      const found = await Promise.all(DATA_TYPES.map(async (type) => ({ type: type, entry: await readPayload(type) })));
+      const payloads = {};
+      const builtAt = {};
+      const rev = {};
+      const missing = [];
+
+      for (const item of found) {
+        if (!item.entry) { missing.push(item.type); continue; }
+        let value = null;
+        try {
+          value = JSON.parse(item.entry.value);
+        } catch (err) {
+          /* A stored body that will not parse is never handed to a module: the client would
+             store it and draw an empty table. Skipped, and named in `missing`. */
+          log('bundle: ' + item.type + ' holds unparseable bytes — skipped');
+          missing.push(item.type);
+          continue;
+        }
+        payloads[item.type] = value;
+        if (item.entry.metadata.builtAt) builtAt[item.type] = item.entry.metadata.builtAt;
+        if (item.entry.metadata.rev) rev[item.type] = item.entry.metadata.rev;
+      }
+
+      return dataJson({
+        ok: true,
+        bundle: payloads,
+        builtAt: builtAt,
+        rev: rev,
+        missing: missing,
+        subject: gate.session.subject
+      }, 200);
+    }
+
+    if (rest === '_meta') {
+      const found = await Promise.all(DATA_TYPES.map(async (type) => ({ type: type, entry: await readPayload(type) })));
+      const index = {};
+      for (const item of found) {
+        index[item.type] = item.entry
+          ? { builtAt: item.entry.metadata.builtAt || 0,
+              rev: item.entry.metadata.rev || '',
+              bytes: item.entry.metadata.bytes || item.entry.value.length,
+              publishedAt: item.entry.metadata.publishedAt || 0 }
+          : null;
+      }
+      return dataJson({ ok: true, types: index, subject: gate.session.subject }, 200);
+    }
+
+    if (DATA_TYPES.indexOf(rest) === -1) {
+      return dataJson({ error: 'unknown type', type: rest }, 400);
+    }
+
+    const entry = await readPayload(rest);
+    if (!entry) {
+      /* 404, and named as a state rather than a failure: the client treats it as "not
+         published" and reads the type from `/exec` exactly as it did before this existed. */
+      return dataJson({ error: 'not_published', type: rest }, 404);
+    }
+
+    return new Response(entry.value, {
+      status: 200,
+      headers: Object.assign({
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store'
+      }, dataCorsHeaders(), stampHeaders(entry.metadata))
+    });
+  }
+
+  return async function handle(request) {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: dataCorsHeaders() });
+    }
+
+    const url = new URL(request.url);
+
+    if (url.pathname === '/publish' || url.pathname === '/publish/') {
+      return handlePublish(request, url);
+    }
+
+    if (url.pathname.indexOf('/data/') === 0) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return dataJson({ error: 'method not allowed' }, 405);
+      }
+      const gate = await gateRead(request);
+      if (gate.error) return gate.error;
+      return handleRead(request, url, gate);
+    }
+
+    return dataJson({ error: 'not found' }, 404);
+  };
+}
+
+/* Path routing is additive: the app's existing calls all carry their route in the QUERY
+   (`/?type=nap`, `/?action=login`), so nothing that works today can reach the data plane by
+   accident, and the data plane can only answer `/publish` and `/data/*`.
+
+   Exported so the test can assert WHICH plane a path reaches without making a request — the
+   failure this guards is the quiet one, where a new worker route swallows the pass-through
+   the app still depends on. */
+export function planeFor(pathname) {
+  const path = String(pathname || '');
+  if (path.indexOf('/data/') === 0 || path.indexOf('/publish') === 0) return 'data';
+  return 'proxy';
+}
+
 const defaultHandle = createProxy();
 
 export default {
   fetch(request, env) {
+    if (planeFor(new URL(request.url).pathname) === 'data') {
+      return createDataPlane({
+        kv: (env && env.DATA) || null,
+        readSecret: (env && env.READ_SECRET) || '',
+        publishSecret: (env && env.PUBLISH_SECRET) || ''
+      })(request);
+    }
     return defaultHandle(request);
   }
 };

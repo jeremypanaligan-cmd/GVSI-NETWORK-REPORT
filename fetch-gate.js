@@ -20,6 +20,11 @@
 // exactly matching the old `.catch(() => {})` callers.
 //
 // Requires the page's fetchWithRetry() (index.html) — resolved at call time.
+//
+// OPTIONAL: cdn-source.js. When `window.NETPULSE_CDN` names a host and a login token is stored,
+// start() reads the payload from the edge first and falls back to the `/exec` URL it was given.
+// Without that file, or with the host blank, every line below behaves exactly as it did before it
+// existed — which is why the switch for the whole feature is one value in index.html.
 
 (function () {
   'use strict';
@@ -103,8 +108,34 @@
     tickerClearDeferred(type);
   }
 
+  /* THE READ ITSELF, and the one place the edge path is allowed to exist.
+
+     Every module call site still asks for its own `/exec` URL — nothing above this line knows
+     cdn-source.js exists — and that URL is what this function falls back to. So the new path can
+     only ever be FASTER: it is tried first when it is switched on and available, and any refusal
+     (no token, 401, a 404 for a type the trigger has not published yet, a timeout, an envelope, a
+     body that will not parse) drops straight through to the call this app has always made.
+
+     Deliberately NOT a second gate: dedupe, the 30 s ceiling, the throttle and the freshness
+     stamping all live here already, so a payload from the edge is counted, deduped and aged
+     exactly like one from Apps Script — which is the only way the two can be compared. */
   function start(type, url) {
-    var p = withTimeout(fetchWithRetry(url), type);
+    var attempt;
+
+    if (window.cdnSource && typeof window.cdnSource.enabled === 'function' && window.cdnSource.enabled()) {
+      attempt = window.cdnSource.fetchJson(type, window.cdnSource.dataUrl(type))
+        .catch(function (err) {
+          if (window.console && console.warn) {
+            console.warn('[FetchGate] ' + type + ': edge read refused (' +
+                         ((err && err.message) || err) + ') — asking /exec as before');
+          }
+          return fetchWithRetry(url);
+        });
+    } else {
+      attempt = fetchWithRetry(url);
+    }
+
+    var p = withTimeout(attempt, type);
     inflight[type] = p;
     return p;
   }

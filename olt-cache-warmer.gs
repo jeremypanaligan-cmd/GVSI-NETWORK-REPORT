@@ -131,7 +131,16 @@ function warmOltCache() {
     // it logged its own success line with no envelope test — and that made the
     // heaviest, most budget-critical build here the one whose result nobody
     // checked. See judgeWarmResponse_() for why a failed build does not throw.
-    return judgeWarmResponse_('warmOltCache', content, elapsed, OLT_WARM_TTL_SECONDS);
+    var verdict = judgeWarmResponse_('warmOltCache', content, elapsed, OLT_WARM_TTL_SECONDS);
+
+    /* Published to the edge from the SAME verdict this pass counts, so a build that answered an
+       error envelope (verdict -1) is never handed to a reader. Fail-open and no-throw: see
+       publish-cache.gs. A deployment without that file skips this line entirely. */
+    if (verdict >= 0 && typeof publishBuiltPayload_ === 'function') {
+      publishBuiltPayload_('olt', content);
+    }
+
+    return verdict;
   } catch (err) {
     Logger.log('❌ warmOltCache failed: ' + err.message);
     return -1;
@@ -244,7 +253,14 @@ function warmTypeCache_(type, ttlSeconds) {
     var output = doGet(fakeEvent, ttlSeconds);
     var content = output.getContent();
 
-    return judgeWarmResponse_('warmCache ' + type, content, Date.now() - start, ttlSeconds);
+    var verdict = judgeWarmResponse_('warmCache ' + type, content, Date.now() - start, ttlSeconds);
+
+    /* Same rule as OLT above: only a build this pass counted as a success reaches the edge. */
+    if (verdict >= 0 && typeof publishBuiltPayload_ === 'function') {
+      publishBuiltPayload_(type, content);
+    }
+
+    return verdict;
   } catch (err) {
     /* Per type, not per run. This is the only thing keeping any of these modules warm,
        so a module that cannot be built must not take the four behind it down with it. */
