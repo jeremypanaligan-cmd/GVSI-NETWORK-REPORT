@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.24 is pushed**, and it carries everything that had queued up behind it (3.9.21–3.9.23), so client work that says *in the repo* below is now in the field · **the server half is still owed, and all of it is pastes** — see P1 · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.25 is pushed**, and it carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **the server half is still owed, and all of it is pastes** — see P1 · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -290,16 +290,29 @@ donut cards intact, and the five remaining section headings present.
 
 ---
 
-## 🔴 P1 — Instant first paint (persist `dataCache`)
+## ✅ P1 — Instant first paint (persist `dataCache`) — SHIPPED in 3.9.25 (Sept 26, 2026)
 
-**Goal:** in a cold browser the app always starts with an empty `dataCache` (`index.html:898` is in-memory only), so the first render waits on the network. Restore the last known payload **before** the first render, then refresh in the background — honestly labelled, and bounded by age.
+**Status.** Built as `cache-store.js` (PART-026), and it closes both halves of the operator's report:
+3.9.24 stopped a *failed* refresh from blanking a tab, and this one makes a cold start draw the last
+session's payloads **before** it asks for anything. The design below was written before the code and
+was followed; **three things it did not foresee** are recorded because they were the real work:
 
-This removes the **whole first-load wait**. It does **not** recover the 1.5–2.1 s warm-cache delta, which is a separate and much smaller number (see P3 warmer item).
+1. **A failed refresh would have erased the copy it needed.** Every refresh empties `dataCache[type]`
+   before it asks, so a snapshot landing in that window writes the modules the page has and silently
+   deletes the one whose read failed. The writer now **carries over** any type the page is not
+   holding, at its original `at` — so it goes on ageing and expires by the same cap.
+2. **A stamp in the future had to be refused.** A clock that moved backwards makes the age negative,
+   which never expires: an eternally-fresh stale screen, the opposite of the guard.
+3. **Restoring is not enough — the first frame has to be drawn from it.** Handing the payloads to the
+   opening request's promise means the restored data appears only when that request settles, i.e. at
+   the exact moment it was meant to replace. The visible tab is now drawn synchronously from the
+   snapshot; the cost is one background refresh for that tab, which the gate joins and throttles.
 
-> **Half of this shipped in 3.9.24 (PART-025), and it is the other half that is left.** A *failed*
-> refresh now keeps the screen it already drew, so a stalled read inside a running session no longer
-> empties a tab. This item is what happens when there is no session yet: a cold browser still starts
-> from an empty `dataCache`, and whatever was on screen dies with the tab.
+**Verified** (PART-026): 425 tests across 22 suites, 15 mutations all caught, and a real-browser cold
+start against an opening request stubbed **never to resolve** — first frame held the restored rows,
+the chip read `Updated 20m ago`, `lastFetch('nap')` equalled the stored stamp, and OLT came back with
+its meta, its rows and its 6-minute build stamp. Then a failed refresh kept the screen, and the writer
+firing with `dataCache.nap` empty still left nap in the store at its original 20-minute age.
 
 ### Measured evidence (Sept 18, 2026)
 
@@ -344,12 +357,23 @@ This removes the **whole first-load wait**. It does **not** recover the 1.5–2.
 - **`sw.js`** — add `./cache-store.js` to `STATIC_ASSETS`.
 - **New `tests/cache-store.test.js`** and additions to `tests/fetch-gate.test.js`.
 
-### Acceptance checks
+### Acceptance checks — all four confirmed in a real browser (PART-026)
 
-1. Reload → data is present in the **first** frame, no skeleton.
-2. The ticker chip shows the **restored age** ("Updated 20m ago"), not "No data yet".
-3. Manual REFRESH still clears and refetches; logout clears the persisted key.
-4. Auth ordering is unchanged — `loadInitialData()` is only reached from `showApp()` (`index.html:1662`), which is gated on `isLoggedIn()`. **Restored data must never be visible before login.**
+1. ✅ Reload → data is present in the **first** frame, no skeleton. It is drawn synchronously, before
+   the opening request is awaited, so a stalled deployment cannot delay it either.
+2. ✅ The ticker chip shows the **restored age** ("Updated 20m ago"), not "No data yet" —
+   `fetchGate.seedLastFetch()` restores the fetch time, and OLT's chip reports the server's own build
+   time because that stamp rides inside the payload.
+3. ✅ Manual REFRESH still clears and refetches (the restore never writes back into `dataCache`, so a
+   tab click cannot redraw stale data as though it had just been fetched); logout clears the key, and
+   so does the version guard's wipe.
+4. ✅ Auth ordering is unchanged — `loadInitialData()` is only reached from `showApp()`, which is
+   gated on `isLoggedIn()`. **Restored data must never be visible before login.**
+
+**Stricter than planned, not looser:** an entry is judged per type (nap 60 min, lcp 30, olt 15,
+node 10, backbone 10 — the app's own refresh cadence), a type with no recorded fetch time is not
+stored at all rather than stamped `now`, and OLT rows without their meta are neither stored nor
+restored, because those cards would then disagree with the table under them.
 
 ### ⚠️ Delivery condition — never name a version by hand
 

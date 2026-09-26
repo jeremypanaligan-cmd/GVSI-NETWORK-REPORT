@@ -1500,3 +1500,101 @@ one page helper, one new suite, and the labels that describe them.
 
 **Still owed.** The server-side pastes listed under PART-024 — this part changes no server byte, and
 the fix is complete on the client.
+
+---
+
+### PART-026 — the last session paints the first frame (2026-09-26)
+
+**What was asked for.** The other half of PART-025's complaint, and the half PART-025 deliberately
+left open: *persist the last good module payloads across a cold start so a stalled first load shows
+the last known data instead of the unavailable screen.* PART-025 made a FAILED read keep the screen it
+has; a cold start has no screen yet, and the tab that has never drawn anything is exactly the one that
+says **"This report could not be loaded"**.
+
+**The design was already on disk, and this part followed it** — TODO.md's P1 item *Instant first paint
+(persist `dataCache`)* had the reasoning, the ~3.9 KB of measured payloads, the per-type age caps and
+the reason for `localStorage` (synchronous `getItem`, so the payloads are in memory before the first
+paint rather than after an await). Three things the plan did not have, all found while building it:
+
+1. **A failed refresh would have ERASED the copy it needed.** The plan's writer snapshots
+`dataCache` on a timer. But every refresh empties `dataCache[type]` *before* it asks — that is the
+refresh contract PART-025 diagnosed — so a snapshot landing in that window writes the modules the page
+is holding and silently deletes the one whose read failed. The writer now carries over any type the
+page is not holding, at its original `at`, so it keeps ageing and expires by the same cap: a refresh
+that failed cannot cost the next launch its only snapshot, and nothing becomes immortal.
+2. **A stamp in the FUTURE had to be refused.** A device whose clock moved backwards, or a stamp
+written by one running ahead, would read as a negative age and therefore never expire — an
+eternally-fresh stale screen, which is the opposite of what the guard is for. Anything ahead of the
+local clock is unusable, not infinitely new.
+3. **Restoring is not enough; the first frame has to be drawn from it.** The restored payloads were
+handed to `bootFromBundle()`'s promise like everything else, which is the wrong order for the case
+this exists for: against a stalled deployment the opening request holds the screen for the gate's
+whole 30 s ceiling before the restored data appears — at the exact moment it was meant to replace.
+So the visible tab is drawn from the snapshot synchronously, and the opening request re-renders it
+when it settles. That costs ONE background refresh for the visible tab (the gate joins and throttles
+it), which is the price of the first frame not waiting.
+
+**What is stored, and why OLT is the odd one.** The post-decode state each module reads —
+`dataCache[type]`, not the bytes the server sent. OLT additionally carries `oltMeta`, because its list
+reads the array and its cards read the meta: storing the rows alone would restore a snapshot whose
+totals disagree with the table under them, and OLT's cache-first path re-renders without restoring
+meta, so the mismatch would be silent. An OLT payload whose meta did not come with it is neither
+written nor restored. Its server build stamp is restored too — it rides inside the payload, so the
+chip can report the age of the DATA (`Data as of 09:12`) instead of falling back to the fetch time.
+
+**The expiry rule is one table, and it is the app's own cadence written down:** nap 60 min, lcp 30,
+olt 15, node 10, backbone 10 — the intervals `loadInitialData()` already refreshes those modules on,
+so a restored screen is never older than one the app would have replaced anyway. It is judged PER
+TYPE and only the expired entries are dropped, so one stale module cannot cost the other four. A
+snapshot also keeps its original fetch time across sessions, which is why a payload that is never
+refreshed ages out instead of being treated as new on every launch.
+
+**The ticker had to be told, or the fix would have introduced its own lie.** `fetchGate.lastFetchAt`
+is in-memory, so a restored table would have drawn its age chip on an empty clock and read **"No data
+yet"** over a table full of rows. New `fetchGate.seedLastFetch(type, at)` restores the fetch time, and
+only ever moves the stamp backwards — a newer stamp already in memory is left alone, which is what
+makes it safe to seed before the opening bundle has had its say.
+
+**Storage failing is always the same answer: behave as if this file did not exist.** Private mode
+(where the accessor itself throws), a quota error on write, a corrupt value, a schema mismatch, no
+`localStorage` at all — every one of them degrades to the previous behaviour rather than throwing
+into the load path. A cache may not break the app it accelerates. The snapshot is also cleared on
+logout (one user's view of the network must not be handed to the next) and by the version guard's
+`localStorage.clear()`, which is right: a wipe should take the snapshot with it.
+
+**Auth ordering is unchanged.** `restoreModuleCache()` sits inside `loadInitialData()`, which is only
+reached from `showApp()`, which is gated on `isLoggedIn()` — so restored data cannot be on screen for
+a user who has not logged in.
+
+**Checks.** Full suite **425 passed across 22 suites, 0 failed** (401 → 425), `bump-version.mjs
+--check` clean. New `tests/cache-store.test.js` (21 cases) drives the shipped file against a fake
+localStorage that includes both ways storage really fails on a phone; `tests/fetch-gate.test.js`
+gained three cases for `seedLastFetch`. Fifteen mutations, every one caught: the age cap, the
+future-stamp guard, the missing-fetch-time rule, the OLT-meta requirement, the empty-snapshot guard,
+the gate seeding, `rawOltData` on restore, the OLT build stamp, the schema check, the serializer
+itself, the carry-over, a carry-over that re-stamps the entry as fresh, a restore that ignores its own
+caps, and both halves of `seedLastFetch` (backwards and junk). One attempted mutation was NOT a
+mutation — passing `Infinity` as the parse clock is rejected by the same `isFinite` check the code
+already had, so it changed nothing; recorded because "no test caught it" and "the mutation was a
+no-op" look identical from the summary line.
+
+**A vacuous assertion, caught by that pass.** The first version of the carry-over test asserted the
+carried entry kept its own `at` — but it never advanced the harness clock between the two writes, so
+`re-stamp it as fresh` and `keep the original age` produced the same number and the assertion could
+not fail. It does now.
+
+**Verified in a real browser, and the numbers.** Against a local server on a fresh origin (no service
+worker to serve a stale script): a snapshot written through the shipped serializer, memory cleared,
+and `bootFromBundle` stubbed to **never resolve** — modelling the stalled deployment this exists for.
+The **first frame** already held the 3 restored NAP rows with BENGUET in the table, the chip read
+**"Updated 20m ago"**, `lastFetch('nap')` equalled the stored `at`, and OLT came back with its meta
+(`total: 462`), its rows in `rawOltData` and its build stamp 6 minutes old — exactly what was stored.
+Then a refresh that FAILED on top of the restored data left the rows byte-identical with no error row
+and the chip cleared, and the 30 s writer, firing with `dataCache.nap` empty, still left nap in the
+store with 2 rows at its original 20-minute age.
+
+**Release.** 3.9.24 → **3.9.25**; guard untouched at 3.10.0. Client bytes only: one new file
+(`cache-store.js`, precached and therefore a delivery-set change), one gate function, three call
+sites in `index.html`, and the labels that describe them.
+
+**Still owed.** The server-side pastes listed under PART-024. Nothing here depends on them.

@@ -575,3 +575,49 @@ will correctly keep its screen and the test will look like it failed.
 children; both are `display:flex`), but screenshot capture needs the tab to be the one the panel is
 compositing — otherwise capture reports "no frames" and the DOM readings above are still the
 result that matters.
+
+### 8.9 Driving a COLD START with a stalled opening, by hand (Sept 26, 2026)
+
+The persisted module cache (`cache-store.js`) exists for one case: a launch where the deployment does
+not answer. That case is not reachable by waiting — it takes 30 s and a stalled origin — so it is
+faked, and the fake is the useful part: stubbing the opening to **never resolve** is strictly harsher
+than a stall, because a stall at least settles eventually.
+
+**USE A FRESH ORIGIN, and this is not optional.** `sw.js` is cache-first for the shell, so a second
+visit to a port serves the `cache-store.js`, `fetch-gate.js` and module files the worker cached on the
+first one. A fix that landed in the repo then looks broken — and worse, the older copy can write a
+snapshot with the older rules. Start the server on a port nothing has visited (or unregister the worker
+and delete its caches first), then:
+
+```js
+(() => {
+  const MC = window.moduleCache;
+  const now = Date.now();
+  localStorage.setItem(MC.KEY, MC.serializeModuleCache({
+    nap: { at: now - 20*60000, data: [{ A:'LUZON', P:'BENGUET', H:4, D1:1, D3:0, T:5 }] }
+  }));
+
+  dataCache.nap = null;                    // a launch holds nothing
+  window.startRevWatch = () => {};          // keep the real deployment out of the test
+  window.saveDailySnapshot = () => {};      // ...including anything that WRITES
+  window.bootFromBundle = () => new Promise(() => {});   // the deployment never answers
+  window._dataLoaded = false;               // loadInitialData() guards on this
+  loadInitialData();
+
+  // read the FIRST frame synchronously — no await, nothing has settled
+  document.getElementById('napTableBody').innerHTML.indexOf('BENGUET') !== -1;
+  document.querySelector('#tab-nap .module-refresh-ticker').textContent;   // 'Updated 20m ago'
+})()
+```
+
+`loadInitialData()` is called directly because the real door is `showApp()`, behind login, and there is
+no credential here — the auth ordering that makes the restore safe is unchanged either way. Expect
+`Updated 20m ago` and not `No data yet`: if the chip reads "No data yet" while rows are on screen,
+`fetchGate.seedLastFetch()` is not being called, which is the failure this store is most likely to
+reintroduce.
+
+**Then check what a FAILED refresh does to the store** (the rule that is easiest to get wrong): draw
+the rows, set `dataCache.nap = null`, let `fetchNapData(true)` reject, call
+`moduleCache.persistModuleCache()`, and read the key back. The rows must still be in the snapshot at
+their ORIGINAL age — a snapshot that replaced wholesale would have deleted the only copy at exactly
+the moment the next launch needs it.

@@ -89,6 +89,15 @@ successful build stores nothing, a failed one always does, and a slow one is wri
 no read at all — the measurement lives in the trigger that was already running rather than
 in the request an operator is waiting on.
 
+### SCN-022: A cold start shows the last session's data, and says how old it is
+Outcome: A launch that cannot reach the deployment draws the previous session's payloads in the
+first frame instead of a screen saying the report could not be loaded, because they are read
+synchronously and before anything is asked for. Each one is shown only while it is younger than the
+interval the app would have refreshed it on anyway, its age is reported rather than hidden, and a
+type the page is not holding is kept rather than dropped — so a refresh that failed cannot cost the
+next launch the copy it needs. Nothing is shown before login, and a device whose storage is
+unavailable, full or corrupt behaves exactly as it did before this existed.
+
 ### SCN-021: A refresh that fails keeps the screen it already drew
 Outcome: A module whose refresh fails — a stalled deployment, an HTTP status, a body that is not
 JSON — leaves the rows already on screen exactly as they are, because those rows are the last
@@ -476,6 +485,51 @@ to go to the network. This is a display rule, not a caching one.
   - Evidence: PART-025 in `PLAN_EVIDENCE.md` — **401 tests across 21 suites**, 4 mutations all
     caught, the keep rule verified in a real browser against the local server, and the hand-off
     still owed: the pastes on the server side (this part changes no server byte)
+
+## Phase 11: the cold start, and what it may show before it knows — SHIPPED in 3.9.25
+
+**Why this phase exists.** It is the second half of the report Phase 10 answers. PART-025 stopped a
+FAILED read from blanking a tab, which covers every refresh in a running session — but a launch has no
+screen yet, and the tab that has never drawn anything is exactly the one that says *"this report could
+not be loaded"*. On a deployment that stalls for 7.5 s to 30.8 s, that is the first thing an operator
+sees in the morning.
+
+**The cause is structural, not a bug.** The module cache is in-memory only, so every launch begins
+with nothing to draw and the first render waits on the network. The user's own words for what they
+want are already in the phase's scenario: *habang hindi pa lumalabas ang latest data, ang last
+fetched data muna ang nasa display*.
+
+**What shipped.** `cache-store.js` writes each module's last good payload to `localStorage` — the
+post-decode state each module reads, plus OLT's meta beside its rows, because OLT's list reads the
+array and its cards read the meta and restoring one without the other puts numbers on screen that
+disagree with the table under them. `loadInitialData()` restores it at the top, draws the visible tab
+from it **before** awaiting the opening request, and starts a 30 s writer. The freshness chip is told
+when each payload was fetched, so a restored table reports a real age instead of *"No data yet"*.
+
+**The three things the written plan did not have.** (1) The writer must CARRY OVER a type the page is
+not holding: a refresh empties `dataCache[type]` before it asks, so a snapshot in that window would
+otherwise delete the copy the next launch needs — which is worst exactly when the read just failed.
+(2) A stamp in the FUTURE has to be refused, or a clock that moved backwards yields an age that never
+expires and an eternally-fresh stale screen. (3) Restoring is not enough — the first frame has to be
+drawn from the snapshot rather than after the opening request, or the restored data arrives at the
+exact moment it was meant to replace.
+
+**What was deliberately NOT done.** No payload older than the app's own refresh cadence is restored
+(nap 60 min, lcp 30, olt 15, node 10, backbone 10), the snapshot is cleared on logout so one user's
+view is not handed to the next, and nothing is read before login — the restore sits inside a function
+only reachable from `showApp()`.
+
+- [x] Part 19: Read `plans/PART19_PLAN.ai.md`
+  - Scenario: SCN-022, and SCN-021 (the failure rule it builds on)
+  - Outcome: A cold start draws the last session's payloads in the first frame, per-type age caps
+    judged against the app's own cadence, a future stamp refused, the gate seeded so the chip reports
+    a real age, OLT restored with its meta and build stamp, the writer carrying over what the page is
+    not holding, every storage failure failing open, and the release label moving with the new
+    precache entry
+  - Evidence: PART-026 in `PLAN_EVIDENCE.md` — **425 tests across 22 suites**, 15 mutations all
+    caught (and one attempted mutation identified as a no-op rather than a gap), the cold start
+    driven in a real browser against a stalling origin, and the hand-off still owed: the pastes on
+    the server side (this part changes no server byte)
 
 ## Notes
 
