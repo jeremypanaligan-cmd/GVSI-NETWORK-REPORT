@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.28 is pushed** — the edge read path (`/publish` + `/data/*`, `cdn-source.js`, one switch), **built and dormant**, with **four Cloudflare steps owed by hand** — see the item immediately below · before it, **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.28 is pushed** — the edge read path (`/publish` + `/data/*`, `cdn-source.js`, one switch), **built and dormant**, with **the worker half deployed and two of the four Cloudflare steps done** — see the item immediately below · before it, **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -16,13 +16,14 @@
 
 ---
 
-## 🔴 P1 — Ang read path sa edge: BUILT at naka-push, apat na hakbang sa Cloudflare ang utang (Sept 26, 2026)
+## 🔴 P1 — Ang read path sa edge: naka-deploy na ang worker half, ang Apps Script half ang utang (Sept 26, 2026)
 
 **Status.** Ang **buong code** ay nasa repo at naka-push (`ea712a4`, release **3.9.28**): ang worker
 ay may bagong `/publish` at `/data/*`, may bagong paste na `publish-cache.gs`, may `cdn-source.js` ang
-client, at may isang switch. **Wala pang naka-deploy** — at hindi ito kayang gawin mula sa checkout:
-ang Cloudflare credential ng connector ay **read-only** (`10000: Authentication error` sa KV create at
-sa worker upload), kaya ang provisioning ay sa iyo, gaya ng lahat ng paste sa proyektong ito.
+client, at may isang switch. **TAPOS na ang hakbang 1 at 2 (Sept 26)** — naka-deploy na ang worker
+half at **beripikado laban sa live edge**; ang hakbang 3 (Apps Script) ang susunod. Hindi kaya ito
+mula sa checkout — read-only ang credential ng connector (`10000: Authentication error`) — kaya
+mano-mano, gaya ng lahat ng paste sa proyektong ito.
 
 **Bakit ito ginagawa.** Sinukat noong Sept 26 laban sa live `/exec`: `?type=nap` = **200 sa 1.36 s at
 1.56 s** (950 B), `?action=bundle` = **200 sa 1.32 s** (1,040 B). Iyon ang 2-hop redirect papasok sa
@@ -39,21 +40,62 @@ nananatiling gumaganang fallback.
 
 **Ang apat na hakbang (eksakto sa `proxy/README.md`):**
 
-- [ ] **1. Gumawa ng KV namespace** — Workers & Pages → KV → Create, pangalan `NETPULSE_DATA`
-- [ ] **2. I-deploy ang worker kasama ang binding** — i-paste ang `proxy/netpulse-proxy.mjs`, dagdagan
-      ng KV binding na pinangalanang **`DATA`** (ito ang inaasahan ng code; ang ibang name → 503 na
-      may `field: "DATA"`)
-- [ ] **3. Dalawang secret, sa worker AT sa Script Properties** — `openssl rand -hex 32` ×2 para sa
-      `PUBLISH_SECRET` / `READ_SECRET`, tapos isang beses sa editor:
-      `setEdgeConfig_('<worker url>', '<publish secret>', '<read secret>')`
+- [x] **1. Gumawa ng KV namespace** — `NETPULSE_DATA` (id `96d4c88d628a48d993068157d62da852`)
+- [x] **2. I-deploy ang worker kasama ang binding** — nasa field na ang `proxy/netpulse-proxy.mjs`, at
+      naka-attach ang KV binding na **`DATA`** → `NETPULSE_DATA`. Beripikado **mula sa labas**, hindi
+      sa dashboard: sinusuri ng `gateRead` ang `!kv` **bago** ang token, kaya ang `401 no_token`
+      imbes na `503 field: "DATA"` ay patunay na buhay ang binding (iyon ang sasabihin ng kulang)
+- [~] **3. Kalahati lang: tapos na ang dalawang secret sa worker, hindi pa ang Apps Script** —
+      naka-set na ang `PUBLISH_SECRET` / `READ_SECRET` bilang **Encrypted** sa worker (kaya `401` na
+      ang `/publish` at `/data/*`, hindi `503`). Ang natitira: i-paste ang `publish-cache.gs` kasama
+      ang `admin.gs` at `olt-cache-warmer.gs` na pagbabago, tapos isang beses sa editor:
+      `setEdgeConfig_('<worker url>', '<publish secret>', '<read secret>')` — **parehong value** sa
+      worker, kung hindi ay `bad_signature` ang bawat token. **Hindi kayang magpasa ng argumento ang
+      Run dropdown**, kaya gumawa ng isang besesang wrapper (`function setupEdgeOnce() { setEdgeConfig_(...); }`),
+      patakbuhin iyon, tapos burahin. Pagkatapos: **`reportEdgeState()`** (read-only, nasa
+      `publish-cache.gs` mismo) — iyon ang pinakamabilis na sagot sa "nakapag-publish ba ang
+      huling pass?" nang hindi binubuksan ang dashboard
 - [ ] **4. Mag-publish ng isang bagay** — umaakyat ang publish sa `warmDataCaches`, kaya kailangan
       ng 5-minutong trigger (o isang manual run mula sa editor)
 
-**⚠️ Hard dependency, nasukat.** `?action=bundle` ay sumagot ng **lahat lima ay *not warm***, samantalang
-ang `?type=nap` ay mainit ilang sandali lang pagkatapos — iyon ang lagda ng deployment na **walang
-naka-install na warm trigger** (mabubuhay lang ang entry kapag may nag-build, at pagkatapos ng 330 s
-na TTL ay wala na). Kung wala ang trigger, **wala ring mai-publish sa edge** kahit naka-set na ang mga
-secret.
+**⚠️⚠️ NAHULI (Sept 26, gabi): ang `Save version` ay HINDI nagde-deploy, at nagdi-disable ang `Deploy`.**
+Ito ang tumalo sa limang rotation ng `READ_SECRET` nang sunod-sunod — lahat naka-save, **walang
+na-promote**, kaya tumatakbo pa rin ang lumang secret at `401 bad_signature` ang bawat sagot. Hindi ito
+makikita sa alinmang screen: nasa version listahan ng Cloudflare ang bago, nasa `setEdgeConfig_` ang
+ini-type mo, at hindi pa rin pareho ang hawak ng dalawang panig.
+
+**Ang ikalawang click:** **Deployments** tab → **Version History** → **⋯ (More options)** →
+**Promote version** (ang menu ay `Promote version`, `Split versions`, `View logs` — **walang** item na
+"Deploy"). At bago ka maniwala: ang **"Active deployment"** sa itaas ng page na iyon ang tumatakbo —
+kung iba ang version id doon sa kakasave mo, wala pang live.
+
+**Mas mabilis na sagot sa "bakit ayaw ng token":** ang bagong **`diagnoseEdgeSecrets_()`** sa
+`publish-cache.gs` — sinusubukan ang limang spelling ng secret (as-stored, trimmed, `+\n`, `+space`,
+`+CRLF`) at sinasabi kung alin ang hawak ng worker. **Read-only** (may test): `GET /data/_meta`, at POST
+sa `type=__probe__` na tinatanggihan ng 400 **bago** basahin ang body. Mahalaga ang spelling dahil ang
+`setEdgeConfig_` ay **nag-trim** at ang Cloudflare ay **hindi** — ang kinopya mula sa terminal selection
+ay may newline ng linya, at `"<secret>\n"` sa worker ay hindi kailanman matutumbasan ng Apps Script.
+
+**⚠️ Hard dependency, at ang bagong sukat ay baliktad na.** Ang publish ay nakasakay sa
+`warmDataCaches`, kaya **kung wala ang 5-minutong trigger, walang mai-publish sa edge** kahit
+naka-set na ang mga secret.
+
+**Ngunit mag-ingat sa `?action=bundle` bilang sukat ng warmth** — hindi ito malinis na probe, at
+nadulas ako dito kanina. May **PropertiesService fallback** ito (`handleBundle` → `bundlePropertyEntry_`)
+na may sariling TTL (**60 s** sa node/olt/backbone, **180 s** sa nap/lcp), at **hindi nito sinusuri ang
+freshness kapag CacheService hit** — ang hit ay binibilang na present sa buong CacheService TTL nito.
+Kaya:
+
+- ang **all-missing** na sagot ay ang mas matibay na reading: wala sa cache at wala rin sa properties
+  — iyon ang nasukat kanina, at sinasabi lang nito na walang nag-warm sa mga module kamakailan;
+- ang **buong bundle na `missing: []`** ay **hindi** patunay na buhay ang trigger, dahil kapareho ang
+  hitsura nito sa trapik ng app;
+- **re-measured kanina, baliktad na:** `?action=bundle` ay `missing: []` na ngayon, kaya may
+  nagsulat sa lahat lima sa loob ng TTL. Consistent sa trigger, pero hindi pa rin pruweba.
+
+**Ang tanging decisive check:** patakbuhin ang **`listTriggers()`** sa Apps Script editor —
+**read-only** ito (`getProjectTriggers()` + `Logger.log`), at nagsasabi ng `✅ In sync.` o
+`❌ Planned but NOT live (run setupAllTriggers): warmDataCaches`.
 
 **Pagkatapos ng apat:** i-set ang `window.NETPULSE_CDN` sa `index.html` (nasa network-only listahan na
 ng `sw.js` ang host). **I-off sa isang value:** blankuhin lang ito — ang `/exec` ang fallback ng bawat
@@ -63,10 +105,23 @@ type. Harder rollback: burahin ang KV keys → 404 `not_published` → bawat typ
 loob ng umiiral na `withLock_`), ang 20 linyang `olt-cache-warmer.gs` (publish hook sa warm pass), at
 `proxy/netpulse-proxy.mjs`. **Walang client byte ang nagbago sa field** hangga't blangko ang switch.
 
-**Test:** tatlong bagong suite — `publish-auth` (19 cases, worker), `cdn-read` (19 cases, client fallback +
+**Test:** tatlong bagong suite — `publish-auth` (20 cases, worker), `cdn-read` (19 cases, client fallback +
 network-only host), `publish-server` (ang `.gs` laban sa fake `UrlFetchApp`/`PropertiesService`/
 `CacheService`, kasama ang **cross-check**: ang token na ini-mint ng `.gs` ay bini-verify ng worker).
-Lahat may mutation check.
+Lahat may mutation check. **26 suites, 0 failed.**
+
+**BUG na nahuli ng verify laban sa live edge (Sept 26).** `curl -H 'Authorization: Bearer
+basura.token'` → **500 `error code: 1101`**, isang Worker exception. Ang `verifyReadToken` ay
+nagbabantay sa key import at nangako sa sarili nitong komento na *"never throws"* — pero ang
+totoong nag-e-throw sa input ng caller ay ang **decode**: tumatawag ng `atob` ang `b64urlToBytes`,
+at ang string na may tuldok ay hindi laging dalawang base64url halves. Ang `basura` ang pumatay dito.
+**Kabaligtaran ito ng buong layunin ng function**: sa mata ng client, ang 500 ay "sira ang edge" at
+ang 401 ay "bumalik sa `/exec`". **Hindi ito nakita ng test**, dahil ang lahat ng refusal case nito
+(`no_token`, `bad_signature`, `expired`) ay maayos na base64url — leksiyon na dapat itala: kayang
+saklawin ng isang suite ang lahat ng branch at hindi pa rin mahuli ang input class na pinangako ng
+sariling komento. Naka-guard na ngayon ang decode at ang `subtle.verify`, may bagong case para sa anim
+na malformed na hugis, at napatunayan sa mutation na **FAIL** kapag ibinalik ang bug. **Kailangang
+i-paste muli ang worker** para maging live ito — ang naka-deploy ngayon ay may bug pa.
 
 ---
 

@@ -131,9 +131,10 @@ can display its own retry counts, which is the whole point of having them.
 
 # THE DATA PLANE (`/publish` and `/data/*`)
 
-**Status: BUILT AND PUSHED, NOT DEPLOYED — 2026-09-26.** The worker source in this directory now
-carries two more routes and a KV binding that the deployed copy does not have. Nothing changes for
-the app until the four steps below are done, and `window.NETPULSE_CDN` in `index.html` is set.
+**Status: the WORKER half is deployed, the Apps Script half is not — 2026-09-26.** Steps 1 and 2 below
+are done and verified against the live edge, and both worker secrets are set. What is left is step 3
+(the `publish-cache.gs` paste and `setEdgeConfig_`) and step 4 (one publish). Nothing changes for the
+app until all four are done and `window.NETPULSE_CDN` in `index.html` is set.
 
 This is the second job this worker does, and it is the one that removes the hop rather than
 absorbing it: the Apps Script trigger publishes each payload it has already built into KV, and the
@@ -156,37 +157,71 @@ worker verifies it statelessly, which is the point: no call back to Apps Script 
 
 ## The four owed steps
 
-**1. Create the namespace** — Workers & Pages → KV → Create namespace, name it `NETPULSE_DATA`.
+**1. ✅ DONE — the namespace exists** — Workers & Pages → KV → `NETPULSE_DATA`
+(id `96d4c88d628a48d993068157d62da852`).
 
-**2. Deploy this worker with the binding** — Workers & Pages → the `holy-cloud-1d7a` worker →
-Edit code, paste `netpulse-proxy.mjs`, and add a KV namespace binding named **`DATA`** pointing at
-`NETPULSE_DATA`. Or with wrangler (needs a `wrangler.toml` for the binding):
+**2. ✅ DONE — this worker source is deployed, with the binding** — `holy-cloud-1d7a` runs the current
+`netpulse-proxy.mjs`, and a KV namespace binding named **`DATA`** points at `NETPULSE_DATA`. Verified
+from OUTSIDE, not from the dashboard: `gateRead` checks `!kv` **before** it looks at any token, so an
+unauthenticated `GET /data/nap` answering `401 no_token` rather than `503 field: "DATA"` is proof the
+binding is attached — a `503` is what a missing binding would say. (With wrangler instead:
+`npx wrangler deploy proxy/netpulse-proxy.mjs --name holy-cloud-1d7a`, which needs a `wrangler.toml`
+for the binding.)
 
-```bash
-npx wrangler deploy proxy/netpulse-proxy.mjs --name holy-cloud-1d7a
-```
-
-**3. Two secrets, in the worker AND in Script Properties.** Generate them once (they are the same
-value in both places, and they belong in NO repository):
+**3. ⏳ HALF DONE — the worker's secrets are set, the Apps Script half is not.** Generate them once
+(they are the same value in both places, and they belong in NO repository):
 
 ```bash
 openssl rand -hex 32   # -> PUBLISH_SECRET  (worker)  / netpulse_publish_secret  (Apps Script)
 openssl rand -hex 32   # -> READ_SECRET     (worker)  / netpulse_read_secret     (Apps Script)
 ```
 
-Worker: Settings → Variables → add `PUBLISH_SECRET` and `READ_SECRET` as **secrets**.
-Apps Script: paste `publish-cache.gs`, then run once from the editor:
+Worker: ✅ Settings → Runtime variables and secrets → both added as **Encrypted** on Production +
+Previews, which is why `POST /publish` and `GET /data/*` answer `401` instead of `503` today. The
+`Secret` checkbox is not on by default and a plaintext variable would work identically — it is a
+signing key, so it is a secret.
+
+⚠️ **A secret rotation is TWO clicks, and the second one is not in that dialog. MEASURED
+2026-09-26: this cost five rotations in one sitting.** Editing a secret opens a dialog with `Save
+version` and `Deploy`. `Save version` saves the version but does **not** put it in front of traffic,
+and `Deploy` goes **disabled** the moment you save it — so the obvious next move is to close the
+dialog, and the worker keeps serving the PREVIOUS secret. That is invisible from both ends: the
+Cloudflare version list shows the new one, `setEdgeConfig_` shows the value you typed, and every
+request still answers `401 bad_signature` because the two halves do not actually hold the same
+string. The second click is on the **Deployments** tab: **Version History → ⋯ (More options) →
+Promote version** (the menu offers `Promote version`, `Split versions`, `View logs` — there is no
+item called Deploy).
+
+**Check it before believing a rotation worked:** the top of the Deployments page names the **Active
+deployment**. If that version id is not the one you just saved, nothing you changed is live. The
+fastest end-to-end check is still `diagnoseEdgeSecrets_()` below, which asks the worker itself.
+Apps Script: **still owed** — paste `publish-cache.gs`, then run once from the editor. **The Run
+dropdown cannot pass arguments**, so the call needs a wrapper: add a throwaway function, run **that**
+from the dropdown, then delete it.
 
 ```javascript
-setEdgeConfig_('https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev', '<publish secret>', '<read secret>');
+function setupEdgeOnce() {
+  setEdgeConfig_('https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev', '<publish secret>', '<read secret>');
+}
 ```
 
-**4. Publish something.** The publish rides `warmDataCaches`, so it needs that trigger (every 5
+`setEdgeConfig_` trims each value itself, so a trailing space cannot become a 401 nobody can explain —
+the reason it is a function rather than three fields in the Properties UI. `reportEdgeState()` (also in
+`publish-cache.gs`, read-only) then prints what the edge actually holds.
+
+**4. ⏳ Publish something (still owed).** The publish rides `warmDataCaches`, so it needs that trigger (every 5
 minutes — see `triggers.gs` and `setupAllTriggers()`), or one manual run of `warmDataCaches` from the
-editor. **MEASURED 2026-09-26: nothing is warm on the live deployment** — `?action=bundle` answered
-all five modules as *not warm*, which is what a deployment whose 5-minute trigger is not installed
-looks like (the cache only fills from a build and its TTL is 330 s). Nothing will be published to
-the edge until that trigger exists.
+editor. Nothing will be published to the edge until one of those exists.
+
+**How to tell whether that trigger is installed — do NOT use `?action=bundle` for it.** The route is
+not a clean warmth probe: `handleBundle` falls back to Script Properties (`bundlePropertyEntry_`) whose
+freshness rule is `cacheTtlFor_` (60 s for node/olt/backbone, 180 s for nap/lcp), and on a CacheService
+hit it does not check freshness at all — a hit counts as present for the whole CacheService TTL. So a
+full bundle with `missing: []` looks identical whether a warm pass wrote it or app traffic did.
+Measured twice on 2026-09-26: earlier the same day `?action=bundle` answered **all five as missing**
+(nothing in either store), and later it answered **`missing: []`** — the two readings differ, and
+neither one names the trigger. The decisive check is **`listTriggers()`** in the Apps Script editor:
+read-only, and it prints `✅ In sync.` or `❌ Planned but NOT live (run setupAllTriggers): …`.
 
 ## Verify it before switching the app on
 
@@ -199,10 +234,33 @@ curl -s -o /dev/null -w '%{http_code}\n' "$EDGE/data/nap"                    # 4
 curl -s -X POST "$EDGE/publish?type=nap" -H "x-netpulse-secret: $PUBLISH_SECRET" \
      -H 'content-type: application/json' --data '[{"A":"test"}]'          # 200
 curl -s "$EDGE/data/_meta" -H "Authorization: Bearer $TOKEN"                # the index
+curl -s -o /dev/null -w '%{http_code}\n' "$EDGE/data/nap" \
+     -H 'Authorization: Bearer basura.token'                                # 401, never 500
 ```
 
 A `503 edge_not_configured` with `field: "PUBLISH_SECRET"` (or `READ_SECRET`, or `DATA`) means step 2
 or 3 is incomplete — the worker says which one rather than pretending to work.
+
+**`diagnoseEdgeSecrets_()` is the answer to "why is my token refused".** In `publish-cache.gs`, run
+from the editor. It mints the SAME token with five spellings of the configured secret — as stored,
+trimmed, `+\n`, `+space`, `+\r\n` — and prints the HTTP code each one gets (200 for the read probe,
+400 for the publish probe). The spelling with the checkmark is the one the worker holds; if NO row has
+one, the two sides hold different values. It is read-only by construction and that is asserted in
+`tests/publish-server.test.js`: the read probe is `GET /data/_meta`, and the publish probe posts to a
+type that does not exist, which `handlePublish` refuses with 400 **after** the secret check and
+**before** the body is read. Why the spellings matter: `setEdgeConfig_` **trims** what it stores and
+Cloudflare does **not** trim a secret, so a value copied from a terminal selection — which carries the
+line's trailing newline — lands in the worker as `"<secret>\n"` and can never be reproduced from the
+Apps Script side however many times the paste is repeated.
+
+**That last curl is not decoration — it is the one that caught a real bug.** On 2026-09-26 the
+DEPLOYED worker answered `Bearer basura.token` with **500 `error code: 1101`**, a Worker exception,
+because `b64urlToBytes` calls `atob` and a string containing a dot is not necessarily two base64url
+halves. A 500 tells the client "the edge is broken"; a 401 tells it "fall back to `/exec`", so that
+inverted the one decision the verifier exists to make. The decode and the `subtle.verify` call are
+guarded in this source now, with `publish-auth` covering six malformed shapes — **but the fix lives
+only in the repo until the worker is pasted again.** A deployed copy that answers 500 here needs that
+re-paste, not another secret.
 
 ## Turning it on, and off again
 

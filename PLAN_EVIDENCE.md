@@ -1789,10 +1789,54 @@ secrets in both places, run a publish) are documented exactly in `proxy/README.m
 like every other paste in this project. Until they are done the worker source in this directory is
 ahead of what is deployed, and the app must keep `NETPULSE_CDN` blank.
 
-**A live measurement worth keeping.** `?action=bundle` answered with **all five modules not warm**
-while `?type=nap` answered warm moments later. That is the signature of a deployment whose 5-minute
-warm trigger is not installed: entries exist only right after a request builds them, and the 330 s
-TTL then lapses. It is worth stating because it means the edge would have had nothing to publish
-even with the secrets in place.
+**A live measurement worth keeping — and a probe that turned out to be weaker than it looked.**
+`?action=bundle` answered with **all five modules not warm** while `?type=nap` answered warm moments
+later, and the first conclusion drawn from that was "the 5-minute warm trigger is not installed". That
+conclusion is NOT supported by this route, and reading `handleBundle` is what shows why: it falls back
+to Script Properties (`bundlePropertyEntry_`) whose freshness rule is `cacheTtlFor_` — **60 s** for
+node/olt/backbone and **180 s** for nap/lcp, not the 330 s cache TTL — and on a CacheService hit it
+does not check freshness at all, so a hit counts as present for the whole CacheService TTL. The two
+stores therefore make a full bundle look the same whether a warm pass wrote it or ordinary app traffic
+did, and **only the all-missing answer is a strong reading** (nothing in either store).
+
+Re-measured later the same day, the answer had flipped: `?action=bundle` returned **`missing: []`** with
+all five payloads populated, so something had written all five within the cache TTL. That is
+*consistent with* the trigger being live and equally consistent with the app being in use, which is
+exactly the ambiguity above — so it is recorded as an observation rather than promoted to evidence.
+What the edge needs is one successful warm pass, and the check that settles it is **`listTriggers()`**
+in the Apps Script editor: read-only, and it prints `✅ In sync.` or `❌ Planned but NOT live (run
+setupAllTriggers): warmDataCaches`. Until that says in-sync, step 4 stays unproven.
 
 **Release.** 3.9.27 → **3.9.28**; the guard stays frozen at 3.10.0.
+
+**Addendum, later the same day — the provisioning started, and the verification found a bug.**
+Steps 1 and 2 of the four are now done by hand and are **verified from outside the dashboard**: the KV
+namespace `NETPULSE_DATA` exists, `holy-cloud-1d7a` runs this source, a KV binding named `DATA` points
+at it, and both `PUBLISH_SECRET` and `READ_SECRET` are Encrypted variables. The proof is the worker's
+own behaviour rather than a screenshot — `gateRead` tests `!kv` **before** it looks at any token, so the
+answer to an unauthenticated `GET /data/nap` moved from `503 field: "READ_SECRET"` to `401 no_token`,
+which only happens if the binding is attached. `POST /publish` answers `401` for the same reason. Step
+3 (the Apps Script half: the `publish-cache.gs` paste, the `admin.gs` and warmer changes, and
+`setEdgeConfig_`) is the one that is left, and step 4 still depends on the warm trigger — which, per
+the corrected note below, this route cannot tell you about either way.
+
+**A real bug, found by verifying instead of assuming.** `curl -H 'Authorization: Bearer basura.token'`
+answered **500 `error code: 1101`** — a Worker exception, not a refusal. `verifyReadToken` guards the
+key import and promised in its own comment that it "never throws", but the step that can actually
+throw on caller-supplied input was the decode: `b64urlToBytes` calls `atob`, which rejects any
+character outside the base64 alphabet, and a string containing a dot is not necessarily two base64url
+halves. A 500 tells the client "the edge is broken"; a 401 tells it "fall back to /exec". The bug
+inverted the one decision the function exists to make — and **the suite could not see it**, because
+every refusal case it had (`no_token`, `bad_signature`, `expired`) is well-formed base64url. That is
+the general lesson worth keeping: a suite can cover a function's branching and still miss the input
+class the function's own comment swears it handles.
+
+**The fix, and how it was proved.** The decode and the `subtle.verify` call are both guarded now, and
+`publish-auth` gained a case that sends six malformed shapes — the exact `basura.token` above plus
+`a.`, `ok.`, `***.***`, `AAAA.!!!!` and `x.y.z` — asserting a 401 with a named reason rather than an
+exception. The regression was then proven the way the rest of this project proves them, by mutation:
+putting the raw `throw` back turns the new case red while the other 19 stay green. **`publish-auth`
+19 → 20 cases; 26 suites, 0 failed**, with the release labels still reading 3.9.28 and the guard
+frozen at 3.10.0. The fix is in the repo; **the deployed worker still has the bug until it is pasted
+again**, which is why the runbook's verify block now carries the malformed-token curl as a real check
+rather than a formality.

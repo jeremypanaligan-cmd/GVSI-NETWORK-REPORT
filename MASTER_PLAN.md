@@ -623,7 +623,7 @@ problem-only by construction.
     band that reads nothing fails instead of warming an empty payload that still looks cacheable.
     **Nothing owed on the client** — but that commit is unpushed
 
-## Phase 14: the read path leaves Apps Script — BUILT, NOT DEPLOYED
+## Phase 14: the read path leaves Apps Script — WORKER HALF DEPLOYED, SERVER HALF OWED
 
 **Why this phase exists.** Every module read costs a two-hop redirect into a serverless execution,
 and it is measured: `?type=nap` answered **1.36 s and 1.56 s** on 2026-09-26, with `?action=bundle`
@@ -648,18 +648,31 @@ fallback; login, admin, diag and settings stay on Apps Script; and no new copy o
 anywhere — but the published payload carries the same fields as the built one, remarks included, and
 that is named in the docs rather than left for a reader to discover.
 
-**What is owed, and by whom.** Everything Cloudflare-side could not be done from this checkout: the
+**What is owed, and by whom.** The Cloudflare side could not be done from this checkout — the
 connector's credential is read-only (`10000: Authentication error` on both KV create and worker
-upload). Four steps remain yours, written out in `proxy/README.md`: create the KV namespace, deploy
-this worker with the `DATA` binding, set `PUBLISH_SECRET` / `READ_SECRET` in the worker and in Script
-Properties, and publish once. Until then the app keeps `NETPULSE_CDN` blank.
+upload) — so it was done by hand on 2026-09-26, and steps 1 and 2 of the four in `proxy/README.md`
+are DONE and verified from outside the dashboard: the namespace exists, this worker source is what is
+running, the `DATA` binding is attached, and both secrets are set. What is left is step 3, the Apps
+Script half (`publish-cache.gs`, the `admin.gs` and warmer changes, and `setEdgeConfig_`) and step 4,
+one publish — which depends on the 5-minute warm trigger, whose presence `?action=bundle` turns out
+not to be able to tell you either way; `listTriggers()` in the editor is the check. Until both are
+done the app keeps `NETPULSE_CDN` blank.
+
+**And one bug this phase found the moment it was verifiable.** With the secrets in place, the first
+external curls answered `401` — and `Bearer basura.token` answered **500 `error code: 1101`**, a Worker
+exception, because the token decoder called `atob` on input that was not base64url. A 500 reads as
+"the edge is broken" and a 401 as "fall back to `/exec`", so the verifier's own contract was inverted
+for a whole input class. It is fixed and covered by a mutation-proven regression case — but only in
+the repo: the deployed worker keeps the bug until it is pasted again. Worth the line here because the
+phase was dormant and unverifiable before the provisioning, so this is the first thing about it that
+could be measured at all.
 
 - [x] Part 22: the publish half, and the token minted at login
   - Scenario: SCN-025
   - Outcome: a built payload reaches KV under a secret, the login response carries a short-lived
     edge token, an expired or future token is refused, and no publish path can turn a good warm pass
     into a failed one
-  - Evidence: PART-029 in `PLAN_EVIDENCE.md` — `tests/publish-server.test.js` and 19 cases in
+  - Evidence: PART-029 in `PLAN_EVIDENCE.md` — `tests/publish-server.test.js` and 20 cases in
     `tests/publish-auth.test.js`, with mutations caught, and the two halves cross-checked by
     verifying in the worker a token minted in the `.gs`
 
