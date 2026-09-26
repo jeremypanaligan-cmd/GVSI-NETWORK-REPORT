@@ -131,10 +131,12 @@ can display its own retry counts, which is the whole point of having them.
 
 # THE DATA PLANE (`/publish` and `/data/*`)
 
-**Status: the WORKER half is deployed, the Apps Script half is not — 2026-09-26.** Steps 1 and 2 below
-are done and verified against the live edge, and both worker secrets are set. What is left is step 3
-(the `publish-cache.gs` paste and `setEdgeConfig_`) and step 4 (one publish). Nothing changes for the
-app until all four are done and `window.NETPULSE_CDN` in `index.html` is set.
+**Status: ALL FOUR STEPS ARE DONE, AND THE APP IS READING FROM THE EDGE — 2026-09-26.** The worker
+half was deployed first, the Apps Script half followed, and the switch is now ON in `index.html`
+(release **3.9.29**). One manual `warmDataCaches()` run published all five types; the 5-minute trigger
+republishes them. The rollback is still one value — see *Turning it on, and off again* at the bottom of
+this section. The lessons from getting here are in the four steps below, in the order they were paid
+for.
 
 This is the second job this worker does, and it is the one that removes the hop rather than
 absorbing it: the Apps Script trigger publishes each payload it has already built into KV, and the
@@ -168,7 +170,7 @@ binding is attached — a `503` is what a missing binding would say. (With wrang
 `npx wrangler deploy proxy/netpulse-proxy.mjs --name holy-cloud-1d7a`, which needs a `wrangler.toml`
 for the binding.)
 
-**3. ⏳ HALF DONE — the worker's secrets are set, the Apps Script half is not.** Generate them once
+**3. ✅ DONE — the same two secrets on both sides.** Generate them once
 (they are the same value in both places, and they belong in NO repository):
 
 ```bash
@@ -195,7 +197,7 @@ item called Deploy).
 **Check it before believing a rotation worked:** the top of the Deployments page names the **Active
 deployment**. If that version id is not the one you just saved, nothing you changed is live. The
 fastest end-to-end check is still `diagnoseEdgeSecrets_()` below, which asks the worker itself.
-Apps Script: **still owed** — paste `publish-cache.gs`, then run once from the editor. **The Run
+Apps Script: ✅ done — `publish-cache.gs` is pasted and `setEdgeConfig_` has been run. **The Run
 dropdown cannot pass arguments**, so the call needs a wrapper: add a throwaway function, run **that**
 from the dropdown, then delete it.
 
@@ -209,9 +211,30 @@ function setupEdgeOnce() {
 the reason it is a function rather than three fields in the Properties UI. `reportEdgeState()` (also in
 `publish-cache.gs`, read-only) then prints what the edge actually holds.
 
-**4. ⏳ Publish something (still owed).** The publish rides `warmDataCaches`, so it needs that trigger (every 5
-minutes — see `triggers.gs` and `setupAllTriggers()`), or one manual run of `warmDataCaches` from the
-editor. Nothing will be published to the edge until one of those exists.
+⚠️ **`<publish secret>` and `<read secret>` are placeholders. REPLACE THEM — and this cost an evening,
+MEASURED 2026-09-26.** A wrapper copied from this runbook verbatim has the literal text `"<read
+secret>"` between the quotes, and that is a **non-empty string**: `setEdgeConfig_` wrote it happily and
+logged `publishSecret=set, readSecret=set`, because from its side the value really had been set. Both
+sides reported success. The worker held a 13-character placeholder as its HMAC key, so every rotation
+on the Cloudflare side had nothing to match against — five rotations, all of them correct, all of them
+pointless. **`setEdgeConfig_` now refuses to report success for these two literals** (`edgeSecretLooksReal_`,
+covered in `tests/publish-server.test.js`), which is the only reason this is a note rather than a trap
+for the next person. Two habits follow from it: paste a freshly generated value rather than an
+example, and never trust `=set` alone as proof that a secret is real.
+
+**4. ✅ DONE — all five types are in KV.** One manual run of `warmDataCaches()` from the editor
+published them, and the sizes were checked against the `/exec` measurements taken the same day:
+**nap 950 B** (measured 950 B over `/exec`), **lcp 1,846 B**, **olt 216 B** (the problem-only shape,
+`meta.total: 461`, `up: 461`, `down: 0`), **node 2 B** (`[]` — the “nothing is happening” state), and
+**backbone 1,983 B**. Confirmed twice, from two instruments that cannot share a mistake: the Apps
+Script log (`reportEdgeState()`) and the KV **Pairs** list in the Cloudflare dashboard.
+
+**A note for the next time a partial publish happens — the first run published exactly one type, and
+it was not a bug.** `warmOltCache()` and `warmDataCaches()` are different entry points and only the
+second one is the full pass: it calls `warmOltCache()` and then loops the four in
+`SECONDARY_WARM_TYPES`. Running `warmOltCache` by hand warms (and now publishes) OLT alone, which is
+exactly what the log said: `✅ warmOltCache: warmed in 1878ms (216 bytes, TTL 330s)`. Nothing about the
+edge was wrong; the wrong function had been run.
 
 **How to tell whether that trigger is installed — do NOT use `?action=bundle` for it.** The route is
 not a clean warmth probe: `handleBundle` falls back to Script Properties (`bundlePropertyEntry_`) whose
@@ -262,11 +285,31 @@ guarded in this source now, with `publish-auth` covering six malformed shapes �
 only in the repo until the worker is pasted again.** A deployed copy that answers 500 here needs that
 re-paste, not another secret.
 
+**In a browser the same bug is worse than a wrong status code — MEASURED with the switch on.** A page
+holding that token recorded `GET …/data/nap → FAILED: net::ERR_FAILED`, with **no status to read at
+all**: Cloudflare builds its exception page outside the Worker handler, so the response arrives
+without the `Access-Control-Allow-Origin` this handler sets on every path it controls — while the
+plain `401` carries it, and an `OPTIONS` preflight for `authorization` answers `204` with
+`access-control-allow-headers: authorization, content-type, x-netpulse-secret`. Read-only, it is
+still safe (`fetch-gate` logs `edge read refused (Failed to fetch)` and the module gets its data from
+`/exec` in ~2.3 s), but "failed to fetch" is a symptom nobody can follow. **Re-paste the worker**
+after any change to this file; a live copy that answers 500 to `Bearer basura.token` is the signal
+that the repo is ahead of what is deployed.
+
 ## Turning it on, and off again
 
-On: set `window.NETPULSE_CDN = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev"` in
-`index.html`. `sw.js` already lists that host as network-only (`DATA_CDN_HOST`), and the release
-label moves with it.
+**ON since 2026-09-26, release 3.9.29.** The switch is
+`window.NETPULSE_CDN = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev"` in `index.html`.
+`sw.js` lists that host as network-only (`DATA_CDN_HOST`), and the release label moved with it — those
+two values are the delivery pair, so they change together or not at all.
+
+⚠️ **They are not written in the same shape, and comparing them as strings fails on a correct tree.**
+`index.html` needs a URL it can concatenate a path onto (`host() + '/data/nap'`); `sw.js` matches with
+`url.includes(DATA_CDN_HOST)` and therefore wants a **bare host** — a value carrying a path would stop
+matching there. `tests/cdn-read.test.js` therefore asserts the invariant rather than the strings: the
+two name the same host, the string `sw.js` excludes really does occur in the URL the app builds, and
+that string is specific enough not to be `workers.dev`. (Found while switching it on: the first version
+of that test compared the values literally and went red on a tree that was right.)
 
 Off, in one value: blank `window.NETPULSE_CDN`. Every module then reads from `/exec` exactly as it
 did before, because that is the path the client falls back to on any refusal. A second, harder roll-

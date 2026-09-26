@@ -623,7 +623,7 @@ problem-only by construction.
     band that reads nothing fails instead of warming an empty payload that still looks cacheable.
     **Nothing owed on the client** — but that commit is unpushed
 
-## Phase 14: the read path leaves Apps Script — WORKER HALF DEPLOYED, SERVER HALF OWED
+## Phase 14: the read path leaves Apps Script — LIVE at 3.9.29
 
 **Why this phase exists.** Every module read costs a two-hop redirect into a serverless execution,
 and it is measured: `?type=nap` answered **1.36 s and 1.56 s** on 2026-09-26, with `?action=bundle`
@@ -648,15 +648,25 @@ fallback; login, admin, diag and settings stay on Apps Script; and no new copy o
 anywhere — but the published payload carries the same fields as the built one, remarks included, and
 that is named in the docs rather than left for a reader to discover.
 
-**What is owed, and by whom.** The Cloudflare side could not be done from this checkout — the
-connector's credential is read-only (`10000: Authentication error` on both KV create and worker
-upload) — so it was done by hand on 2026-09-26, and steps 1 and 2 of the four in `proxy/README.md`
-are DONE and verified from outside the dashboard: the namespace exists, this worker source is what is
-running, the `DATA` binding is attached, and both secrets are set. What is left is step 3, the Apps
-Script half (`publish-cache.gs`, the `admin.gs` and warmer changes, and `setEdgeConfig_`) and step 4,
-one publish — which depends on the 5-minute warm trigger, whose presence `?action=bundle` turns out
-not to be able to tell you either way; `listTriggers()` in the editor is the check. Until both are
-done the app keeps `NETPULSE_CDN` blank.
+**How it got there.** The Cloudflare side could not be done from this checkout — the connector's
+credential is read-only (`10000: Authentication error` on both KV create and worker upload) — so all
+four steps in `proxy/README.md` were done by hand on 2026-09-26. Steps 1 and 2 (the namespace and the
+deployed worker with the `DATA` binding) were verified from outside the dashboard; steps 3 and 4 (the
+Apps Script half and one publish) followed, and **all five types are in KV**: nap 950 B, lcp 1,846 B,
+olt 216 B, node 2 B, backbone 1,983 B — confirmed twice, by `reportEdgeState()` and by reading the KV
+Pairs list, whose baseline that same evening was *"There are currently no entries."* The app reads
+from the edge with **3.9.29**, and the rollback is still the single blank value of `NETPULSE_CDN`.
+
+**Three things this phase paid for, all of them invisible until it was live.** *A config function
+reported success on a placeholder* — the wrapper was copied with `'<read secret>'` still in it, and
+`setEdgeConfig_` truthfully wrote a 13-character string, so five correct secret rotations on the
+Cloudflare side had nothing to match; it now refuses those literals. *`Save version` is not a
+deploy* — the `Deploy` button goes disabled once a secret is saved, and the version only reaches
+traffic via **Deployments → ⋯ → Promote version**, on another tab. *And the 5-minute trigger was
+installed all along* — `setupAllTriggers()` removed a live `warmDataCaches (CLOCK)` before recreating
+it, so what was missing was the publish hook inside the pass, not the trigger; the same function did
+move `processBackboneTickets` from `ON_CHANGE` to `every hour`, which is a live behaviour change to
+keep in mind.
 
 **And one bug this phase found the moment it was verifiable.** With the secrets in place, the first
 external curls answered `401` — and `Bearer basura.token` answered **500 `error code: 1101`**, a Worker
@@ -683,8 +693,11 @@ could be measured at all.
     blank — including PASSING through the stall rule, the ticker and the PART-025 keep rule
   - Evidence: PART-029 — `tests/cdn-read.test.js`, the live app driven on a fresh origin with the
     switch blank, and `sw.js` listing the worker host as network-only with its own assertion
-  - Still owed: the four Cloudflare steps above. Until they are done this ships as a dormant path
-    with a measured baseline ready for it
+  - Switched on: 3.9.29, with all four Cloudflare steps done and all five types published, so the
+    blank-value path is now the fallback rather than the mode. The assertion guarding the pair of
+    values was rewritten the moment it ran against a switched-on tree: it compared `index.html`'s URL
+    with `sw.js`'s bare host as STRINGS and went red on a correct tree, so it now asserts the
+    invariant (same host, and the excluded string really occurs in the URL the app builds) instead
 
 ## Notes
 

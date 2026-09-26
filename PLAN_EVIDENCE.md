@@ -1840,3 +1840,100 @@ putting the raw `throw` back turns the new case red while the other 19 stay gree
 frozen at 3.10.0. The fix is in the repo; **the deployed worker still has the bug until it is pasted
 again**, which is why the runbook's verify block now carries the malformed-token curl as a real check
 rather than a formality.
+
+**Addendum, later the same night — IT IS LIVE, and the four steps taught more than the design did.**
+All four are done. The switch is on at release **3.9.29**, and for the five data modules Apps Script is
+no longer in the read path at all: the payload the warm pass has already built is published to KV and
+the app reads it from the edge, with `/exec` as the automatic fallback on any refusal.
+
+| type | bytes at the edge | note |
+|---|---|---|
+| `nap` | 950 | identical to the 950 B measured over `/exec` the same day |
+| `lcp` | 1,846 | |
+| `olt` | 216 | the problem-only shape: `meta.total: 461`, `up: 461`, `down: 0` |
+| `node` | 2 | `[]` — the "nothing is happening" state, and correct |
+| `backbone` | 1,983 | carried the PANGASINAN DWDM low-power ticket |
+
+The demonstration that matters is not the table but that two instruments produced it, and could not
+have shared a mistake: `reportEdgeState()` in Apps Script (which mints its own token, so it proves the
+whole chain) and the **KV Pairs** list in the Cloudflare dashboard, whose first reading of the day was
+*"There are currently no entries."* — a baseline taken before any of this worked, which is what makes
+the later five keys evidence rather than a screenshot.
+
+**1. The deepest lesson of the phase: a config function reported success on a placeholder.** The
+runbook's wrapper was copied with its arguments still reading `'<publish secret>'` and `'<read
+secret>'`, and `setEdgeConfig_` wrote both, trimmed them, and logged `publishSecret=set,
+readSecret=set` — truthfully, because `"<read secret>"` is a non-empty string. Both ends of the
+system reported success while one end held a 13-character placeholder as its HMAC key, so **five
+correct secret rotations on the Cloudflare side had nothing to match against** and every read
+answered `401 bad_signature`. Everything visible on every screen was right. The generalisable form:
+when a value is pasted into two systems and only one of them can be read back, the failure is
+silent-by-construction, and the fix is not patience — it is a check that refuses the placeholder.
+`setEdgeConfig_` now does exactly that (`edgeSecretLooksReal_`, asserted in
+`tests/publish-server.test.js`), which is why this is a paragraph here instead of a trap for the next
+person. The habit that follows: never read `=set` as proof that a secret is real.
+
+**2. `Save version` is not a deploy, and the button that would say so is disabled.** Editing a
+Cloudflare secret opens a dialog with `Save version` and `Deploy`. `Save version` stores the version
+without putting it in front of traffic and `Deploy` goes **disabled** the moment you save — so the
+natural next move is to close the dialog, and the worker keeps serving the previous secret. The
+second click is on another tab: **Deployments → Version History → ⋯ (More options) → Promote
+version** (the menu says `Promote version`, `Split versions`, `View logs` — nothing called Deploy).
+It is invisible from both ends, and the tell that it happened is the **Active deployment** id at the
+top of the Deployments page not matching the version just saved.
+
+**3. One type published, and it was not a bug.** The first manual run put exactly one key in KV —
+`olt`, 216 bytes — and the log explained it completely: `✅ warmOltCache: warmed in 1878ms (216 bytes,
+TTL 330s)`. `warmOltCache()` and `warmDataCaches()` are different entry points; only the second is
+the full pass, and it is the one that calls `warmOltCache()` and then loops the four in
+`SECONDARY_WARM_TYPES`. A partial publish is therefore a reachable state that looks exactly like a
+broken one, and the byte count is what separates them — 216 B is the OLT payload, not a truncated
+one.
+
+**4. The trigger was installed all along, and the correction had a side effect.** The plan treated
+the 5-minute warm trigger as a *hard dependency* and read an all-missing `?action=bundle` as proof it
+was missing. Running `setupAllTriggers()` printed `Removed trigger: warmDataCaches (CLOCK)` before it
+recreated it — it had been live the whole time. What was actually missing was the **publish hook
+inside the pass**, which arrived only with the new `olt-cache-warmer.gs` paste. Two causes, one
+symptom (nothing in KV), and the probe could not tell them apart. The side effect worth carrying
+forward: `setupAllTriggers()` reconciles **event types** as well as existence, so
+`processBackboneTickets` moved from `ON_CHANGE` to `every hour` — an intended consequence of that
+function, but a behaviour change to a live trigger that nobody asked for.
+
+**5. Switching it on found a test that was wrong about the shape of the values.** `index.html` holds
+the switch as a full URL (`cdn-source` concatenates `host() + '/data/nap'`), while `sw.js` holds
+`DATA_CDN_HOST` as a **bare host**, because it matches with `url.includes(...)` and a path in the
+value would break that. The assertion guarding the pair compared the two as strings — and so went
+**red on a tree that was correct**, which is the useful kind of failure: a test that cannot be
+satisfied by the right answer is measuring the wrong thing. It now asserts the invariant instead:
+that the two name the same host, that the string `sw.js` excludes really does occur in the URL the
+app builds, and that the string is specific enough not to be `workers.dev`. Both mutations are
+caught — narrowing `DATA_CDN_HOST` to `workers.dev` and pointing the app at another host each turn
+the case red while the other 18 stay green.
+
+**6. Still broken in the field, and confirmed by curl rather than remembered.** `GET /data/nap` with
+`Authorization: Bearer basura.token` answered **500 `error code: 1101`** again while switching this
+on, so the deployed worker still carries the bug in item 1 above: the fix lives in this repo and has
+not been pasted back. **And the bug is worse than a wrong status code, which the browser showed.** A
+real page holding it made the request and the network log recorded `GET …/data/nap → FAILED:
+net::ERR_FAILED`, not a 401: Cloudflare's exception page is produced *outside* the handler, so it
+carries none of the CORS headers the handler sets — while the same worker's `401` carries
+`Access-Control-Allow-Origin: *` and an `OPTIONS` preflight for `authorization` answers `204` with
+it. So the malformed-token path is not "a 500 instead of a 401"; from the browser it is a
+request that never completes, with no status to read. It is still survivable — the gate caught it
+and fell back (`[FetchGate] nap: edge read refused (Failed to fetch) — asking /exec as before`, then
+`16` rows in 2,343 ms from `/exec`) — but a failure a client can only describe as "failed to fetch"
+is exactly the one nobody can diagnose later. The rest of the live edge was re-measured at the same
+time and is healthy: pass-through `200` in 156 ms, `GET /data/nap` without a token `401`,
+`POST /publish` without a secret `401`.
+
+**What the switch-on verification did NOT cover, stated plainly.** The app tries the edge first and
+falls back — observed in a real browser, with a real page, against the live worker. What was not
+observed there is an edge `200` with a token the deployment minted: that needs a login, and the
+credentials are the operator's. The 200 half is proven from the other side (`reportEdgeState()`
+answers `200` with all five types), so the two halves are each verified and joined by the same
+request shape — but the end-to-end browser read with a real session is still the one measurement
+nobody has taken yet.
+
+**Release.** 3.9.28 → **3.9.29**, every label moved together in the same push as the bytes they
+describe; the guard stays frozen at 3.10.0. **26 suites, 0 failed.**

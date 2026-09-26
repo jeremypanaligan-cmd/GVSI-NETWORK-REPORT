@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.28 is pushed** — the edge read path (`/publish` + `/data/*`, `cdn-source.js`, one switch), **built and dormant**, with **the worker half deployed and two of the four Cloudflare steps done** — see the item immediately below · before it, **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.29 is pushed — THE EDGE READ PATH IS LIVE.** Apps Script is no longer in the read path for any of the five data modules: the payload the warm pass has already built is published to Cloudflare KV, and the app reads it from the edge with `/exec` as the automatic fallback. All four Cloudflare steps are done, all five types are published (**nap 950 B, lcp 1,846 B, olt 216 B, node 2 B, backbone 1,983 B**) and the 5-minute trigger republishes them · **the rollback is one value**, `window.NETPULSE_CDN`, and it is the first thing to try if the edge misbehaves (see the item below) · before this, **3.9.28** (the worker half, built and dormant) and **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24) · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed for everything BELOW this item, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -16,14 +16,20 @@
 
 ---
 
-## 🔴 P1 — Ang read path sa edge: naka-deploy na ang worker half, ang Apps Script half ang utang (Sept 26, 2026)
+## ✅ P1 — Ang read path sa edge: LIVE, apat sa apat na hakbang tapos (Sept 26, 2026)
 
-**Status.** Ang **buong code** ay nasa repo at naka-push (`ea712a4`, release **3.9.28**): ang worker
-ay may bagong `/publish` at `/data/*`, may bagong paste na `publish-cache.gs`, may `cdn-source.js` ang
-client, at may isang switch. **TAPOS na ang hakbang 1 at 2 (Sept 26)** — naka-deploy na ang worker
-half at **beripikado laban sa live edge**; ang hakbang 3 (Apps Script) ang susunod. Hindi kaya ito
-mula sa checkout — read-only ang credential ng connector (`10000: Authentication error`) — kaya
-mano-mano, gaya ng lahat ng paste sa proyektong ito.
+**Status.** **LIVE na** — naka-on ang switch sa release **3.9.29** (naka-push).
+`window.NETPULSE_CDN` sa `index.html` ang tanging bagay na naghahawak dito, at ang tanging bagay na
+kailangan para ipatay. Buo ang kadena at napatunayan ng **dalawang instrumentong hindi maaaring
+magkapareho ng pagkakamali**: ang `reportEdgeState()` sa Apps Script (limang type, may `builtAt`,
+`rev`, `bytes`, `publishedAt`) at ang **KV Pairs** na listahan sa Cloudflare dashboard (limang key,
+may tunay na payload — kasama ang PANGASINAN DWDM na low-power ticket sa `backbone`).
+
+**Nasa repo na lahat** (`ea712a4` ang code, `3e6ef9c` ang pagwawasto, `3.9.29` ang pag-on): ang
+worker ay may bagong `/publish` at `/data/*`, may bagong paste na `publish-cache.gs`, may
+`cdn-source.js` ang client, at may isang switch. Hindi kaya ito mula sa checkout — read-only ang
+credential ng connector (`10000: Authentication error`) — kaya mano-mano, gaya ng lahat ng paste sa
+proyektong ito.
 
 **Bakit ito ginagawa.** Sinukat noong Sept 26 laban sa live `/exec`: `?type=nap` = **200 sa 1.36 s at
 1.56 s** (950 B), `?action=bundle` = **200 sa 1.32 s** (1,040 B). Iyon ang 2-hop redirect papasok sa
@@ -45,18 +51,19 @@ nananatiling gumaganang fallback.
       naka-attach ang KV binding na **`DATA`** → `NETPULSE_DATA`. Beripikado **mula sa labas**, hindi
       sa dashboard: sinusuri ng `gateRead` ang `!kv` **bago** ang token, kaya ang `401 no_token`
       imbes na `503 field: "DATA"` ay patunay na buhay ang binding (iyon ang sasabihin ng kulang)
-- [~] **3. Kalahati lang: tapos na ang dalawang secret sa worker, hindi pa ang Apps Script** —
-      naka-set na ang `PUBLISH_SECRET` / `READ_SECRET` bilang **Encrypted** sa worker (kaya `401` na
-      ang `/publish` at `/data/*`, hindi `503`). Ang natitira: i-paste ang `publish-cache.gs` kasama
-      ang `admin.gs` at `olt-cache-warmer.gs` na pagbabago, tapos isang beses sa editor:
-      `setEdgeConfig_('<worker url>', '<publish secret>', '<read secret>')` — **parehong value** sa
-      worker, kung hindi ay `bad_signature` ang bawat token. **Hindi kayang magpasa ng argumento ang
-      Run dropdown**, kaya gumawa ng isang besesang wrapper (`function setupEdgeOnce() { setEdgeConfig_(...); }`),
-      patakbuhin iyon, tapos burahin. Pagkatapos: **`reportEdgeState()`** (read-only, nasa
-      `publish-cache.gs` mismo) — iyon ang pinakamabilis na sagot sa "nakapag-publish ba ang
-      huling pass?" nang hindi binubuksan ang dashboard
-- [ ] **4. Mag-publish ng isang bagay** — umaakyat ang publish sa `warmDataCaches`, kaya kailangan
-      ng 5-minutong trigger (o isang manual run mula sa editor)
+- [x] **3. Tapos — pareho nang hawak ng dalawang panig ang parehong pares.** I-paste ang
+      `publish-cache.gs` kasama ang `admin.gs` at `olt-cache-warmer.gs` na pagbabago, tapos isang
+      beses sa editor: `setEdgeConfig_('<worker url>', '<publish secret>', '<read secret>')` —
+      **parehong value** sa worker, kung hindi ay `bad_signature` ang bawat token. **Hindi kayang
+      magpasa ng argumento ang Run dropdown**, kaya isang besesang wrapper
+      (`function setupEdgeOnce() { setEdgeConfig_(...); }`), patakbuhin iyon, tapos burahin.
+      Beripikasyon: **`reportEdgeState()`** (read-only, nasa `publish-cache.gs` mismo) →
+      **`HTTP 200`** na may limang `null` bago ang unang publish
+- [x] **4. Tapos — lima sa lima ang naka-publish sa KV:** `nap` 950 B, `lcp` 1,846 B, `olt` 216 B,
+      `node` 2 B (`[]`), `backbone` 1,983 B. Tugma ang `nap` sa 950 B na sinukat laban sa live
+      `/exec`, at ang `olt` sa kilalang problem-only shape (`meta.total: 461`, `up: 461`,
+      `down: 0`). Isang manual run ng **`warmDataCaches()`** ang gumawa nito; ang 5-minutong trigger
+      ang nagpapatuloy
 
 **⚠️⚠️ NAHULI (Sept 26, gabi): ang `Save version` ay HINDI nagde-deploy, at nagdi-disable ang `Deploy`.**
 Ito ang tumalo sa limang rotation ng `READ_SECRET` nang sunod-sunod — lahat naka-save, **walang
@@ -76,9 +83,19 @@ sa `type=__probe__` na tinatanggihan ng 400 **bago** basahin ang body. Mahalaga 
 `setEdgeConfig_` ay **nag-trim** at ang Cloudflare ay **hindi** — ang kinopya mula sa terminal selection
 ay may newline ng linya, at `"<secret>\n"` sa worker ay hindi kailanman matutumbasan ng Apps Script.
 
-**⚠️ Hard dependency, at ang bagong sukat ay baliktad na.** Ang publish ay nakasakay sa
-`warmDataCaches`, kaya **kung wala ang 5-minutong trigger, walang mai-publish sa edge** kahit
-naka-set na ang mga secret.
+**⚠️ Ang "hard dependency" ay tunay, ngunit mali ang pinagbintangan — MEASURED Sept 26, 8:59 PM.** Ang
+publish ay nakasakay sa `warmDataCaches`, kaya totoo na **kung walang 5-minutong trigger, walang
+mai-publish sa edge**. Ngunit nang patakbuhin ang `setupAllTriggers()`, ito ang unang lumabas:
+`Removed trigger: warmDataCaches (CLOCK)` — **naka-install na pala ito mula pa noon.** Ang tunay na
+kulang ay ang **publish hook sa loob ng pass**, na dumating lang nang i-paste ang bagong
+`olt-cache-warmer.gs`. Ang aral: ang "wala pang naka-publish" ay hindi patunay na wala ang trigger —
+pareho ang hitsura ng dalawang sanhi, at ang code sa loob ng trigger ang hindi makikita mula sa labas.
+
+**Isang side effect ng `setupAllTriggers()` na dapat malaman:** iniaayos nito ang **event type** ng
+bawat handler sa `TRIGGER_PLAN`, at kasama sa inalis/muling ginawa ang
+`processBackboneTickets`, na **`ON_CHANGE`** at ngayon ay **`every hour`**. Kung umaasa ang workflow sa
+backbone na umuusad agad pagkatapos ng isang edit, ibalik iyon sa `ON_CHANGE` (ang
+`handleSheetChange` ay hiwalay at nananatiling on-change).
 
 **Ngunit mag-ingat sa `?action=bundle` bilang sukat ng warmth** — hindi ito malinis na probe, at
 nadulas ako dito kanina. May **PropertiesService fallback** ito (`handleBundle` → `bundlePropertyEntry_`)
@@ -97,13 +114,20 @@ Kaya:
 **read-only** ito (`getProjectTriggers()` + `Logger.log`), at nagsasabi ng `✅ In sync.` o
 `❌ Planned but NOT live (run setupAllTriggers): warmDataCaches`.
 
-**Pagkatapos ng apat:** i-set ang `window.NETPULSE_CDN` sa `index.html` (nasa network-only listahan na
-ng `sw.js` ang host). **I-off sa isang value:** blankuhin lang ito — ang `/exec` ang fallback ng bawat
-type. Harder rollback: burahin ang KV keys → 404 `not_published` → bawat type ay babalik sa `/exec`.
+**Naka-on na (release 3.9.29):** naka-set ang `window.NETPULSE_CDN` sa `index.html`. Ang isang bagay
+na dapat tandaan dito: ang value sa `index.html` ay isang **buong URL**, samantalang ang `DATA_CDN_HOST`
+sa `sw.js` ay isang **hubad na host** — sinasadya, dahil `url.includes(...)` ang gamit ng worker at
+masisira ito ng isang path. **Hindi dapat ihambing ang dalawa bilang string** (nag-red ang unang
+bersiyon ng test sa isang tamang tree); ang invariant na sinusuri ngayon ay: pareho ang **host** na
+pinangalanan, at ang string na hindi kasama ng `sw.js` ay talagang nasa URL na binubuo ng app.
+**I-off sa isang value:** blankuhin lang ito — ang `/exec` ang fallback ng bawat type. Harder
+rollback: burahin ang KV keys → 404 `not_published` → bawat type ay babalik sa `/exec`.
 
-**Nasa repo na, hindi pa:** `publish-cache.gs`, ang 17 linyang pagbabago sa `admin.gs` (token mint sa
-loob ng umiiral na `withLock_`), ang 20 linyang `olt-cache-warmer.gs` (publish hook sa warm pass), at
-`proxy/netpulse-proxy.mjs`. **Walang client byte ang nagbago sa field** hangga't blangko ang switch.
+**Naka-paste na lahat, at live:** `publish-cache.gs` (kasama ang `diagnoseEdgeSecrets_` at ang
+placeholder guard), ang 17 linyang pagbabago sa `admin.gs` (token mint sa loob ng umiiral na
+`withLock_`) na dumadaan sa **deployed** web app — kaya kailangan ang **Deploy → Manage deployments →
+✏️ → Version: New version** bago tumanggap ng `cdnToken` ang login, at `proxy/netpulse-proxy.mjs` sa
+worker. **Nagbago na ang client bytes sa field:** 3.9.29 na ang live.
 
 **Test:** tatlong bagong suite — `publish-auth` (20 cases, worker), `cdn-read` (19 cases, client fallback +
 network-only host), `publish-server` (ang `.gs` laban sa fake `UrlFetchApp`/`PropertiesService`/
