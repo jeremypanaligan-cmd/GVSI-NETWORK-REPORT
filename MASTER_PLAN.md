@@ -89,6 +89,12 @@ successful build stores nothing, a failed one always does, and a slow one is wri
 no read at all — the measurement lives in the trigger that was already running rather than
 in the request an operator is waiting on.
 
+### SCN-020: A stalled deployment is not asked three times
+Outcome: A request whose attempt failed slowly — after seven seconds or more — is not retried,
+because a retry fired inside a stall is guaranteed to land inside the same stall; the origin's
+own `retryable:true` still outranks the rule, and the report says the budget was cut short
+rather than looking like a budget that ran out.
+
 ### SCN-019: The wait is attributed to the module, on the device that felt it
 Outcome: An admin can open one screen and see, per module, how long THIS device waited, how much
 of that the origin spent and how much the phone and its network added, how many attempts each call
@@ -383,6 +389,44 @@ removes one of the conditions that trigger it), and the **60 s `cacheTtl`** a cl
   - Evidence: PART-022 in `PLAN_EVIDENCE.md` — **336 tests across 19 suites**, 51 mutations
     across Parts 14 and 15, and the hand-off still owed: two pastes and one push (the gate is
     closed — GO on two live runs, so the request-path hooks now ship enabled)
+
+## Phase 9: what a stalled deployment does to a retry policy — IN THE REPO
+
+**Why this phase exists.** The standing complaint is that the app takes too long to show
+data, and the standing question is which module is to blame. Measuring from outside the
+deployment on 2026-09-26 answers both, and neither answer is a module:
+
+  - **No module is slow.** Fifteen module requests on the hit path answered in 1.06–1.40 s,
+    which is the bare `?action=rev` floor — one property read. The stack is live and healthy:
+    `?action=bundle` returns 3,607 bytes in **1.18 s**, `?action=diag` is gated and answers in
+    1.54 s, `?action=rev` in 1.83 s.
+  - **The deployment stalls**, and by the time an operator notices it does not matter which
+    route they asked for: failures arrived as Apps Script's 8 KB error page at **7.5 s, 16.0 s
+    and 30.8 s**, and once as a redirect chain that outlived a 40 s cap. `?action=rev` — one
+    property read, 80 bytes, normally 1.8 s — took **16.0 s** inside the same window.
+
+**The finding that chose the fix.** The app made every stall worse. Its retry fires after
+250–750 ms of jittered backoff, against a stall that lasted at least 30 s and cleared within
+60 s, so attempt 2 was guaranteed to land inside the same stall and cost another full one —
+three times the wait, three times the load, on a deployment that was already struggling. The
+same request 60 s later answered in 1.48 s, which is longer than `fetch-gate`'s 30 s ceiling
+can wait, so waiting the stall out inside the request is not an option either.
+
+**What is NOT done here.** The 21 s origin 404 is the same family and is still open — but it is
+no longer anonymous, which is the first step. And the two `?action=` failures seen at night
+were this stall, **not** a missing paste: `?action=definitelynothere` answers
+`{"error":"Unknown action: …"}` in 1.71 s, so the dispatch is reachable and the route table
+holds bundle.
+
+- [x] Part 17: Read `plans/PART17_PLAN.ai.md`
+  - Scenario: SCN-020
+  - Outcome: A failed attempt that consumed 5 s or more ends the retry loop, with the
+    threshold derived from the live numbers rather than chosen (above the slowest successful
+    attempt measured — 3.23 s — and below the fastest failing one, 7.5 s); an origin envelope
+    is excluded from the rule so `retryable:true` still gets its retry; the report says
+    `origin stalled 30800ms, budget not spent`; the release label moves and the guard does not
+  - Evidence: PART-024 in `PLAN_EVIDENCE.md` — **389 tests across 20 suites**, 10 mutations all
+    caught, and the hand-off still owed: the paste and the push
 
 ## Notes
 

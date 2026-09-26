@@ -477,3 +477,54 @@ fastest way to check it in the dark theme (`test-olt-shape3.html` is the same id
 
 If the bundle has to be backed out in a hurry: delete the `<script src="boot-bundle.js"></script>`
 line and move the label. The server route is additive and can stay — an older client never asks for it.
+
+### 8.7 Telling a slow MODULE from a stalled DEPLOYMENT, from outside (Sept 26, 2026)
+
+`?action=diag` needs an admin token. This recipe needs nothing, and it is the same instrument the
+warm pass uses: time each route and compare. The point is to hold two kinds of answer apart.
+
+```bash
+EXEC="https://script.google.com/macros/s/AKfycby4y2cFYIYvwldcGk2l9FfV7Vd3Bka7ec3tk40h5z7Gb6QjShtVE8BkYw-T_wQMy4h5IA/exec"
+for q in "action=rev" "action=bundle" "action=diag" "type=olt&shape=1" "type=olt&shape=3"; do
+  rm -f /tmp/probe.txt            # a stale body is how a 0-byte 302 reads as JSON
+  out=$(curl -sL --max-time 45 "$EXEC?$q" -o /tmp/probe.txt -w "%{http_code} %{time_total} %{size_download} %{num_redirects}")
+  printf "%-22s http=%s %6ss %7sB redirects=%s\n" "$q" $(echo $out|awk '{print $1, $2, $3, $4}')
+  head -c 120 /tmp/probe.txt; echo
+done
+```
+
+What the routes are, and why each one is the right control:
+
+| route | what it does | healthy reading |
+|---|---|---|
+| `?action=rev` | ONE property read, 80 bytes | ~1.8 s — **this is the floor, and nothing can be faster** |
+| `?action=bundle` | ONE cache read of all five modules | ~1.2 s, ~3.6 KB of real bundle |
+| `?type=olt&shape=1` | the heaviest builder: 461 rows | ~2.9 s, ~54 KB |
+| `?type=olt&shape=3` | the same fleet, problem-only | ~2.1 s, **216 B when every OLT is UP** |
+| `action=definitelynothere` | proves the dispatch is reachable | `{"error":"Unknown action: …"}` in ~1.7 s |
+
+**How to read it.** A slow MODULE is one route being slow while `rev` and `bundle` stay at ~1.5 s. A
+stalled DEPLOYMENT is `rev` itself taking seconds — measured **16.0 s** on 2026-09-26 — or an 8 KB
+error page instead of JSON. Seen on 2026-09-26: `?type=nap` 404 in 7.5 s, `rev` in 16.0 s, `?type=olt`
+404 in **30.8 s**, one redirect chain past a 40 s cap, then everything healthy again inside a minute.
+Fifteen module requests in the same session answered in **1.06–1.40 s**.
+
+**`?type=olt&shape=3` returning `p`, `m` and `r` as `[]` is CORRECT, not broken.** shape=3 is
+**problem-only** by design (`kiosk-reference/README.md`), and `meta.total: 461, up: 461` means there is
+nothing to report. Check `shape=1` for the full fleet before filing that as a bug — it is the same
+216 bytes either way, and the difference is the whole question.
+
+**The rule this measurement bought** (PART-017, shipped in 3.9.23): in `fetchWithRetry`, a FAILED
+attempt that consumed **5 s or more** ends the retry loop. A retry 250–750 ms after a 30 s stall lands
+inside the same stall. The threshold is derived — above the slowest successful attempt ever measured
+(3.23 s), below the fastest failing one (7.5 s) — and an origin envelope is excluded from it, because
+`retryable:true` is the server asking for the retry by name. Expected console line during a stall:
+
+```
+[Retry 1/3] <?type=olt>: HTTP 404 (after 30800ms - stalled, not retrying)
+Failed after 1 attempt (origin stalled 30800ms, budget not spent): <?type=olt> (HTTP 404)
+```
+
+**Why this lives in run.md and not only in the file it measures:** the previous session spent time on
+a `?action=bundle` 404 that was this stall, and was one step from reporting a missing paste for a file
+that was already pasted. Time `rev` first; it costs one request and it settles the question.

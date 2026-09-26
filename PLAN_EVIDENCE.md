@@ -1361,3 +1361,62 @@ cached has a hook that records nothing rather than one that fails, and that case
 card's rule is that opening the tab costs nothing. The two reports are read side by side. And the
 **21 s origin 404** is still open — but the card can now SEE it (attempts above 1 with a large
 overhead), which is the first step toward fixing an error path nobody could attribute.
+
+### PART-024 — the spare attempts are for blips, not for stalls (2026-09-26)
+
+**What was asked for.** Read the live `?action=diag` report and the warm-pass log after a few days of
+real traffic, then fix whichever module the collected failures and slow-build records point at.
+
+**What could not be read, and the substitute.** `?action=diag` is admin-gated, there is no credential
+in the workspace, and the login route has a lockout — so the report was not read, and asking for a
+token was not an option. The substitute was to measure the same facts from OUTSIDE the deployment,
+which is the instrument the warm pass already uses: time each route, and compare a route that does one
+property read (`?action=rev`) against one that does one cache read (`?action=bundle`) against the
+heaviest builder (`?type=olt&shape=1`, 461 rows).
+
+**The finding, which was not a module.** Fifteen module requests on the hit path answered in
+**1.06–1.40 s** — the bare `?action=rev` floor, i.e. the app's own data cost nothing worth
+attributing. What the failures had in common was that they were not about a module at all: they were
+Apps Script's 8 KB error page after **7.5 s, 16.0 s and 30.8 s**, once a redirect chain that outlived a
+40 s cap, and — the decisive one — `?action=rev`, a single property read of 80 bytes, taking **16.0 s**
+inside the same window. A module cannot slow down a route that reads no sheets.
+
+**The bug the measurements found in our own code.** `fetchWithRetry` retries after 250–750 ms of
+jittered backoff, against stalls that lasted at least 30 s and cleared inside 60 s. Four consecutive
+OLT requests inside one stall window all failed; the same request 60 s later answered in 1.48 s. So the
+retry was guaranteed to land INSIDE the same stall: three times the wait, three times the load, on a
+deployment that was already struggling. Waiting the stall out inside the request is not available
+either — `fetch-gate`'s ceiling is 30 s, shorter than the stall it would have to wait through.
+
+**The threshold is derived, not chosen.** 5000 ms sits above the slowest SUCCESSFUL attempt ever
+measured here (3.23 s, `shape=4`) and below the fastest failing one (7.5 s). The rule reads a marker on
+the error, not a status code, because `retryable:true` is the origin asking for a retry BY NAME and it
+arrives at build duration — inside the window a naive duration threshold would swallow.
+
+**A false finding, caught before it was recorded.** `?type=olt&shape=3` returns **216 bytes** with `p`,
+`m` and `r` all empty while `meta` claims `total: 461, up: 461`, which reads exactly like a module
+sending no rows for 461 live OLTs. It is not: shape=3 is **problem-only by design**, and all 461 were
+UP. `?type=olt&shape=1` returns all 461 rows (54,077 bytes) in the same minute, and `shape=4` returns
+28 KB. Recorded here because "empty array" and "nothing sent" are the same 216 bytes on the wire and
+the difference is the whole question.
+
+**And the night's `?action=bundle` 404 was the same stall, not a missing paste.** `?action=bundle`
+answers **200, 1.18 s, 3,607 bytes** with a real five-module bundle, and
+`?action=definitelynothere` answers `{"error":"Unknown action: …"}` in 1.71 s — so the dispatch is
+reachable and the route table contains bundle. Nothing was owed on that route after all.
+
+**Checks.** Full suite **389 passed across 20 suites, 0 failed** (385 → 389). Ten mutations for this
+part, every one caught: the rule removed entirely, `>=` weakened to `>`, the threshold moved to 1 s and
+to 30 s, the envelope marker dropped, the envelope never marked, the per-attempt clock reset removed,
+`stalledAt` never set, the report's stall clause removed, and the warning's. Two earlier mutations were
+**not** caught and both were correct findings rather than test gaps: the `retryable` flag was redundant
+beside `fatal` (replaced by one `envelope` flag that is observable), and nothing asserted the warning's
+presence (added). The clock that makes a 30.8 s stall testable without waiting 30.8 s is a fake
+`Date.now` in the harness — the same trick the suite already used for `setTimeout`.
+
+**Release.** 3.9.22 → **3.9.23**; guard untouched at 3.10.0. No server byte, no new request, no new
+query parameter, no worker redeploy — the one line that changed is the retry policy.
+
+**Still owed.** The paste (`code.gs`, `diagnostics.gs`, `olt-cache-warmer.gs`) and the push — and one
+line in the Apps Script editor to read the report this part could not read:
+`Logger.log(JSON.stringify(buildDiagReport_(), null, 2))`.

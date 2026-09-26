@@ -700,6 +700,56 @@ exactly the hammering the comments name as the trigger. `?action=bundle` answers
 execution instead, so that burst no longer happens. The 404 itself is untouched and still open: this
 narrows when it can occur, and does not fix it.
 
+**Measured from outside, same day — and it is not about a module.** Fifteen module requests on the hit
+path answered in **1.06–1.40 s**, which is the bare `?action=rev` floor: the data cost nothing worth
+attributing. The failures in that window were Apps Script's 8 KB error page after **7.5 s, 16.0 s and
+30.8 s**, and one redirect chain that outlived a 40 s cap. The decisive one is `?action=rev` itself —
+**one property read, 80 bytes, normally 1.8 s — taking 16.0 s inside the same window.** A module
+cannot slow down a route that reads no sheets, so this is the DEPLOYMENT stalling, and the correct
+name for the 21 s 404 is "the same stall, seen on a module route". The number is no longer anonymous;
+it is still unfixed.
+
+**And the night's `?action=bundle` / `?action=keepalive` 404s were this stall, not a missing paste.**
+`?action=bundle` answers **200, 1.18 s, 3,607 bytes** with a real five-module bundle, and
+`?action=definitelynothere` answers `{"error":"Unknown action: …"}` in **1.71 s** — so the dispatch is
+reachable and the route table contains bundle. Recorded because "the paste did not happen" and "the
+deployment stalled" produce the same 8 KB error page, and one of them would have sent someone to the
+Apps Script editor to paste a file that was already there.
+
+---
+
+## 🟡 P2 — The retry that made a stall worse (Sept 26, 2026) — IN THE REPO, needs the push
+
+**Fixed in the working tree as 3.9.23.** `fetchWithRetry` spent its two spare attempts regardless of
+how long the failed one took. Against a stall that lasts 30 s and clears inside 60 s, and a backoff of
+250–750 ms, attempt 2 was guaranteed to land inside the same stall: three times the wait and three
+times the load, on a deployment that was already struggling. Four consecutive OLT requests inside one
+stall window all failed; the same request 60 s later answered in 1.48 s.
+
+- The rule: a **failed** attempt that consumed **5 s or more** ends the loop. 5 s is derived, not
+  chosen — above the slowest SUCCESSFUL attempt measured from outside (3.23 s) and below the fastest
+  failing one (7.5 s).
+- An **origin envelope is excluded**: `retryable:true` is the server asking for a retry by name, and
+  `build_failed` arrives at build duration, inside the window the rule would otherwise swallow.
+- The report says **`origin stalled 30800ms, budget not spent`** and the console says
+  `stalled, not retrying`. "Failed after 1 attempt" alone is indistinguishable from a budget that ran
+  out, and that distinction is the whole reason the message exists.
+- 389 tests across 20 suites, 0 failed; 10 mutations, all caught.
+
+**Owed:** the push (the release label is 3.9.23 and a precached shell moves only when it does), and
+the pastes in the list below — this part changes no server byte.
+
+**Also still owed, and deliberately not guessed:** reading the live `?action=diag` report. It is
+admin-gated, there is no credential in the workspace, and the login route has a lockout. One line in
+the Apps Script editor produces it without a token:
+
+```js
+Logger.log(JSON.stringify(buildDiagReport_(), null, 2))
+```
+
+That report holds `failures[]`, `slowLast`, `cache.<type>` and `warmPass.ms`. What is in the working
+tree *has* been measured from outside instead — see the numbers above.
+
 ---
 
 ## 🟡 P2 — Install the triggers in Apps Script
