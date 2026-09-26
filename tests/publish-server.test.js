@@ -270,6 +270,88 @@ function configured() {
       'no token means the client reads every module from /exec — the pre-existing behaviour');
   });
 
+  await test('a PLACEHOLDER stored as a secret is reported as a placeholder, not as configured', () => {
+    /* The exact run that cost an hour: the wrapper's template arguments were left in place, and
+       `setEdgeConfig_` answered `publishSecret=set, readSecret=set` — true of the literal text
+       "<read secret>", which is a non-empty string. Nothing anywhere said otherwise. */
+    const props = {
+      netpulse_worker_url: WORKER,
+      netpulse_publish_secret: 'stale',
+      netpulse_read_secret: 'stale'
+    };
+    const logs = [];
+    const s = appsScriptSandbox(props, () => ({ getResponseCode: () => 200 }), logs);
+    vm.runInContext(read('publish-cache.gs'), s, { filename: 'publish-cache.gs' });
+
+    s.setEdgeConfig_(WORKER, '<publish secret>', '<read secret>');
+    const text = logs.join('\n');
+    assert.ok(text.indexOf('PLACEHOLDER') !== -1, 'the placeholder is named rather than accepted: ' + text);
+    assert.strictEqual(text.indexOf('✅'), -1, 'and the run does not report success');
+
+    /* The guard must not cry wolf: a real generated secret still reads as written. */
+    const clean = [];
+    const good = appsScriptSandbox(props, () => ({ getResponseCode: () => 200 }), clean);
+    vm.runInContext(read('publish-cache.gs'), good, { filename: 'publish-cache.gs' });
+    good.setEdgeConfig_(WORKER, 'a'.repeat(64), 'b'.repeat(64));
+    assert.ok(clean.join('\n').indexOf('✅') !== -1, 'a real secret still reads as written');
+  });
+
+  await test('the diagnostic names the spelling the worker holds, and cannot write anything', async () => {
+    /* The measured shape of the bug this exists for: the value that reached the WORKER carries the
+       newline the terminal selection had, and the value `setEdgeConfig_` stored does not, because
+       it trims. Repeated five times in one sitting, every attempt looked correct on both screens. */
+    const WORKER_READ = READ_SECRET + '\n';
+    const WORKER_PUBLISH = PUBLISH_SECRET + '\n';
+    const calls = [];
+
+    const fetchImpl = (url, opts) => {
+      const headers = (opts && opts.headers) || {};
+      calls.push({ url: String(url), headers: headers });
+
+      if (String(url).indexOf('/data/_meta') !== -1) {
+        const token = String(headers.authorization || '').replace(/^Bearer /, '');
+        const dot = token.indexOf('.');
+        const subject = Buffer.from(token.slice(0, dot).replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+          .toString('utf8');
+        const expected = crypto.createHmac('sha256', WORKER_READ).update(subject, 'utf8').digest('base64')
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        return { getResponseCode: () => (token.slice(dot + 1) === expected ? 200 : 401),
+                 getContentText: () => '' };
+      }
+
+      /* The worker's real order: method, kv, secret, THEN the allow-list. So a matching secret
+         reaches the allow-list and is refused 400, and nothing is ever stored. */
+      if (headers['x-netpulse-secret'] !== WORKER_PUBLISH) {
+        return { getResponseCode: () => 401, getContentText: () => '' };
+      }
+      const type = String(url).split('?')[1];
+      return { getResponseCode: () => (type === 'type=__probe__' ? 400 : 200), getContentText: () => '' };
+    };
+
+    const logs = [];
+    const s = appsScriptSandbox(configured(), fetchImpl, logs);
+    vm.runInContext(read('publish-cache.gs'), s, { filename: 'publish-cache.gs' });
+    s.diagnoseEdgeSecrets_();
+
+    const lines = logs.join('\n').split('\n');
+    const found = lines.find((l) => l.indexOf('with a trailing newline') !== -1);
+    assert.ok(found && found.indexOf('✅') !== -1,
+      'the row that works is NAMED, which is the whole point of the diagnostic: ' + found);
+
+    const notFound = lines.find((l) => l.indexOf('no trailing newline') !== -1);
+    assert.ok(notFound && notFound.indexOf('✅') === -1,
+      'and the spelling that does not work is not claimed as if it did: ' + notFound);
+
+    /* READ-ONLY is the property that makes this safe to run against production, so it is asserted
+       rather than described in a comment: every request is the index, or a type that does not
+       exist. A probe that published to a REAL type would put a test payload in front of readers. */
+    assert.ok(calls.length > 0, 'it actually probed something');
+    calls.forEach((c) => {
+      assert.ok(/\/data\/_meta$/.test(c.url) || /\/publish\?type=__probe__$/.test(c.url),
+        'the diagnostic only ever touches ' + c.url);
+    });
+  });
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed === 0 ? 0 : 1);
 })();

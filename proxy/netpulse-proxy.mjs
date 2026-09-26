@@ -318,9 +318,22 @@ async function verifyReadToken(token, readSecret, now, subtle) {
   const dot = raw.indexOf(TOKEN_SEPARATOR);
   if (dot <= 0) return { ok: false, reason: 'malformed' };
 
-  const subjectBytes = b64urlToBytes(raw.slice(0, dot));
-  const signature = b64urlToBytes(raw.slice(dot + 1));
-  const subject = new TextDecoder().decode(subjectBytes);
+  /* Decoding is the one step here that can throw on caller-supplied input: `atob` rejects any
+     character outside the base64 alphabet, and a string with a dot in it is not necessarily two
+     base64url halves. MEASURED 2026-09-26 against the deployed worker: `Bearer basura.token`
+     answered `1101` — a Worker exception surfaced as a 500, which the client reads as "the edge
+     is broken" rather than "fall back to /exec". That is the one outcome this function's
+     contract forbids, so it is the one step that is guarded. */
+  let subjectBytes;
+  let signature;
+  let subject;
+  try {
+    subjectBytes = b64urlToBytes(raw.slice(0, dot));
+    signature = b64urlToBytes(raw.slice(dot + 1));
+    subject = new TextDecoder().decode(subjectBytes);
+  } catch (err) {
+    return { ok: false, reason: 'malformed' };
+  }
 
   let key;
   try {
@@ -330,7 +343,13 @@ async function verifyReadToken(token, readSecret, now, subtle) {
     return { ok: false, reason: 'key_unusable' };
   }
 
-  const valid = await subtle.verify('HMAC', key, signature, subjectBytes);
+  let valid = false;
+  try {
+    valid = await subtle.verify('HMAC', key, signature, subjectBytes);
+  } catch (err) {
+    /* An empty or wildly-shaped signature refuses for the same reason the decode above does. */
+    return { ok: false, reason: 'malformed' };
+  }
   if (!valid) return { ok: false, reason: 'bad_signature' };
 
   const exp = Number(subject.split('|')[1]);

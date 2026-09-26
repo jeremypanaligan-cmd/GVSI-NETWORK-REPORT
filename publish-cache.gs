@@ -104,10 +104,55 @@ function setEdgeConfig_(workerUrl, publishSecret, readSecret) {
   props.setProperty(EDGE_PROP_URL, String(workerUrl || '').trim().replace(/\/+$/, ''));
   props.setProperty(EDGE_PROP_PUBLISH_SECRET, String(publishSecret || '').trim());
   props.setProperty(EDGE_PROP_READ_SECRET, String(readSecret || '').trim());
+
   var cfg = readEdgeConfig_();
-  Logger.log('✅ edge config written: url=' + (cfg.url || '(empty)') +
+  var publishLooksReal = edgeSecretLooksReal_(cfg.publishSecret, 'publishSecret');
+  var readLooksReal = edgeSecretLooksReal_(cfg.readSecret, 'readSecret');
+
+  Logger.log((publishLooksReal && readLooksReal ? '✅' : '⚠️') + ' edge config written: url=' +
+             (cfg.url || '(empty)') +
              ', publishSecret=' + (cfg.publishSecret ? 'set' : '(empty)') +
              ', readSecret=' + (cfg.readSecret ? 'set' : '(empty)'));
+  if (!publishLooksReal || !readLooksReal) {
+    Logger.log('   Both WERE stored — that is why it says "set". But a placeholder is not a secret, ' +
+               'so every token will be refused with bad_signature.');
+  }
+}
+
+/**
+ * Does this look like a generated secret, or like the placeholder in a runbook?
+ *
+ * MEASURED, 2026-09-26 — this is the whole of a lost hour. `setupEdgeOnce` was run with its
+ * template arguments left in place:
+ *
+ *   setEdgeConfig_('<worker url>', '<publish secret>', '<read secret>');
+ *
+ * and the log answered `publishSecret=set, readSecret=set`, which is TRUE of the literal text
+ * `<read secret>`: it is a non-empty string. Five rotations of the worker secret then went into a
+ * mismatch that was never about the secrets, and no screen anywhere said so — the Cloudflare side
+ * showed a fresh version, this side showed "set", and every request answered `401 bad_signature`.
+ *
+ * A guard rather than a rule in a document, for the same reason `setEdgeConfig_` is a function
+ * and not three fields in the Properties UI: the mistake has to be visible where it is made.
+ */
+function edgeSecretLooksReal_(value, label) {
+  var v = String(value || '').trim();
+  if (!v) return false;
+
+  if (/[<>]/.test(v)) {
+    Logger.log('⚠️ ' + label + ' is still the PLACEHOLDER from the runbook, not a secret: "' +
+               v.slice(0, 40) + '" — replace it with a real value from `openssl rand -hex 32`');
+    return false;
+  }
+
+  if (!/^[A-Za-z0-9_-]{16,}$/.test(v)) {
+    Logger.log('⚠️ ' + label + ' does not look like a generated secret (want 16+ characters of ' +
+               'A-Z a-z 0-9 _ -): it is ' + v.length + ' characters. A copy that picked up spaces or a ' +
+               'newline fails as bad_signature, which looks identical to a wrong value');
+    return false;
+  }
+
+  return true;
 }
 
 /* Web-safe base64 with the padding REMOVED, so a token has one canonical form.
@@ -244,5 +289,99 @@ function reportEdgeState() {
   } catch (err) {
     Logger.log('⚠️ edge state threw: ' + err.message);
     return { configured: true, code: 0, error: err.message };
+  }
+}
+
+/**
+ * WHY IS MY TOKEN REFUSED — the diagnostic for the one failure that has already cost five
+ * rotations in a single sitting.
+ *
+ * `reportEdgeState()` answers "does the edge accept my token". This answers "and if it does not,
+ * WHY": it mints the SAME token with several spellings of the configured secret and prints the
+ * HTTP code each spelling gets, so a whitespace difference between the two pastes is one row's
+ * difference rather than a dead end.
+ *
+ * MEASURED, 2026-09-26. Five rotations of READ_SECRET, all answering 401 `bad_signature`, with the
+ * value taken from the same terminal every time. The asymmetry that accounts for it:
+ * `setEdgeConfig_` TRIMS what it stores (`String(...).trim()`), and Cloudflare does not trim a
+ * secret — so a copy that carried the line's trailing newline lands in the worker as
+ * `"<secret>\n"` and can NEVER be reproduced from this side, which strips it. The same paste then
+ * agrees on one side and disagrees on the other, however many times it is repeated, and nothing
+ * about the workflow looks wrong from either screen.
+ *
+ * READ-ONLY, deliberately:
+ *   - the read probe is `GET /data/_meta`;
+ *   - the publish probe is a POST to a type that does not exist, which `handlePublish` refuses with
+ *     400 AFTER the secret check and BEFORE the body is read — so a matching secret answers 400 and
+ *     a mismatched one answers 401, and neither can store anything.
+ */
+function diagnoseEdgeSecrets_() {
+  var cfg = readEdgeConfig_();
+  if (!cfg.url) {
+    Logger.log('ℹ️ edge not configured — run setEdgeConfig_ first');
+    return { configured: false };
+  }
+
+  Logger.log('=== READ   GET /data/_meta — 200 means this spelling IS the worker read secret ===');
+  var read = edgeSecretSpellings_(cfg.readSecret);
+  for (var i = 0; i < read.length; i++) {
+    var readCode = probeEdgeRead_(cfg.url, read[i][1]);
+    Logger.log('  ' + (readCode === 200 ? '✅' : '  ') + ' HTTP ' + readCode + '   ' + read[i][0]);
+  }
+
+  Logger.log('=== PUBLISH   POST /publish?type=__probe__ — 400 means this spelling IS the worker publish secret ===');
+  var publish = edgeSecretSpellings_(cfg.publishSecret);
+  for (var j = 0; j < publish.length; j++) {
+    var publishCode = probeEdgePublish_(cfg.url, publish[j][1]);
+    Logger.log('  ' + (publishCode === 400 ? '✅' : '  ') + ' HTTP ' + publishCode + '   ' + publish[j][0]);
+  }
+
+  Logger.log('The row with the ✅ is the spelling the worker holds. If NO row has one, the two sides');
+  Logger.log('hold different values — re-paste ONE value into both, copied from the Script Properties');
+  Logger.log('field (which is trimmed) rather than from a terminal selection.');
+  return { configured: true };
+}
+
+/** The same secret, spelled the ways a paste can arrive. */
+function edgeSecretSpellings_(value) {
+  var base = String(value || '').trim();
+  return [
+    ['as stored here (setEdgeConfig_ already trimmed it)', value],
+    ['no trailing newline', base],
+    ['with a trailing newline', base + '\n'],
+    ['with a trailing space', base + ' '],
+    ['with a trailing CR+LF', base + '\r\n']
+  ];
+}
+
+/** One read probe. Never throws: a network failure is reported as HTTP 0. */
+function probeEdgeRead_(url, readSecret) {
+  try {
+    var subject = 'diagnostics|' + (Date.now() + 60000);
+    var token = edgeBase64Url_(subject) + '.' +
+                edgeBase64Url_(Utilities.computeHmacSha256Signature(subject, readSecret));
+    var response = UrlFetchApp.fetch(url + '/data/_meta', {
+      headers: { authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    return response.getResponseCode();
+  } catch (err) {
+    return 0;
+  }
+}
+
+/** One publish probe against a type that does not exist, so nothing can be stored. */
+function probeEdgePublish_(url, publishSecret) {
+  try {
+    var response = UrlFetchApp.fetch(url + '/publish?type=__probe__', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: '[]',
+      headers: { 'x-netpulse-secret': publishSecret },
+      muteHttpExceptions: true
+    });
+    return response.getResponseCode();
+  } catch (err) {
+    return 0;
   }
 }

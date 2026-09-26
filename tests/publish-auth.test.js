@@ -251,6 +251,30 @@ async function readJson(response) {
     assert.strictEqual((await readJson(expired)).reason, 'expired');
   });
 
+  await test('a token that is not base64url at all is a refusal, not a 500', async () => {
+    const handle = plane(seeded());
+
+    /* This one has a dot, so it passes the shape check, and then `atob` meets `basura`. MEASURED
+       2026-09-26 against the DEPLOYED worker, before the decode was guarded: `Bearer
+       basura.token` answered `1101` — a Worker exception surfaced as a 500. A client reads a 500
+       as "the edge is broken" and a 401 as "fall back to /exec", so that inverted the one
+       decision this function exists to make. The suite had no such case: it covered no_token,
+       bad_signature and expired, and every one of those is well-formed base64url. */
+    const garbage = await handle(dataRequest('/data/nap', { headers: { authorization: 'Bearer basura.token' } }));
+    assert.strictEqual(garbage.status, 401, 'a decode failure is a refusal, never a throw');
+    assert.strictEqual((await readJson(garbage)).reason, 'malformed');
+
+    /* The rest of the shapes a bad paste can take. None may throw, and every refusal is named. */
+    for (const token of ['a.', 'ok.', '***.***', 'AAAA.!!!!', 'x.y.z', '%%%%']) {
+      const res = await handle(dataRequest('/data/nap', { headers: { authorization: 'Bearer ' + token } }));
+      assert.strictEqual(res.status, 401, '`' + token + '` is refused, never thrown');
+      const body = await readJson(res);
+      assert.strictEqual(body.error, 'unauthorized');
+      assert.ok(typeof body.reason === 'string' && body.reason.length > 0,
+        'the reason is always named, so the client can log once and stop asking');
+    }
+  });
+
   await test('a valid token reads the payload, with the build stamp the chip uses', async () => {
     const kv = withMeta(seeded(), 'nap', { builtAt: NOW - 1000, rev: '3' });
     const token = await mintToken('operator|' + (NOW + 60000), READ_SECRET);
