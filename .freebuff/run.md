@@ -528,3 +528,50 @@ Failed after 1 attempt (origin stalled 30800ms, budget not spent): <?type=olt> (
 **Why this lives in run.md and not only in the file it measures:** the previous session spent time on
 a `?action=bundle` 404 that was this stall, and was one step from reporting a missing paste for a file
 that was already pasted. Time `rev` first; it costs one request and it settles the question.
+
+### 8.8 Driving a module's FAILURE path in a real browser (Sept 26, 2026)
+
+The failure screens are the ones nobody sees until the deployment stalls, which makes them the ones
+most likely to be wrong. They are also the easiest to exercise, because `fetchWithRetry`, the module
+loaders and `fetchGate` are all page globals — no build step, no login, no token.
+
+Serve the tree (`python -m http.server`, §2), open `index.html`, and accept that the login overlay
+will be up. The tabs are in the DOM underneath it and the module functions do not check auth, so the
+whole check runs behind the overlay:
+
+```js
+// 1. draw the last good read, the way a successful cycle would
+renderNapReport([{ A:'LUZON', P:'BENGUET', H:4, D1:1, D3:0, T:5 }]);
+const tbody = document.getElementById('napTableBody');
+const drawn = tbody.innerHTML;
+
+// 2. a refresh: the caller empties the cache first, then the read fails
+dataCache.nap = null;
+const realRun = fetchGate.run;
+fetchGate.run = () => Promise.reject(new Error('(origin stalled 7500ms, budget not spent)'));
+await fetchNapData(true);
+fetchGate.run = realRun;
+
+// 3. what matters: byte-identical, no error row, chip gone, cache still empty
+tbody.innerHTML === drawn;
+tbody.innerHTML.indexOf('Error loading data') === -1;
+document.querySelectorAll('#tab-nap .module-loading-screen').length === 0;
+dataCache.nap === null;
+```
+
+**Use a DELAYED but failing endpoint if you want the real network in the loop, and pick it carefully.**
+`httpbingo.org/delay/8` is the obvious one and it is wrong: it answers **200 with a JSON body**, so
+in-browser it SUCCEEDS and proves nothing about the failure path. The one that works is
+`httpbingo.org/drip?duration=7&numbytes=8` — 200, ~9 s, `content-type: text/plain`, CORS allowed —
+because the delay is real and `res.json()` rejects on the body. Verified end-to-end in 3.9.23/3.9.24:
+the stall rule printed `[Retry 1/3] … (after 9248ms - stalled, not retrying)`, **one** fetch, and the
+report ended `origin stalled 9248ms, budget not spent`.
+
+**`hasDrawn` is module-local, so the `unavailable` screen is only reachable on a fresh page.** Reload
+before testing the cold-start case (`renderModuleUnavailable`), or the earlier draw in the same page
+will correctly keep its screen and the test will look like it failed.
+
+**The overlay can be dismissed for a screenshot** (`loginOverlay` and `updateOverlay` are body
+children; both are `display:flex`), but screenshot capture needs the tab to be the one the panel is
+compositing — otherwise capture reports "no frames" and the DOM readings above are still the
+result that matters.

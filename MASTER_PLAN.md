@@ -89,6 +89,15 @@ successful build stores nothing, a failed one always does, and a slow one is wri
 no read at all — the measurement lives in the trigger that was already running rather than
 in the request an operator is waiting on.
 
+### SCN-021: A refresh that fails keeps the screen it already drew
+Outcome: A module whose refresh fails — a stalled deployment, an HTTP status, a body that is not
+JSON — leaves the rows already on screen exactly as they are, because those rows are the last
+read that answered and nothing better is available. A failure never renders an all-clear, so a
+read that never completed cannot put "All Backbone Links Operational" on the one screen whose
+whole message is that nothing is wrong. A tab that has never drawn anything says the report
+could not be loaded rather than claiming either, and the freshness chip goes on ageing, so the
+kept data is never passed off as fresh.
+
 ### SCN-020: A stalled deployment is not asked three times
 Outcome: A request whose attempt failed slowly — after seven seconds or more — is not retried,
 because a retry fired inside a stall is guaranteed to land inside the same stall; the origin's
@@ -390,7 +399,7 @@ removes one of the conditions that trigger it), and the **60 s `cacheTtl`** a cl
     across Parts 14 and 15, and the hand-off still owed: two pastes and one push (the gate is
     closed — GO on two live runs, so the request-path hooks now ship enabled)
 
-## Phase 9: what a stalled deployment does to a retry policy — IN THE REPO
+## Phase 9: what a stalled deployment does to a retry policy — SHIPPED in 3.9.23
 
 **Why this phase exists.** The standing complaint is that the app takes too long to show
 data, and the standing question is which module is to blame. Measuring from outside the
@@ -426,7 +435,47 @@ holds bundle.
     is excluded from the rule so `retryable:true` still gets its retry; the report says
     `origin stalled 30800ms, budget not spent`; the release label moves and the guard does not
   - Evidence: PART-024 in `PLAN_EVIDENCE.md` — **389 tests across 20 suites**, 10 mutations all
-    caught, and the hand-off still owed: the paste and the push
+    caught. The push has since landed (3.9.24 carried it); the paste is still owed
+
+## Phase 10: what a failed refresh is allowed to draw — SHIPPED in 3.9.24
+
+**Why this phase exists.** Reported from the live app, twice, with screenshots: refreshing NAP left
+its table reading *"Error loading data."* while its stat cards still showed the last read's numbers,
+and refreshing BACKBONE left *"All Backbone Links Operational"* with five zeroes — on a tab whose
+incidents had just been on screen. The operator's question was the right one: **why can the last
+data not stay until the new data arrives?**
+
+**Cause, and it is not the loading state.** The v3.9.5 rework already made gathering additive: the
+chip is inserted at the top of the tab and clears nothing, so a read in flight leaves the table
+alone. What empties the tab is the refresh's own contract. `refreshCurrentTab()` and
+`backgroundRefresh()` set `dataCache[type] = null` BEFORE they ask, so the next read has to come
+from the network — and a refresh that FAILED therefore had nothing left to draw. It fell through to
+the module's fallback, which in NAP is an error row written over the table and in BACKBONE and NODE
+is the all-clear screen. That screen then stays until the next success, which is why the gather chip
+of a later cycle appears on top of an already-emptied tab: the two frames are not one moment but two.
+
+**The two rules this phase writes down.** First, a failed read keeps what is already drawn — LCP and
+OLT were already written that way (their catch only logs) and nothing had ever said so out loud.
+Second, a failure never renders an all-clear: those screens claim the fleet is clear AND stamp the
+current minute as the time it was checked, and a read that never completed can support neither. A
+tab with nothing drawn yet gets a third, smaller answer instead — that the report could not be
+loaded — which is the first time either screen has been willing to say it cannot see.
+
+**What was deliberately NOT changed.** `dataCache` is still emptied by every refresh, and the kept
+rows are still not written back into it. A cache hit renders without asking, so leaving the payload
+there would let a tab click redraw stale data as though it had just been fetched; the next read has
+to go to the network. This is a display rule, not a caching one.
+
+- [x] Part 18: Read `plans/PART18_PLAN.ai.md`
+  - Scenario: SCN-021
+  - Outcome: A failed read keeps the drawn screen in NAP, BACKBONE and NODE (the three that did
+    not already behave this way); a failure never draws an all-clear; a tab that has never drawn
+    anything says so in `renderModuleUnavailable()`; the gathering chip still clears and the
+    failure is still logged at the moment it happens; `dataCache` keeps its refresh contract, so
+    the next read still goes to the network; the release label moves and the guard does not
+  - Evidence: PART-025 in `PLAN_EVIDENCE.md` — **401 tests across 21 suites**, 4 mutations all
+    caught, the keep rule verified in a real browser against the local server, and the hand-off
+    still owed: the pastes on the server side (this part changes no server byte)
 
 ## Notes
 

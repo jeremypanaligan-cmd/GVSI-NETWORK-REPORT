@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · the live site is at **3.9.20**; **3.9.22 is released in the repo and NOT pushed** (see P1: two pastes and a push — it carries three parts at once) · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.24 is pushed**, and it carries everything that had queued up behind it (3.9.21–3.9.23), so client work that says *in the repo* below is now in the field · **the server half is still owed, and all of it is pastes** — see P1 · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -16,10 +16,10 @@
 
 ---
 
-## 🟠 P1 — Ang bagal ng paglabas ng data: fixed in the repo, waiting on two pastes and a push (Sept 26, 2026)
+## 🟠 P1 — Ang bagal ng paglabas ng data: the client half is LIVE, three pastes still owed (Sept 26, 2026)
 
-**Status.** In `main` as **3.9.22** (released, **not pushed**) and **not live**: the backend half is a
-paste, the client half needs a push. The complaint was *"nagkakaproblema ako sa sobrang tagal ng
+**Status.** The client half is **LIVE**, pushed as **3.9.24**, which carried 3.9.21–3.9.23 with it. What
+remains is the backend half, and every item in it is a paste. The complaint was *"nagkakaproblema ako sa sobrang tagal ng
 paglabas ng data sa app — LCP, NAP, BACKBONE kadalasan itong nangyayari"*, and the cause was
 arithmetic rather than luck:
 
@@ -73,10 +73,12 @@ arithmetic rather than luck:
       change, no `setupAllTriggers()`.
 - [ ] **Paste `code.gs` + `diagnostics.gs`**, then curl `?action=bundle` and `?action=diag` with an
       admin token.
-- [ ] **Push the release** so the seven devices receive **3.9.22** (`sw.js` generation, the two `?v=`
-      tokens and the three `manifest.json` fields moved with it; the guard is still 3.10.0). One push
-      delivers all three parts: the bundle route, the warmer TTL, and `diag-store.js` — 3.9.21 was
-      never pushed, so it never existed in the field.
+- [x] **Push the release — DONE (Sept 26, 2026).** The `sw.js` generation, the two `?v=` tokens and
+      the three `manifest.json` fields moved with it; the guard is still 3.10.0. One push delivered
+      every client part that had queued up behind it: the bundle route (3.9.21/22), the retry policy
+      (3.9.23) and the keep-the-drawn-screen rule (3.9.24). 3.9.21–3.9.23 had never reached a device
+      before this, so the field is seeing all of them at once — confirm the deploy by polling
+      `version.json` until it reads the pushed release, never by assuming.
 
 **And the fourth thing, since the last update: what the DEVICE waited (Part 16, same release).** The
 server report names which module failed and on which sheet; it cannot name what this phone waited,
@@ -293,6 +295,11 @@ donut cards intact, and the five remaining section headings present.
 **Goal:** in a cold browser the app always starts with an empty `dataCache` (`index.html:898` is in-memory only), so the first render waits on the network. Restore the last known payload **before** the first render, then refresh in the background — honestly labelled, and bounded by age.
 
 This removes the **whole first-load wait**. It does **not** recover the 1.5–2.1 s warm-cache delta, which is a separate and much smaller number (see P3 warmer item).
+
+> **Half of this shipped in 3.9.24 (PART-025), and it is the other half that is left.** A *failed*
+> refresh now keeps the screen it already drew, so a stalled read inside a running session no longer
+> empties a tab. This item is what happens when there is no session yet: a cold browser still starts
+> from an empty `dataCache`, and whatever was on screen dies with the tab.
 
 ### Measured evidence (Sept 18, 2026)
 
@@ -718,9 +725,9 @@ Apps Script editor to paste a file that was already there.
 
 ---
 
-## 🟡 P2 — The retry that made a stall worse (Sept 26, 2026) — IN THE REPO, needs the push
+## 🟢 P2 — The retry that made a stall worse — SHIPPED in 3.9.23 (Sept 26, 2026)
 
-**Fixed in the working tree as 3.9.23.** `fetchWithRetry` spent its two spare attempts regardless of
+**Shipped in 3.9.23.** `fetchWithRetry` spent its two spare attempts regardless of
 how long the failed one took. Against a stall that lasts 30 s and clears inside 60 s, and a backoff of
 250–750 ms, attempt 2 was guaranteed to land inside the same stall: three times the wait and three
 times the load, on a deployment that was already struggling. Four consecutive OLT requests inside one
@@ -736,8 +743,8 @@ stall window all failed; the same request 60 s later answered in 1.48 s.
   out, and that distinction is the whole reason the message exists.
 - 389 tests across 20 suites, 0 failed; 10 mutations, all caught.
 
-**Owed:** the push (the release label is 3.9.23 and a precached shell moves only when it does), and
-the pastes in the list below — this part changes no server byte.
+**Owed (server side only):** the pastes in the list below — this part changes no server byte, and the
+push it was waiting on has landed.
 
 **Also still owed, and deliberately not guessed:** reading the live `?action=diag` report. It is
 admin-gated, there is no credential in the workspace, and the login route has a lockout. One line in
@@ -749,6 +756,38 @@ Logger.log(JSON.stringify(buildDiagReport_(), null, 2))
 
 That report holds `failures[]`, `slowLast`, `cache.<type>` and `warmPass.ms`. What is in the working
 tree *has* been measured from outside instead — see the numbers above.
+
+---
+
+## 🟢 P2 — A failed refresh blanked the table; it now keeps the last drawn screen — SHIPPED in 3.9.24 (Sept 26, 2026)
+
+**Reported from the live app with two screenshots** and one question: *“sa NAP at BACKBONE kapag
+gathering data ang app, nace-clear din ang data na nasa table. Maari bang habang hindi pa lumalabas
+ang latest data ay ang last fetched data muna ang nasa display?”* NAP's table read **Error loading
+data.** while its stat cards still held the previous read's numbers; BACKBONE showed **All Backbone
+Links Operational** with five zeroes.
+
+**The loading state was innocent.** Gathering is already additive — `showModuleLoading()` inserts a
+chip and clears nothing. What emptied the tab was the **refresh contract**: `refreshCurrentTab()` and
+`backgroundRefresh()` null `dataCache[type]` *before* they ask, so a refresh that failed had nothing
+left to draw and fell through to the module's fallback. That screen then stays until the next
+success, which is why a later cycle's gather chip appears on top of an already-emptied tab.
+
+- **A failed read keeps what is already drawn** — in NAP, BACKBONE and NODE. LCP and OLT already
+  behaved this way (their catch only logs); the rule had simply never been written down.
+- **A failure never renders an all-clear.** Those screens claim the fleet is clear *and* stamp the
+  current minute as `LAST CHECKED`, and a read that never completed can support neither. On a
+  monitoring tool a screen that goes green when it cannot see is the one failure nobody can spot.
+- **A tab that has never drawn anything says so:** *“This report could not be loaded. Press REFRESH
+  to ask again now.”* (`renderModuleUnavailable()` in `index.html`).
+- **`dataCache` keeps its contract** — still emptied by every refresh, and the kept rows are NOT
+  written back into it, or a tab click would redraw stale data as though it had just been fetched.
+- 401 tests across 21 suites, 0 failed; 4 mutations, all caught; the keep rule also driven in a real
+  browser against the local server (rows byte-identical after a stalled refresh, no error row).
+
+**Full write-up:** PART-025 in `PLAN_EVIDENCE.md`. **Related:** the P1 *Instant first paint* item
+below is the other half of the same complaint — this one keeps the screen inside a running session,
+that one keeps it across a cold start.
 
 ---
 

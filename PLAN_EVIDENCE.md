@@ -1420,3 +1420,83 @@ query parameter, no worker redeploy — the one line that changed is the retry p
 **Still owed.** The paste (`code.gs`, `diagnostics.gs`, `olt-cache-warmer.gs`) and the push — and one
 line in the Apps Script editor to read the report this part could not read:
 `Logger.log(JSON.stringify(buildDiagReport_(), null, 2))`.
+
+---
+
+### PART-025 — a failed refresh keeps the screen it already drew (2026-09-26)
+
+**What was asked for.** Two screenshots from the live app, and one question in Taglish: *“sa NAP at
+BACKBONE kapag gathering data ang app, nace-clear din ang data na nasa table. Maari bang habang hindi
+pa lumalabas ang latest data ay ang last fetched data muna ang nasa display?”* — while the latest data
+has not arrived yet, can the last fetched data be what is on screen. The screenshots show NAP's table
+reading **Error loading data.** while its four stat cards still hold the previous read's numbers
+(35 / 15 / 1 / 51), and BACKBONE showing **All Backbone Links Operational** with five zeroes.
+
+**The loading state was not the culprit, and that was worth establishing first.** The v3.9.5 rework
+already made gathering additive — `showModuleLoading()` inserts a chip at the top of the tab and
+clears nothing — so a read in flight leaves a table alone. The screenshots are therefore not one
+moment but two frames: the failed cycle's screen STAYS until the next success, and the gather chip of
+a later cycle lands on top of it. The chip and the emptied table are never simultaneous by design.
+
+**The cause is the refresh's own contract.** `refreshCurrentTab()` and `backgroundRefresh()` set
+`dataCache[type] = null` **before** they ask, deliberately, so the next read has to come from the
+network rather than from a payload the renderer may draw without asking. So a refresh that FAILED had
+nothing left to draw, and fell through to each module's fallback — which in NAP is an error row written
+straight over the table, and in BACKBONE and NODE is the all-clear screen. Three modules answered a
+read that never completed with a screen that said something. The other two did not: LCP's and OLT's
+catch only logs, which is the behaviour the user was asking for, already shipped, and never written
+down anywhere.
+
+**Why the fallbacks were worse than a blank.** BACKBONE's and NODE's empty screens do not merely omit
+the incidents: they assert *“All Backbone Links Operational”* / *“All Node Systems Operational”* and
+stamp the current minute as `LAST CHECKED`. A failed read has no standing to make either claim, and
+this is a monitoring tool — a screen that goes green when it cannot see is the one failure an operator
+cannot detect by looking. NAP's error row is honest but destructive: it discarded rows that were still
+the best information anyone had.
+
+**The fix is two rules, plus one honest third answer.**
+
+1. **A failed read keeps what is already drawn.** Nothing repaints on the failure path, so the rows,
+the sort state and the scroll position all survive a refresh that failed. The rule is keyed on a
+module-local `hasDrawn` flag rather than on `dataCache`, because `dataCache` is exactly what the
+refresh empties — reading the answer back out of it was the bug.
+2. **A failure never renders an all-clear.** The screens that claim the fleet is clear are reachable
+only from a successful empty payload.
+3. **A tab that has never drawn anything says so.** New `renderModuleUnavailable(tabName, title)` in
+`index.html`, beside the other module-state helpers: *“This report could not be loaded. Press REFRESH
+to ask again now.”* Unreachable for any tab that has drawn once, which is why it is the tab shell
+(including the `page-title-row` the freshness chip attaches to) rather than a per-module screen.
+
+**What was deliberately NOT changed.** `dataCache` is still emptied by every refresh, and the kept
+rows are still not written back into it — a cache hit renders without asking, and *“the last good read
+is still fresh”* is precisely the claim a failed refresh has no right to make. The refresh contract,
+the gather chip's lifecycle and the existing `console.error` all stay as they were; keeping a stale
+screen is only honest if the app still says the refresh failed, and the freshness chip ageing towards
+`stale` is the other half of that. The change is a display rule, not a caching one.
+
+**Checks.** Full suite **401 passed across 21 suites, 0 failed** (389 → 401), and
+`bump-version.mjs --check` clean. The new suite is `tests/module-refresh-keep.test.js` (12 cases); it
+loads the page's real module-state helpers out of `index.html` rather than stubbing them, because half
+of what it asks is whether the gathering chip came down and whether the tab said anything true. A
+sentinel marker is appended after each successful draw, since re-rendering the same rows produces the
+same bytes and an equality check alone cannot tell a repaint from a no-op. Four mutations, every one
+caught: NAP's keep rule disabled (`if (true)`), BACKBONE's failure rendering the all-clear again,
+NODE's the same, and `backboneHasDrawn` never set. Three of the twelve cases are the *opposite* the
+fix could easily have caused — a real empty answer still shows the all-clear, an all-clear from a real
+read is left byte-identical rather than re-stamped, and `dataCache` is still empty after a failure.
+
+**Verified in a real browser, not only in the vm.** Against the local server (serving this working
+tree): NAP drawn with two areas then refreshed against a rejecting `fetchGate.run` → **3 rows still
+present, byte-identical, no error row, gather chip 0, `dataCache.nap === null`**; BACKBONE and NODE
+with nothing drawn yet → **no all-clear, the “could not be loaded” state instead, chip 0**; with a
+report drawn, a failed refresh left both tabs byte-identical and still free of the all-clear. Two
+probes came before the fix was trusted: `httpbingo.org/delay/8` returns JSON, so in-browser it
+*succeeds* and proves nothing about failure — the real slow failure is
+`httpbingo.org/drip?duration=7&numbytes=8`, which is 200, ~9 s, and a `text/plain` body that
+`res.json()` rejects.
+
+**Release.** 3.9.23 → **3.9.24**; guard untouched at 3.10.0. Client bytes only: three module files,
+one page helper, one new suite, and the labels that describe them.
+
+**Still owed.** The server-side pastes listed under PART-024 — this part changes no server byte, and
+the fix is complete on the client.
