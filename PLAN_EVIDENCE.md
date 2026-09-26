@@ -1937,6 +1937,27 @@ at `ea712a4`**, byte for byte, with nothing hand-edited into the live copy. The 
 is one file, two hunks, and it can be *proved* rather than assumed — which is the same discipline the
 suite applies to code, aimed at the deployment instead.
 
+**And then the paste was done, and the comparison closed the loop.** The deployed body now hashes to
+`d9fd3f3c…` at 25,208 bytes — **byte-identical to `proxy/netpulse-proxy.mjs` at `3e6ef9c` and later**
+— with the `DATA` binding, both `secret_text` secrets and the 2026-09-13 compatibility date all
+intact, and deployment 27 live at 100 % with `Automatic deployment on upload`. So the field and the
+repo agree to the byte, which is the first time that has been true since the worker was written.
+
+The fix behaves as the test said it would: **six malformed shapes now answer `401
+{"error":"unauthorized","reason":"malformed"}`** where the same call answered `500 error code: 1101`
+an hour earlier. In the browser the difference is sharper than the status code — the console line went
+from `edge read refused (Failed to fetch)`, which names nothing, to `edge read refused (edge HTTP
+401)`, which names the cause. The rest of the surface re-measured unchanged: no token → `401`, a
+well-formed token with a wrong signature → `401 bad_signature` (so `READ_SECRET` survived), `POST
+/publish` with no secret → `401` (so `PUBLISH_SECRET` did too), the pass-through `200` in 69 ms, the
+`OPTIONS` preflight `204`, and all five KV keys still in place.
+
+**And the missing measurement finally happened by itself — in a real session, on the live app.**
+`[BootBundle] 5 module(s) from the edge in 366ms: nap, lcp, olt, node, backbone`, with five
+`GET …/data/<type> → 200` in the network log and nothing from `/exec` for the data. Against the
+measured `/exec` baseline of **1.36 s and 1.56 s for one module**, that is the whole point of the
+phase in a single line — and it needed no instrument beyond turning it on and watching.
+
 **And the upload cannot be done from here, for an account reason rather than a technical one.**
 `PUT /accounts/{id}/workers/scripts/{name}`, correctly formed (multipart, `main_module`, the `DATA`
 binding restated, and `keep_bindings: ["secret_text","secret_key"]` so the two secrets survive it),

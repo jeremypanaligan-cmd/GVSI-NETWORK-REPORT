@@ -129,19 +129,23 @@ placeholder guard), ang 17 linyang pagbabago sa `admin.gs` (token mint sa loob n
 ✏️ → Version: New version** bago tumanggap ng `cdnToken` ang login, at `proxy/netpulse-proxy.mjs` sa
 worker. **Nagbago na ang client bytes sa field:** 3.9.29 na ang live.
 
-**⚠️ Isang paste ang kulang pa: ang worker, para sa malformed-token fix.** Hindi ito hadlang sa app
-(bumabalik sa `/exec` ang anumang pagtanggi), pero ang naka-deploy ay `500` pa rin sa
-`Bearer basura.token` — at sa browser iyon ay **`ERR_FAILED` na walang status na mababasa**, dahil ang
-exception page ng Cloudflare ay walang mga CORS header na itinatalaga ng handler.
+**✅ Tapos na ang huling paste, at beripikado sa byte (Sept 26, gabi).** Ang naka-deploy ay
+`d9fd3f3c…` / 25,208 bytes — **kapareho ng `proxy/netpulse-proxy.mjs` mula `3e6ef9c` pataas, byte for
+byte**, at buo ang `DATA` binding, ang dalawang `secret_text`, at ang 2026-09-13 compatibility date.
+Anim na malformed na token ay `401 malformed` na ngayon (dati `500`), at sa browser ang log ay naging
+`edge read refused (edge HTTP 401)` — may pangalan na, sa halip na `Failed to fetch` na walang status.
 
-**Nasukat, hindi hinulaan — at may bagong paraan para sukatin ito.** Ang
-`GET /accounts/{id}/workers/scripts/<name>` ay nagbabalik ng **buong stored na multipart artifact**, at
-ang body nito ay ang script: `4be4d9b5…` (24,360 bytes) ang naka-deploy ngayon — **eksaktong
-`proxy/netpulse-proxy.mjs` sa `ea712a4`**, walang kahit anong hindi naka-commit. Ang nasa repo
-(`3e6ef9c` pataas) ay `d9fd3f3c…` (25,208 bytes). Kaya pagkakapareho ng hash ang pinakamalinaw na
-sagot sa "ano ba talaga ang live?" — mas malakas pa sa screenshot. **Hindi ko ito mai-upload mula
-dito**: `PUT /workers/scripts/<name>` ay sumasagot ng **"No access to the specified resource"** gamit
-ang credential ng connector (parehong read-only na limitasyon na nagpamanong-mano sa hakbang 1 at 2).
+**At nangyari na ang huling sukat na wala pa: sa totoong session, sa live na app.**
+`[BootBundle] 5 module(s) from the edge in 366ms` — lima sa isang read, walang `/exec` sa data. Laban
+sa **1.36 s at 1.56 s para sa isang module** mula sa `/exec`, iyon ang buong dahilan ng phase na ito.
+
+**Ang paraan upang sukatin ito ay dapat manatili.** Ang `GET /accounts/{id}/workers/scripts/<name>` ay
+nagbabalik ng **buong stored na multipart artifact** (body = ang script, LF), at ang hash nito ang
+pinakamalinaw na sagot sa "ano ba talaga ang live?" — mas malakas pa sa screenshot. Bago ang paste na
+iyon, `4be4d9b5…` (24,360 bytes = `ea712a4`) ang hawak ng worker, kaya nalaman nating dalawang hunk
+lang ang agwat. **Ang upload mula sa checkout ay hindi pa rin posible:** `PUT /workers/scripts/<name>`
+ay sumasagot ng **"No access to the specified resource"** gamit ang credential ng connector —
+nakakabasa ito ng scripts, versions, deployments, settings at KV, pero hindi nakakapagsulat ng script.
 
 **Test:** tatlong bagong suite — `publish-auth` (20 cases, worker), `cdn-read` (19 cases, client fallback +
 network-only host), `publish-server` (ang `.gs` laban sa fake `UrlFetchApp`/`PropertiesService`/
@@ -160,6 +164,31 @@ saklawin ng isang suite ang lahat ng branch at hindi pa rin mahuli ang input cla
 sariling komento. Naka-guard na ngayon ang decode at ang `subtle.verify`, may bagong case para sa anim
 na malformed na hugis, at napatunayan sa mutation na **FAIL** kapag ibinalik ang bug. **Kailangang
 i-paste muli ang worker** para maging live ito — ang naka-deploy ngayon ay may bug pa.
+
+---
+
+## 🔴 P1 — `prefetchOtherTabsInBackground` ay tinatawag ngunit wala nang definisyon (Sept 26, gabi, nakita habang nagve-verify)
+
+**Sintomas, mula sa live na app:** `ReferenceError: prefetchOtherTabsInBackground is not defined` sa
+`nap-module.js:31`, bawat pagkarga ng NAP. Nahuhuli ito ng `try/catch` ng `fetchNapData`, kaya ang
+nakikita sa log ay `Error fetching NAP data: ReferenceError…` **kahit matagumpay ang read**.
+
+**Bakit hindi ito nakita kanina.** Ang function ay **tinanggal** sa `d879de0` (`perf: boot all five
+dashboard modules in one tick`) — kasama ang tawag, na pinalitan ng komento — ngunit ang **tawag ay
+bumalik** sa `0115048` (`chore(release): publish the v3.9.0 kiosk build`); ang definisyon ay hindi na
+bumalik. Isang bagay lang ang tumutukoy nito ngayon: ang tawag mismo. Dalawang test din ang
+**naglalagay ng no-op stub** para dito (`tests/module-refresh-keep.test.js:130`,
+`tests/zero-total-rows.test.js:135`), kaya luntian ang buong suite habang nasa produksiyon ito ay
+sumasabog — **hindi mahuhuli ng isang suite ang pagkawala ng global na siya mismo ang nagbibigay.**
+
+**Epekto.** Hindi nawawala ang datos: ang `renderNapReport` ay tumatakbo bago ang throw, at ang
+`napHasDrawn` ay naka-set sa loob ng render (linya 116), kaya hindi isinusulat ng catch ang error row.
+Ang tunay na pinsala ay ang log: **bawat matagumpay na pagkarga ay tila bigo**, at iyon ang eksaktong
+bagay na magtatago sa isang tunay na pagkasira mamaya.
+
+**Ang ayos:** burahin ang tawag (tama ang sinabi ng `d879de0` — ang lima ay sabay nang sinisimulan
+ngayon, ng `boot-bundle.js`/`loadInitialData`) at alisin ang dalawang stub, para hindi na makabalik
+ang tawag nang tahimik. Kailangan ng release bump dahil precached ang `nap-module.js`.
 
 ---
 
