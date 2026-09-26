@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.27 is committed and waiting on your push** (the zero-total rows, below), following **3.9.26** (the Module Health header alignment) and 3.9.25, which carries everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · **⚠️ one commit is unpushed: the NAP/LCP sheet ranges moved to columns A–F, and the cache-warmer fixture moved with them — see the item immediately below** · **the server half is still owed, and all of it is pastes** — see the item after that · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 26, 2026 · **3.9.28 is pushed** — the edge read path (`/publish` + `/data/*`, `cdn-source.js`, one switch), **built and dormant**, with **four Cloudflare steps owed by hand** — see the item immediately below · before it, **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24), so client work that says *in the repo* below is now in the field · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -13,6 +13,60 @@
 - **A to-do item lives on disk or it does not exist.** Conversation history does not survive between sessions, so anything decided in chat and worth keeping gets written here.
 
 **Not the same as `GVSI_NetPulse_System_Roadmap.md`.** That file is a **dated audit** (Aug 26, 2026, against app v3.3.0) with its own signature and priority tables. Treat it as history: useful context, but **re-verify each item before working it** — several have already landed (see the bottom of this file).
+
+---
+
+## 🔴 P1 — Ang read path sa edge: BUILT at naka-push, apat na hakbang sa Cloudflare ang utang (Sept 26, 2026)
+
+**Status.** Ang **buong code** ay nasa repo at naka-push (`ea712a4`, release **3.9.28**): ang worker
+ay may bagong `/publish` at `/data/*`, may bagong paste na `publish-cache.gs`, may `cdn-source.js` ang
+client, at may isang switch. **Wala pang naka-deploy** — at hindi ito kayang gawin mula sa checkout:
+ang Cloudflare credential ng connector ay **read-only** (`10000: Authentication error` sa KV create at
+sa worker upload), kaya ang provisioning ay sa iyo, gaya ng lahat ng paste sa proyektong ito.
+
+**Bakit ito ginagawa.** Sinukat noong Sept 26 laban sa live `/exec`: `?type=nap` = **200 sa 1.36 s at
+1.56 s** (950 B), `?action=bundle` = **200 sa 1.32 s** (1,040 B). Iyon ang 2-hop redirect papasok sa
+serverless execution, at walang client-side tuning ang makakabawas nito. Sa edge, ang parehong
+payload ay nasa KV na — walang Apps Script sa read path.
+
+**Ang desisyon sa privacy, at ang dahilan.** Hindi pala naka-lock sa login ang data ngayon:
+`resolveSession()` / `requireSession()` ay tinatawag lamang ng **isang** admin route (`admin.gs:291`)
+at ng `diag` (`diagnostics.gs:459`) — ang limang `?type=` ay wala. Sarili nang komento ng app ang
+nagsasabi nito. Kaya ang CDN path ay hindi pagbubukas: ito ay **pagpapakitid** — token-gated
+(short-lived HMAC mula sa login, stateless na bini-verify sa edge), revocable sa isang secret
+rotation, at walang per-caller quota. Ang pass-through ay **hindi** ginalaw, kaya ang `/exec` ay
+nananatiling gumaganang fallback.
+
+**Ang apat na hakbang (eksakto sa `proxy/README.md`):**
+
+- [ ] **1. Gumawa ng KV namespace** — Workers & Pages → KV → Create, pangalan `NETPULSE_DATA`
+- [ ] **2. I-deploy ang worker kasama ang binding** — i-paste ang `proxy/netpulse-proxy.mjs`, dagdagan
+      ng KV binding na pinangalanang **`DATA`** (ito ang inaasahan ng code; ang ibang name → 503 na
+      may `field: "DATA"`)
+- [ ] **3. Dalawang secret, sa worker AT sa Script Properties** — `openssl rand -hex 32` ×2 para sa
+      `PUBLISH_SECRET` / `READ_SECRET`, tapos isang beses sa editor:
+      `setEdgeConfig_('<worker url>', '<publish secret>', '<read secret>')`
+- [ ] **4. Mag-publish ng isang bagay** — umaakyat ang publish sa `warmDataCaches`, kaya kailangan
+      ng 5-minutong trigger (o isang manual run mula sa editor)
+
+**⚠️ Hard dependency, nasukat.** `?action=bundle` ay sumagot ng **lahat lima ay *not warm***, samantalang
+ang `?type=nap` ay mainit ilang sandali lang pagkatapos — iyon ang lagda ng deployment na **walang
+naka-install na warm trigger** (mabubuhay lang ang entry kapag may nag-build, at pagkatapos ng 330 s
+na TTL ay wala na). Kung wala ang trigger, **wala ring mai-publish sa edge** kahit naka-set na ang mga
+secret.
+
+**Pagkatapos ng apat:** i-set ang `window.NETPULSE_CDN` sa `index.html` (nasa network-only listahan na
+ng `sw.js` ang host). **I-off sa isang value:** blankuhin lang ito — ang `/exec` ang fallback ng bawat
+type. Harder rollback: burahin ang KV keys → 404 `not_published` → bawat type ay babalik sa `/exec`.
+
+**Nasa repo na, hindi pa:** `publish-cache.gs`, ang 17 linyang pagbabago sa `admin.gs` (token mint sa
+loob ng umiiral na `withLock_`), ang 20 linyang `olt-cache-warmer.gs` (publish hook sa warm pass), at
+`proxy/netpulse-proxy.mjs`. **Walang client byte ang nagbago sa field** hangga't blangko ang switch.
+
+**Test:** tatlong bagong suite — `publish-auth` (18 cases, worker), `cdn-read` (client fallback +
+network-only host), `publish-server` (ang `.gs` laban sa fake `UrlFetchApp`/`PropertiesService`/
+`CacheService`, kasama ang **cross-check**: ang token na ini-mint ng `.gs` ay bini-verify ng worker).
+Lahat may mutation check.
 
 ---
 

@@ -127,7 +127,108 @@ can display its own retry counts, which is the whole point of having them.
 
 ---
 
-## Turning it on
+---
+
+# THE DATA PLANE (`/publish` and `/data/*`)
+
+**Status: BUILT AND PUSHED, NOT DEPLOYED — 2026-09-26.** The worker source in this directory now
+carries two more routes and a KV binding that the deployed copy does not have. Nothing changes for
+the app until the four steps below are done, and `window.NETPULSE_CDN` in `index.html` is set.
+
+This is the second job this worker does, and it is the one that removes the hop rather than
+absorbing it: the Apps Script trigger publishes each payload it has already built into KV, and the
+app reads it from the edge in tens of milliseconds. Apps Script is not in the read path at all.
+
+| route | method | auth | what it does |
+|---|---|---|---|
+| `/publish?type=nap` | POST | `x-netpulse-secret` = `PUBLISH_SECRET` | stores the exact JSON body in KV, with `{builtAt, rev, bytes, publishedAt}` as metadata |
+| `/data/nap` | GET | `Authorization: Bearer <login token>` | the payload, edge-cached 60 s, with `x-netpulse-built-at` |
+| `/data/_bundle` | GET | same | all five in **one** read (assembled at the edge), plus per-type stamps |
+| `/data/_meta` | GET | same | the stamps and sizes, without the payloads |
+| `/?type=…`, `/?action=…` | GET | none (as before) | the pass-through above, untouched |
+
+**Why a token and not just an obscure path.** The app's `?type=` data routes are not session-gated —
+`resolveSession()` is called only by the admin and diag routes, and `index.html` says so in its own
+comment. So "behind the login" is true of the UI only. A CDN path adds the two things the `/exec`
+URL does not have — it can be found, and it can be copied into a cache — so the read is gated by a
+short-lived HMAC (`user|exp`, signed with `READ_SECRET`) that the deployment mints at login. The
+worker verifies it statelessly, which is the point: no call back to Apps Script on the hot path.
+
+## The four owed steps
+
+**1. Create the namespace** — Workers & Pages → KV → Create namespace, name it `NETPULSE_DATA`.
+
+**2. Deploy this worker with the binding** — Workers & Pages → the `holy-cloud-1d7a` worker →
+Edit code, paste `netpulse-proxy.mjs`, and add a KV namespace binding named **`DATA`** pointing at
+`NETPULSE_DATA`. Or with wrangler (needs a `wrangler.toml` for the binding):
+
+```bash
+npx wrangler deploy proxy/netpulse-proxy.mjs --name holy-cloud-1d7a
+```
+
+**3. Two secrets, in the worker AND in Script Properties.** Generate them once (they are the same
+value in both places, and they belong in NO repository):
+
+```bash
+openssl rand -hex 32   # -> PUBLISH_SECRET  (worker)  / netpulse_publish_secret  (Apps Script)
+openssl rand -hex 32   # -> READ_SECRET     (worker)  / netpulse_read_secret     (Apps Script)
+```
+
+Worker: Settings → Variables → add `PUBLISH_SECRET` and `READ_SECRET` as **secrets**.
+Apps Script: paste `publish-cache.gs`, then run once from the editor:
+
+```javascript
+setEdgeConfig_('https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev', '<publish secret>', '<read secret>');
+```
+
+**4. Publish something.** The publish rides `warmDataCaches`, so it needs that trigger (every 5
+minutes — see `triggers.gs` and `setupAllTriggers()`), or one manual run of `warmDataCaches` from the
+editor. **MEASURED 2026-09-26: nothing is warm on the live deployment** — `?action=bundle` answered
+all five modules as *not warm*, which is what a deployment whose 5-minute trigger is not installed
+looks like (the cache only fills from a build and its TTL is 330 s). Nothing will be published to
+the edge until that trigger exists.
+
+## Verify it before switching the app on
+
+```bash
+EDGE=https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev
+
+curl -s "$EDGE/?probe=1"                                  # the pass-through is still alive
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$EDGE/publish?type=nap"   # 401: no secret
+curl -s -o /dev/null -w '%{http_code}\n' "$EDGE/data/nap"                    # 401: no token
+curl -s -X POST "$EDGE/publish?type=nap" -H "x-netpulse-secret: $PUBLISH_SECRET" \
+     -H 'content-type: application/json' --data '[{"A":"test"}]'          # 200
+curl -s "$EDGE/data/_meta" -H "Authorization: Bearer $TOKEN"                # the index
+```
+
+A `503 edge_not_configured` with `field: "PUBLISH_SECRET"` (or `READ_SECRET`, or `DATA`) means step 2
+or 3 is incomplete — the worker says which one rather than pretending to work.
+
+## Turning it on, and off again
+
+On: set `window.NETPULSE_CDN = "https://holy-cloud-1d7a.jeremysamsonpanaligan.workers.dev"` in
+`index.html`. `sw.js` already lists that host as network-only (`DATA_CDN_HOST`), and the release
+label moves with it.
+
+Off, in one value: blank `window.NETPULSE_CDN`. Every module then reads from `/exec` exactly as it
+did before, because that is the path the client falls back to on any refusal. A second, harder roll-
+back is to delete the KV keys — the worker answers 404 `not_published` and each type falls back
+individually.
+
+## What the data plane does NOT change
+
+- **Login, admin, diag and settings stay on Apps Script.** Only the five data payloads move.
+- **The pass-through above is untouched**, including the 404-absorbing retry — so the direct path
+  remains a working fallback for every client that has not reloaded.
+- **No new copy of the data exists anywhere else.** What is published is byte-for-byte the JSON the
+  build cached, so a payload from the edge and one from `/exec` are the same shape. The fields are
+  also the same, which means ticket remarks and ticket numbers do leave Google for Cloudflare KV and
+  its edge cache — named here because it is the one thing about this design a reader should be told
+  rather than discover.
+
+---
+
+## Turning the pass-through on
 
 ### 1. Deploy the worker
 

@@ -1699,3 +1699,100 @@ thirty-odd characters, so it passed the assertion and every test behind it. The
 assertion now parses what the warm pass wrote, **per band**, and four mutations are caught — NAP back
 on H–M, impact back on G–K, aging back on G–L, and the impact row moved onto its band's header row.
 **23 suites, 0 failed.**
+
+---
+
+### PART-029 — the read path leaves Apps Script (2026-09-26)
+
+**What was asked for.** *"Ilabas ang read path sa Apps Script... ang client ay kukuha ng nap.json sa
+~30–100 ms. Mawawala: ang 1.2–1.8 s floor, ang 2-hop redirect, ang 20% na 404 sa buntot, at ang
+quota. Ang totoong tanong dito ay privacy."*
+
+The floor is real and it is measured. On 2026-09-26, against the deployed `/exec`, `?type=nap`
+answered **200 in 1.36 s and 1.56 s** across two calls (950 bytes), and `?action=bundle` answered
+**200 in 1.32 s** (1,040 bytes). That is the cost of a warm cache behind a two-hop redirect to a
+serverless execution, and no amount of client tuning removes it — the request has to reach Google
+and come back.
+
+**The finding that reshaped the decision.** Before choosing the privacy model, this was checked
+rather than assumed: **`?type=` data routes are not session-gated.** In `code.gs`, `resolveSession()`
+/ `requireSession()` are called from exactly two places — `admin.gs:291` (one admin route) and
+`diagnostics.gs:459` (`diag`). The five data routes call neither. The app's own comment says it
+plainly: *"Login answers with a token, and exactly one route gates on it: setMaintenance… getSettings
+and the `?type=` data routes are not gated at all."* So the data is not "behind the login" now, and
+moving it to a CDN path would not change its secrecy — it would only make it **findable** (a path
+that can be indexed, shared, and cached) and **unmetered** (no per-caller limit).
+
+That inverted the recommendation. A token-gated edge read is strictly narrower than the status quo:
+
+| | today (`/exec?type=`) | the edge (`/data/<type>`) |
+|---|---|---|
+| who can read | anyone who has the URL | anyone holding a token minted at login |
+| can it be revoked | no | `READ_SECRET` rotation invalidates every token at once |
+| per-caller cost | Apps Script quota per request | none — the edge answers from KV |
+| is the payload different | — | no, byte-for-byte what the build cached |
+
+**The design.** The worker (`proxy/netpulse-proxy.mjs`) already existed as a pass-through; it grew a
+data plane rather than a second service.
+
+- **`POST /publish?type=<t>`**, `x-netpulse-secret` = `PUBLISH_SECRET` → writes the exact JSON body
+  into Workers KV with `{builtAt, rev, bytes, publishedAt}`. `Cache-Control: no-store`; a publish
+  never stores what it cannot label.
+- **`GET /data/<type>`** and **`GET /data/_bundle`**, `Authorization: Bearer <token>` → the payload,
+  `s-maxage=60`, `x-netpulse-built-at` alongside. `_bundle` assembles all five at the edge, so a
+  cold app still costs one round trip — but a short one.
+- **`GET /data/_meta`** → the stamps and sizes without the payloads.
+- **The token** is `base64url(user|exp).hmac` signed with `READ_SECRET`, minted by the server at
+  login and verified statelessly by the worker. Stateless is the whole point: no call back to Apps
+  Script on the hot path, so the read path stays off Apps Script. A 12-hour life, refused in the
+  future, refused once expired.
+- **The pass-through is untouched.** `/?type=` and `/?action=` behave exactly as before, including
+  the 404-absorbing retry, so the direct route remains a working fallback for every client that has
+  not reloaded, and the new path can be turned off without a deploy.
+
+**Server half (`publish-cache.gs`, a new paste).** Publishes after a **successful** build only — never
+the error envelope, never a payload whose rev moved under it (that is a live sheet being edited), and
+never on a failed fetch. Every refusal is logged with its type and reason, and every failure is
+fail-open: a publish that throws cannot fail a warm pass. `setEdgeConfig_(url, publishSecret,
+readSecret)` writes the Script Properties; `mintEdgeToken_(user)` is what `admin.gs` now calls at
+login, inside the existing `withLock_`. The publish rides `warmDataCaches`, which is what makes the
+"no warm trigger is installed" item below a hard dependency of this one rather than a separate
+concern.
+
+**Client half.** New `cdn-source.js` (precached, so the delivery set moved and the label moved with
+it). All reads still pass through `fetchGate` — the timeout, the stall rule, the ticker, the
+PART-025 keep behaviour are all unchanged — with `/exec` as the fallback on any refusal. `fetch-gate`
+gained the CDN-aware path; `boot-bundle.js` tries the edge bundle first; `sw.js` lists the worker host
+as network-only. **One value is the switch: `window.NETPULSE_CDN`.** Blank means byte-for-byte the
+old behaviour, which is how it is shipping.
+
+**Tests.** Three new suites. `publish-auth` (18 cases, worker: secret required, wrong secret, type
+allow-list, body limits, the token mint/verify boundary, expired and future tokens, and the
+`edge_not_configured` refusal naming the missing field). `cdn-read` (client: CDN-first, `/exec`
+fallback on 401/404/500/timeout, no fallback on a good read, and the network-only `sw.js` entry).
+`publish-server` (the `.gs` half driven against a fake `UrlFetchApp`/`PropertiesService`/`CacheService`,
+including a **cross-check that the token minted in the `.gs` verifies in the worker** — the two
+halves are tested against each other, not just against themselves). Mutations were run per suite and
+caught.
+
+**One claim was found false and removed rather than kept.** The worker stripped padding from the
+token before verifying it and the comment said this was load-bearing; it was not — the verifier is
+padding-agnostic — so the comment was corrected and the behaviour turned into a real assertion
+instead of a story about one.
+
+**What is verified, and what is owed.** Verified: the suites are green and pushed, the live app on a
+fresh origin is unaffected with the switch blank, and the `/exec` baseline above was measured. Owed:
+**the Cloudflare provisioning could not be done from here** — the connector's credential is
+read-only and returned `10000: Authentication error` on both the KV create and the worker upload. So
+the four steps (create the KV namespace, deploy the worker with the `DATA` binding, set the two
+secrets in both places, run a publish) are documented exactly in `proxy/README.md` and remain yours,
+like every other paste in this project. Until they are done the worker source in this directory is
+ahead of what is deployed, and the app must keep `NETPULSE_CDN` blank.
+
+**A live measurement worth keeping.** `?action=bundle` answered with **all five modules not warm**
+while `?type=nap` answered warm moments later. That is the signature of a deployment whose 5-minute
+warm trigger is not installed: entries exist only right after a request builds them, and the 330 s
+TTL then lapses. It is worth stating because it means the edge would have had nothing to publish
+even with the secrets in place.
+
+**Release.** 3.9.27 → **3.9.28**; the guard stays frozen at 3.10.0.

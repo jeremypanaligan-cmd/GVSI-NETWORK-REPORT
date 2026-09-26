@@ -89,6 +89,25 @@ successful build stores nothing, a failed one always does, and a slow one is wri
 no read at all — the measurement lives in the trigger that was already running rather than
 in the request an operator is waiting on.
 
+### SCN-026: A read no longer crosses the deployment to get around it
+Outcome: The five data payloads are fetched from the edge instead of from Apps Script, so the
+floor that every read pays stops being a redirect into a serverless execution. The route stays
+gated — by a short-lived token minted at login and verified at the edge without calling anything
+back — so this is narrower than today's unguessable URL rather than wider, and it is revocable by
+rotating one secret. Every read still passes through the same gate: same timeout, same stall rule,
+same freshness ticker, same rule that a failed refresh keeps the screen it drew. When the edge
+refuses, for any reason, the read goes to `/exec` and the user sees no difference; when the switch
+is blank the app is exactly what it was. Nothing is published that was not built successfully, and
+a publish that fails cannot fail the warm pass that carried it.
+
+### SCN-025: What a build puts at the edge is what the build actually built
+Outcome: The warm pass publishes only a payload that came from a successful build of that type —
+never the error envelope, never a payload whose revision moved while the build ran, never a type
+that failed — and it says which of those it refused, in the log, with the type. The secret is
+required, so an open publish path cannot be used to plant data that every client would then read as
+real; the token is minted only for a login that succeeded; and every failure in this path is
+fail-open, so the new half of the pipeline cannot take down the half that already worked.
+
 ### SCN-024: A table does not list a row that has nothing to report
 Outcome: NAP's aging table and both LCP tables drop any row whose figures are all zero — the fixed
 sheet bands hand an area with nothing pending back as 0/0/0/0 — and when that leaves nothing they say
@@ -603,6 +622,56 @@ problem-only by construction.
     fixture that had to move with them; that suite's check now parses each band's payload, so a
     band that reads nothing fails instead of warming an empty payload that still looks cacheable.
     **Nothing owed on the client** — but that commit is unpushed
+
+## Phase 14: the read path leaves Apps Script — BUILT, NOT DEPLOYED
+
+**Why this phase exists.** Every module read costs a two-hop redirect into a serverless execution,
+and it is measured: `?type=nap` answered **1.36 s and 1.56 s** on 2026-09-26, with `?action=bundle`
+at **1.32 s**. The request has to reach Google; no client-side change removes that. So the read
+leaves Apps Script instead: the trigger publishes what it has already built into Workers KV and the
+app reads it from the edge.
+
+**The finding that reshaped the privacy question.** `?type=` routes are **not** session-gated —
+`resolveSession()` is called only by one admin route and `diag`. The data is not behind a login
+today; it is behind an unguessable URL. A CDN path trades that for a token-gated, revocable one,
+which is narrower, not wider.
+
+**What is built.** The worker grew a data plane (`/publish` secret-gated, `/data/<type>` and
+`/data/_bundle` token-gated, `/data/_meta`), with the token an HMAC verified statelessly at the edge
+so nothing calls back to Apps Script. `publish-cache.gs` publishes after a successful build only and
+fails open. The client grew `cdn-source.js`, with **every read still passing through `fetchGate`**
+and `/exec` as the fallback, and one switch — `window.NETPULSE_CDN` — whose blank value is the old
+behaviour byte-for-byte.
+
+**What is deliberately NOT done.** The pass-through is untouched, so the direct route stays a working
+fallback; login, admin, diag and settings stay on Apps Script; and no new copy of the data exists
+anywhere — but the published payload carries the same fields as the built one, remarks included, and
+that is named in the docs rather than left for a reader to discover.
+
+**What is owed, and by whom.** Everything Cloudflare-side could not be done from this checkout: the
+connector's credential is read-only (`10000: Authentication error` on both KV create and worker
+upload). Four steps remain yours, written out in `proxy/README.md`: create the KV namespace, deploy
+this worker with the `DATA` binding, set `PUBLISH_SECRET` / `READ_SECRET` in the worker and in Script
+Properties, and publish once. Until then the app keeps `NETPULSE_CDN` blank.
+
+- [x] Part 22: the publish half, and the token minted at login
+  - Scenario: SCN-025
+  - Outcome: a built payload reaches KV under a secret, the login response carries a short-lived
+    edge token, an expired or future token is refused, and no publish path can turn a good warm pass
+    into a failed one
+  - Evidence: PART-029 in `PLAN_EVIDENCE.md` — `tests/publish-server.test.js` and 18 cases in
+    `tests/publish-auth.test.js`, with mutations caught, and the two halves cross-checked by
+    verifying in the worker a token minted in the `.gs`
+
+- [x] Part 23: the read half, behind one switch
+  - Scenario: SCN-026
+  - Outcome: a module reads from the edge when the switch is set, falls back to `/exec` on any
+    refusal without changing what the user sees, and behaves exactly as before when the switch is
+    blank — including PASSING through the stall rule, the ticker and the PART-025 keep rule
+  - Evidence: PART-029 — `tests/cdn-read.test.js`, the live app driven on a fresh origin with the
+    switch blank, and `sw.js` listing the worker host as network-only with its own assertion
+  - Still owed: the four Cloudflare steps above. Until they are done this ships as a dormant path
+    with a measured baseline ready for it
 
 ## Notes
 
