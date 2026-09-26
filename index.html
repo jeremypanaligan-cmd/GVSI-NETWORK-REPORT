@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.23">
+  <link rel="stylesheet" href="styles.css?v=3.9.24">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -1596,7 +1596,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.23').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.24').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
@@ -1789,6 +1789,32 @@ function closeNodeModal(event) {
     if (!tab) return;
     const screen = tab.querySelector('.module-loading-screen');
     if (screen) screen.remove();
+  }
+
+  /* A FIRST read that FAILED, on a tab that has never drawn anything. Deliberately not the
+     module's own empty state: backbone and node both answer "no rows" with an all-clear screen
+     ("All Backbone Links Operational", "All Node Systems Operational") that also stamps the
+     current minute as the time it was checked, and neither claim is one a read that never
+     completed has any right to make. A monitoring screen that goes green when it cannot see is
+     worse than one that says it cannot see, so it says exactly that and nothing more.
+
+     Reached only when there is no earlier screen to keep. Once a module has drawn once, a later
+     failure keeps that screen instead — see the catch in nap/backbone/node-module.js, which is
+     also why this is a page global next to showModuleLoading() rather than per module. */
+  function renderModuleUnavailable(tabName, title) {
+    const tab = document.getElementById('tab-' + tabName);
+    if (!tab) return;
+    tab.innerHTML = `
+      <div class="page-title-row">
+        <div class="page-title">${title}</div>
+      </div>
+      <div class="table-card">
+        <div style="padding: 40px 24px; text-align: center; color: var(--text-muted); font-size: 14px; line-height: 1.6;">
+          This report could not be loaded. Press REFRESH to ask again now.
+        </div>
+      </div>
+    `;
+    if (window.fetchGate) fetchGate.refreshTicker(tabName);
   }
 
   function showSkeleton(tabName) {

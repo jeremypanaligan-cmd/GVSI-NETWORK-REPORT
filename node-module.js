@@ -1,5 +1,10 @@
 // Data cache para sa Node module
 
+/* Whether this tab has ever drawn a screen — the report OR the all-clear. Held HERE rather than
+   read back out of dataCache, because every refresh EMPTIES dataCache first so the next read
+   goes to the network (refreshCurrentTab / backgroundRefresh). See the catch below. */
+let nodeHasDrawn = false;
+
 async function fetchNodeData(forceRefresh = false) {
   if (!forceRefresh && dataCache.node) {
     if (Array.isArray(dataCache.node) && dataCache.node.length > 0) {
@@ -30,7 +35,13 @@ async function fetchNodeData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching NODE data:', error);
-    renderNodeEmptyState();
+    hideModuleLoading('node');
+    /* Same rule as backbone: a refresh that failed keeps what is already drawn, because the
+       rows on screen are the last read that answered. Rendering the EMPTY state here answered a
+       read that never completed with "All Node Systems Operational" — a false all-clear on the
+       one tab where a missed incident matters most. A first load that failed has nothing to
+       keep, so it says so. */
+    if (!nodeHasDrawn) renderModuleUnavailable('node', 'NODE Status Report');
   }
 }
 
@@ -160,6 +171,7 @@ function renderNodeReport(data) {
     if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
   }
 
+  nodeHasDrawn = true;
   if (window.fetchGate) fetchGate.refreshTicker('node');
 }
 
@@ -219,5 +231,6 @@ function renderNodeEmptyState() {
       </div>
     </div>
   `;
+  nodeHasDrawn = true;
   if (window.fetchGate) fetchGate.refreshTicker('node');
 }

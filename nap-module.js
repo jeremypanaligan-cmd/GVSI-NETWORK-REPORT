@@ -1,5 +1,13 @@
 // ====================== NAP MODULE ======================
 
+/* Whether this tab has ever drawn a report. Held HERE rather than read back out of dataCache,
+   because every refresh EMPTIES dataCache first so the next read goes to the network
+   (refreshCurrentTab / backgroundRefresh) — which is why a failed refresh used to have nothing
+   left to draw and fell through to its error row, blanking a table that was on screen a second
+   earlier. LCP and OLT already answer a failed read this way (their catch only logs); this is
+   the same rule, written down. */
+let napHasDrawn = false;
+
 async function fetchNapData(forceRefresh = false) {
   // Show cached data instantly (no skeleton)
   if (!forceRefresh && dataCache.nap) {
@@ -26,7 +34,14 @@ async function fetchNapData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching NAP data:', error);
-    document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
+    /* A refresh that failed keeps what is already drawn: those rows are the last read that DID
+       answer, and they are still the best thing anyone has. Overwriting them with an error line
+       threw them away and made the tab read as if the report itself were empty. Only a tab that
+       has never drawn anything has nothing to keep — and only then is this row the honest
+       screen. */
+    if (!napHasDrawn) {
+      document.getElementById('napTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Error loading data.</td></tr>';
+    }
   } finally {
     hideModuleLoading('nap');
     hideLoader();
@@ -78,6 +93,7 @@ function renderNapReport(data) {
   </tr>`;
 
   tbody.innerHTML = tableHtml;
+  napHasDrawn = true;
 
   if (document.getElementById('card24')) document.getElementById('card24').textContent = total24;
   if (document.getElementById('card13')) document.getElementById('card13').textContent = total13;

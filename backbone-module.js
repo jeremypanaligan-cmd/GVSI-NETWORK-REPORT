@@ -8,6 +8,11 @@ function transformBbService(raw) {
 }
 
 // Fetcher: Backbone Links Data
+/* Whether this tab has ever drawn a screen — the report OR the all-clear. Held HERE rather than
+   read back out of dataCache, because every refresh EMPTIES dataCache first so the next read
+   goes to the network (refreshCurrentTab / backgroundRefresh). See the catch below. */
+let backboneHasDrawn = false;
+
 async function fetchBackboneData(forceRefresh = false) {
   if (!forceRefresh && dataCache.backbone) {
     if (Array.isArray(dataCache.backbone) && dataCache.backbone.length > 0) {
@@ -38,7 +43,13 @@ async function fetchBackboneData(forceRefresh = false) {
     }
   } catch (error) {
     console.error('Error fetching BACKBONE data:', error);
-    renderBackboneEmptyState();
+    hideModuleLoading('backbone');
+    /* A refresh that failed keeps what is already drawn. That catch used to render the EMPTY
+       state, i.e. answer a read that never completed with "All Backbone Links Operational" and
+       a check time of now — a false all-clear, and the most dangerous thing this tab can show.
+       What is on screen is the last read that did answer, so it stays. The one case with
+       nothing to keep is a first load that failed, and that says so instead. */
+    if (!backboneHasDrawn) renderModuleUnavailable('backbone', 'Backbone Links Status');
   }
 }
 
@@ -204,6 +215,7 @@ function renderBackboneReport(data) {
     if (tableCard) tableCard.parentNode.insertBefore(toolbar, tableCard);
   }
 
+  backboneHasDrawn = true;
   if (window.fetchGate) fetchGate.refreshTicker('backbone');
 }
 
@@ -317,6 +329,7 @@ function renderBackboneEmptyState() {
       </div>
     </div>
   `;
+  backboneHasDrawn = true;
   if (window.fetchGate) fetchGate.refreshTicker('backbone');
 }
 
