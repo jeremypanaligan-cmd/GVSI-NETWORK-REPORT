@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.22">
+  <link rel="stylesheet" href="styles.css?v=3.9.23">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -1123,6 +1123,21 @@
     const startedAt = Date.now();
     let originMs = null;
     let originAttempts = null;
+    /* A FAILED ATTEMPT THAT TOOK THIS LONG WAS NOT A BLIP, so the spare attempts are not
+       spent on it. Measured from outside the deployment on 2026-09-26: a healthy call
+       answered in 1.06-1.48 s on the hit path and 2.9-3.2 s as a cold build, while the
+       failures that hurt arrived as Apps Script's 8 KB error page after 7.5 s, 16.0 s and
+       30.8 s - the deployment was stalled, and four consecutive OLT requests inside that
+       window all failed. A retry fired 250-750 ms later therefore lands INSIDE the same
+       stall: it costs a whole second stall and cannot answer sooner. The same request 60 s
+       later answered in 1.48 s, which is longer than fetch-gate's 30 s ceiling can wait for,
+       so waiting it out is not available either. Five seconds sits above the slowest
+       SUCCESSFUL attempt ever measured here and below the fastest failing one. */
+    const STALL_MS = 5000;
+    /* When the attempt now in flight started, so a failure can say how long it took to
+       arrive. Wall clock for the same reason as startedAt: this is what the operator waits. */
+    let attemptStartedAt = Date.now();
+    let stalledAt = null;
     /* Wrapped HERE as well as inside diagStore, and that is not belt-and-braces: both calls
        below sit inside the try that decides whether to RETRY. Anything a diagnostic raises
        there would be caught as an origin failure — three attempts spent, two requests sent,
@@ -1134,6 +1149,7 @@
       try { noteApiCall(url, sample); } catch (e) { /* never reaches the retry policy */ }
     };
     for (let i = 0; i <= retries; i++) {
+      attemptStartedAt = Date.now();
       try {
         const res = await fetch(url, { cache: 'no-store' });
         /* Read BEFORE the ok check: a 500 from the edge still carries the timing of the
@@ -1145,15 +1161,30 @@
         if (data && typeof data.error === 'string') {
           const envelopeErr = new Error(`origin: ${data.error}`);
           envelopeErr.fatal = data.retryable === false;
+          /* An envelope is the origin speaking about the REQUEST itself, and it says what to
+             do next: `retryable:true` is it asking by name for another attempt, `retryable:false`
+             is it saying the same request cannot work. The stall rule below must therefore not
+             touch these — it is for failures with no contract at all (an HTTP status, a body
+             that is not JSON, a dropped connection), where duration is the only evidence there
+             is. `build_failed` arrives at build duration, which is inside the stall window, so
+             without this marker the rule would swallow the one failure that asks to be retried. */
+          envelopeErr.envelope = true;
           throw envelopeErr;
         }
         recordDiag({ ok: true, ms: Date.now() - startedAt, attempts: i + 1, originMs, originAttempts });
         return data;
       } catch (err) {
-        console.warn(`[Retry ${i + 1}/${retries + 1}] ${logUrl}:`, err.message);
+        const attemptMs = Date.now() - attemptStartedAt;
+        /* `err.envelope` first: an origin envelope carries its own instruction and is never
+           described as a stall it did not suffer — the deployment can be slow AND the request
+           can be wrong at the same time. */
+        const stalled = !err.envelope && attemptMs >= STALL_MS;
+        console.warn(`[Retry ${i + 1}/${retries + 1}] ${logUrl}:`, err.message +
+          (stalled ? ` (after ${attemptMs}ms - stalled, not retrying)` : ''));
         lastErr = err;
         attempts = i + 1;
-        if (err.fatal || i >= retries) break;
+        if (stalled) stalledAt = attemptMs;
+        if (err.fatal || stalled || i >= retries) break;
         const wait = Math.round(delay * Math.pow(2, i) * (0.5 + Math.random()));
         await new Promise(r => setTimeout(r, wait));
       }
@@ -1162,7 +1193,9 @@
        the card names — and it carries the attempts, which is the difference between a
        slow origin and a phone retrying into a bad network. */
     recordDiag({ ok: false, ms: Date.now() - startedAt, attempts, originMs, originAttempts, error: lastErr ? lastErr.message : 'unknown' });
-    throw new Error(`Failed after ${attempts} attempt${attempts === 1 ? '' : 's'}: ${logUrl} (${lastErr ? lastErr.message : 'unknown'})`);
+    throw new Error(`Failed after ${attempts} attempt${attempts === 1 ? '' : 's'}` +
+      (stalledAt === null ? '' : ` (origin stalled ${stalledAt}ms, budget not spent)`) +
+      `: ${logUrl} (${lastErr ? lastErr.message : 'unknown'})`);
   }
 
   // --- APPS SCRIPT KEEP-ALIVE ---
@@ -1563,7 +1596,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.22').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.23').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an

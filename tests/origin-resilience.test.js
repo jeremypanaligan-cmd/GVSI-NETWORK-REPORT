@@ -176,6 +176,12 @@ function clientHarness(responses, opts) {
   const recorded = [];
   let i = 0;
 
+  /* THE WALL CLOCK THE CODE UNDER TEST READS. A response can state how long the attempt
+     that produced it took (`msBeforeAnswer`), which is how an attempt that stalled for
+     thirty seconds is exercised without the suite waiting thirty seconds for it. The
+     immediate `setTimeout` above is fake for the same reason. */
+  const clock = { t: 1700000000000 };
+
   /* What the diagnostics store receives from this suite. `broken` is the case that matters:
      a store that raises, to prove the request path survives it. */
   const diagStore = opts.brokenStore
@@ -192,10 +198,14 @@ function clientHarness(responses, opts) {
     /* Immediate timers, recorded: the backoff is what is under test, not the
        waiting. */
     setTimeout: (fn, ms) => { waits.push(ms); fn(); return 0; },
+    /* Only now() is read by the extracted code, so shadowing the intrinsic here cannot
+       change what anything else in the slice does. */
+    Date: Object.assign(function FakeDate() { return new Date(clock.t); }, { now: () => clock.t }),
     fetch: (url) => {
       calls.push(url);
       const spec = responses[Math.min(i, responses.length - 1)];
       i++;
+      clock.t += (spec.msBeforeAnswer || 0);
       if (spec.networkError) return Promise.reject(new Error('Failed to fetch'));
       return Promise.resolve({
         ok: (spec.status || 200) >= 200 && (spec.status || 200) < 300,
@@ -471,6 +481,57 @@ async function test(name, fn) {
 
     assert.deepStrictEqual(r.data, []);
     assert.strictEqual(h.calls.length, 2);
+  });
+
+  /* -- a stall is not a blip: the budget is spent on blips --
+
+     The three cases below exist because the retry policy is what turned a stalled deployment
+     into a module that also took three times as long to admit it. A failure that took half a
+     minute to arrive is not evidence of a transient condition — it is evidence that the origin
+     is stalled, and the retry fired 250-750 ms after it lands inside the same stall. */
+
+  await test('a failed attempt that took 30.8 s stops the loop at one request', async () => {
+    const h = clientHarness([{ status: 404, msBeforeAnswer: 30800 }]);  // the measured stall
+    const r = await callFetch(h, URL_NAP);
+
+    assert.strictEqual(h.calls.length, 1, 'a stalled deployment must not be asked twice');
+    assert.ok(/origin stalled 30800ms/.test(r.error.message),
+      'the report must say why the budget was not spent: ' + r.error.message);
+    assert.ok(/stalled, not retrying/.test(h.warnings.join(' ')),
+      'and the console must not look like a budget that ran out: ' + h.warnings.join(' '));
+    assert.strictEqual(h.recorded[h.recorded.length - 1].sample.attempts, 1,
+      'and the sample the card reads must not claim two attempts that never happened');
+  });
+
+  await test('the boundary is the measured one, and it is inclusive', async () => {
+    const justUnder = clientHarness([{ status: 404, msBeforeAnswer: 4999 }]);
+    await callFetch(justUnder, URL_NAP);
+    assert.strictEqual(justUnder.calls.length, 3,
+      'under 5 s is a blip and still gets the whole budget');
+
+    const at = clientHarness([{ status: 404, msBeforeAnswer: 5000 }]);
+    await callFetch(at, URL_NAP);
+    assert.strictEqual(at.calls.length, 1, 'at 5 s the attempt was a stall');
+  });
+
+  await test('an origin that asks for a retry by name outranks the stall rule', async () => {
+    /* `build_failed` arrives at build duration, which is inside the stall window. The
+       envelope documents a condition the server believes a second attempt can clear, and
+       that instruction must not be swallowed by a duration threshold. */
+    const h = clientHarness([{ body: { error: 'build_failed', retryable: true }, msBeforeAnswer: 8000 }]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.strictEqual(h.calls.length, 3, 'retryable:true is the server asking by name');
+    assert.ok(!/stalled/.test(h.warnings.join(' ')), 'and it is not reported as a stall');
+  });
+
+  await test('a fatal envelope is reported for its own reason, even when it was slow', async () => {
+    const h = clientHarness([{ body: { error: 'Unknown type: oltt', retryable: false }, msBeforeAnswer: 8000 }]);
+    const r = await callFetch(h, URL_NAP);
+
+    assert.strictEqual(h.calls.length, 1, 'a wrong request cannot start working');
+    assert.ok(!/stalled/.test(h.warnings.join(' ')),
+      'a slow deployment must not be blamed for a request that was wrong: ' + h.warnings.join(' '));
   });
 
   await test('a working first attempt costs exactly one request', async () => {
