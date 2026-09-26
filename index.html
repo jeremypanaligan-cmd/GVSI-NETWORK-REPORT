@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.24">
+  <link rel="stylesheet" href="styles.css?v=3.9.25">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -887,6 +887,11 @@
 <script src="lucide-icons.js"></script>
 <script src="db.js"></script>
 <script src="fetch-gate.js"></script>
+<!-- After fetch-gate.js: it seeds that gate's clock for a payload restored from storage. It is
+     loaded BEFORE the page script and touches no page global at load time — everything it reads
+     (`dataCache`, `oltMeta`, `rawOltData`, `fetchGate`) is resolved when it is called, which is
+     after the page script has run. -->
+<script src="cache-store.js"></script>
 <!-- Diagnostics: a bounded in-memory record of what THIS device waited on. Loaded before
      anything can make a call, because every request through fetchWithRetry writes one
      sample into it. It reads nothing back and shows nothing on its own; the admin screen
@@ -1502,6 +1507,29 @@ function closeNodeModal(event) {
     window._dataLoaded = true;
     showLoader();
 
+    /* WHAT THIS DEVICE LAST SAW, BEFORE ANYTHING IS ASKED FOR. The opening is one request and
+       that is worth keeping, but it still begins with nothing to draw — and against a stalled
+       deployment (7.5 s, 16.0 s, 30.8 s measured, PART-024) one request that times out is how the
+       first screen of a session became "this report could not be loaded". cache-store.js holds
+       the last good payload of each module, in localStorage, where getItem is synchronous — so
+       it is in memory before the first paint rather than after an await.
+
+       Reached only from showApp(), which is gated on isLoggedIn(): restored data must never be
+       visible to a user who has not logged in. */
+    var restored = (window.moduleCache && typeof window.moduleCache.restoreModuleCache === 'function')
+      ? window.moduleCache.restoreModuleCache()
+      : [];
+
+    /* The visible tab paints NOW, from that snapshot, instead of after the opening request
+       settles — waiting would hand back the restored data at exactly the moment it was supposed
+       to replace. The cost is one background refresh for this tab, which the gate already joins
+       and throttles; and with nothing restored this is a no-op, because renderTabFromCache() on
+       an empty cache fetches exactly as it did before. */
+    if (restored.length) renderTabFromCache(currentTab);
+
+    /* The writer, started once per page: a snapshot every 30 s, and one before the page goes. */
+    if (window.moduleCache && typeof window.moduleCache.start === 'function') window.moduleCache.start();
+
     /* ONE request for the whole opening, then draw the tab the user is on.
 
        bootFromBundle() never rejects: it answers with what it got and names what it did not,
@@ -1596,7 +1624,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.24').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.25').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
@@ -2109,6 +2137,11 @@ function closeNodeModal(event) {
     localStorage.removeItem(SESSION_EXPIRY_KEY);
     localStorage.removeItem(SESSION_TOKEN_KEY);
     localStorage.removeItem(REMEMBER_KEY);
+    /* The snapshot goes with the session. It is one user's view of the network, and the next
+       person to log in on this device must not be handed it. */
+    if (window.moduleCache && typeof window.moduleCache.clearModuleCache === 'function') {
+      window.moduleCache.clearModuleCache();
+    }
     showLogin();
   }
 

@@ -505,6 +505,58 @@ async function test(name, fn) {
     assert.strictEqual(gate.dataBuiltAt('nap'), 0, 'per type, not global');
   });
 
+  /* ------------------------------------------------------------------
+     seedLastFetch(): the fetch time of a payload that came from STORAGE
+
+     A restored payload is drawn before anything is asked for, so its freshness
+     chip has to report the age of THAT payload. An empty clock would print
+     "No data yet" over a table full of rows — and stamping it `now` would be
+     the same lie pointing the other way, with the extra cost that the age would
+     reset on every reload and the data would look fresh forever.
+   * ------------------------------------------------------------------ */
+
+  await test('seedLastFetch(): a restored payload reports its own age, not "No data yet"', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    state.now = 1700000000000;
+
+    gate.seedLastFetch('nap', state.now - 20 * 60000);
+    gate.refreshTicker('nap');
+
+    const chip = tickerChip(tabs, 'nap');
+    assert.ok(chip, 'chip auto-created');
+    assert.strictEqual(chip.textContent, 'Updated 20m ago',
+      'the chip must report when the payload was FETCHED, not that nothing has been');
+  });
+
+  await test('seedLastFetch(): refused for junk, and it never moves the stamp backwards', async () => {
+    const { gate, state } = makeSandbox();
+    const at = 1700000000000;
+
+    [0, -1, NaN, Infinity, 'yesterday', null, undefined].forEach(bad => {
+      assert.strictEqual(gate.seedLastFetch('nap', bad), false, 'junk stamp refused: ' + String(bad));
+    });
+
+    assert.strictEqual(gate.seedLastFetch('nap', at), true, 'a real stamp is accepted');
+    assert.strictEqual(gate.seedLastFetch('nap', at - 60000), false,
+      'an older stamp may not overwrite a newer one — the opening bundle stamps `now` first');
+    assert.strictEqual(gate.seedLastFetch('nap', at), false, 'and the same stamp changes nothing');
+  });
+
+  await test('seedLastFetch(): a real fetch still supersedes the seed, and types stay separate', async () => {
+    const { gate, state, tabs } = makeSandbox();
+    state.now = 1700000000000;
+
+    gate.seedLastFetch('olt', state.now - 20 * 60000);
+    assert.strictEqual(gate.seedLastFetch('olt', state.now), true, 'the seed is not sticky');
+
+    gate.refreshTicker('nap');
+    assert.strictEqual(tickerChip(tabs, 'nap').textContent, 'No data yet',
+      'seeding one type must not stamp another');
+
+    gate.refreshTicker('olt');
+    assert.strictEqual(tickerChip(tabs, 'olt').textContent, 'Updated just now');
+  });
+
   // Ticker tests leave 1s intervals running — sweep them so node can exit.
   ACTIVE_TIMERS.splice(0).forEach(h => clearInterval(h));
 

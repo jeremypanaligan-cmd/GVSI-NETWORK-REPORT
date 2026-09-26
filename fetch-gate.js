@@ -48,6 +48,24 @@
     tickerClearDeferred(type);
   }
 
+  /* A payload that came from STORAGE rather than from a fetch (see cache-store.js) still has a
+     fetch time, and it is the only honest one there is: the moment it was actually fetched.
+
+     Without this the restored table draws its freshness chip on an empty clock and reads "No data
+     yet" while showing rows — the same lie as stamping it `now`, pointing the other way. `now`
+     would also make the age RESET on every reload, so a payload would look permanently fresh
+     while never being re-fetched.
+
+     It only ever moves the stamp BACKWARD in time: a newer stamp already in memory is left alone,
+     which is what makes it safe to call before the opening bundle has had its say. */
+  function seedLastFetch(type, at) {
+    var n = Number(at);
+    if (!isFinite(n) || n <= 0) return false;
+    if ((lastFetchAt[type] || 0) >= n) return false;
+    lastFetchAt[type] = n;
+    return true;
+  }
+
   /* A payload the OPENING BUNDLE delivered counts as a successful fetch of that type.
 
      Without this the module's own loader would see no fetch history and go straight back to
@@ -302,6 +320,9 @@
     /* Server build time for the payload a module is showing. Modules call this
        with meta.builtAt from the response they just rendered. */
     noteBuiltAt: noteBuiltAt,
+
+    /* The fetch time of a payload restored from storage. See cache-store.js. */
+    seedLastFetch: seedLastFetch,
 
     /* The opening bundle delivered this type. See noteHydrated(). */
     noteHydrated: noteHydrated,
