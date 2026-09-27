@@ -283,6 +283,11 @@ function warmTypeCache_(type, ttlSeconds) {
  * it from the same evidence as the rest: an OLT build that answered with an error envelope
  * comes back as -1 and is named in the FAILED list instead of being counted as a rebuild.
  * The count therefore describes what happened, not what was scheduled.
+ *
+ * The same line also carries what PUBLISHING did — `, 1 of 5 published to the edge (4 unchanged)`
+ * — from publish-cache.gs's tally, when that file is deployed. A pass that rebuilt everything and
+ * published nothing is the shape of the 2026-09-27 outage, and it is exactly the shape this line
+ * could not previously describe.
  */
 function warmDataCaches() {
   var start = Date.now();
@@ -323,7 +328,13 @@ function warmDataCaches() {
      warmer warmed something" are different claims and only this line separates them. */
   Logger.log('✅ warmDataCaches: pass finished in ' + total + 'ms — ' + built + ' of ' +
              (SECONDARY_WARM_TYPES.length + 1) + ' module(s) rebuilt' +
-             (failed.length ? ' — FAILED: ' + failed.join(', ') : ''));
+             (failed.length ? ' — FAILED: ' + failed.join(', ') : '') +
+             /* The PUBLISH half, from publish-cache.gs's own tally. "Rebuilt" and "published"
+                are different claims, and on 2026-09-27 this line read `5 of 5 module(s) rebuilt`
+                on every pass for about seven hours while not one of the five reached the edge —
+                the reason a quota exhaustion looked like one module's bad day. Guarded, because
+                the two files are separate pastes and this one must not depend on that one. */
+             (typeof edgePublishSummary_ === 'function' ? edgePublishSummary_() : ''));
 
   if (total > OLT_WARM_INTERVAL_SECONDS * 1000) {
     Logger.log('⚠️ warmDataCaches: the pass took longer than the ' +

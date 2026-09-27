@@ -583,6 +583,45 @@ test('the pass touches no revision counter and spends no forced-rebuild claim', 
     'sheet) and must not spend the REFRESH button\'s once-a-minute claim (' + touched + ')');
 });
 
+/* ------------------------------------------------------------------ *
+   6. The publish half on the pass's own line
+ * ------------------------------------------------------------------ */
+
+test('the pass line carries what PUBLISHING did, not only what it rebuilt', () => {
+  /* `5 of 5 module(s) rebuilt` stayed green on every pass for ~7 hours on 2026-09-27 while not
+     one of the five payloads reached the edge, because the edge's write budget had been spent and
+     the worker answered every publish with a crash. REBUILT and PUBLISHED are different claims,
+     and the one line a human reads has to separate them. */
+  const s = freshSandbox();
+  s.__props.netpulse_worker_url = 'https://edge.test';
+  s.__props.netpulse_publish_secret = 'publish-secret-for-tests';
+  s.__props.netpulse_read_secret = 'read-secret-for-tests';
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'publish-cache.gs'), 'utf8'), s,
+                  { filename: 'publish-cache.gs' });
+  s.warmDataCaches();
+
+  const line = logMatching(s, 'warmDataCaches: pass finished')[0];
+  assert.ok(line, 'the pass logs one line');
+  assert.ok(line.indexOf('5 of 5 module(s) rebuilt') !== -1, line);
+  assert.ok(line.indexOf(', 5 of 5 published to the edge') !== -1,
+    'the publish half is on the same line as the rebuild half: ' + line);
+  assert.ok(line.indexOf('did not report what it holds') !== -1,
+    'and this sandbox\'s edge answers every fetch with no body at all, so the pass must admit it ' +
+    'was flying blind rather than imply it knew the payloads were new: ' + line);
+});
+
+test('with publish-cache.gs absent the pass line says nothing about publishing', () => {
+  /* Two separate pastes. A deployment that has the warmer and not the publisher must read
+     exactly as it did before any of this existed — not report a publishing failure it cannot
+     possibly have, and not reach for an edge it has no URL for. */
+  const s = freshSandbox();
+  s.warmDataCaches();
+
+  assert.strictEqual(s.__counters.urlsFetched, 0, 'no edge was contacted at all');
+  assert.strictEqual(logMatching(s, 'published to the edge').length, 0,
+    'and the line is the one this pass has always written');
+});
+
 /* ------------------------------------------------------------------ */
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed\n');

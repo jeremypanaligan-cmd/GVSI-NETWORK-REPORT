@@ -308,6 +308,37 @@ function equalBytes(a, b) {
   return diff === 0;
 }
 
+/* base64url of a byte array, unpadded — the SAME spelling this half writes that the publisher
+   reads on the other side of the wire (`edgeBase64Url_` in publish-cache.gs). The two halves are
+   separate pastes and neither can be compiled against the other, so they have to agree on the
+   encoding of a 32-byte digest exactly: 43 characters, no '='. `b64urlToBytes` above is the
+   inverse, and the two are tested against each other rather than described to each other. */
+function b64urlOfBytes(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/* The digest of the exact bytes being stored, as a label the publisher compares against on its
+   NEXT pass: "does the edge already hold precisely this?".
+
+   WHY IT IS COMPUTED HERE rather than taken from the caller: the whole value of the label is that
+   it describes the value it is stored beside. A label the caller supplied could be wrong, and a
+   wrong label is a payload that is never written again — silently, until the publisher's
+   heartbeat catches it. One digest on this side is cheaper than making that possible.
+
+   '' when there is no crypto to compute it with, and an empty hash NEVER means "unchanged":
+   unknown publishes, on both sides. */
+async function bodyHash(text, subtle) {
+  if (!subtle || typeof subtle.digest !== 'function') return '';
+  try {
+    const digest = await subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return b64urlOfBytes(new Uint8Array(digest));
+  } catch (err) {
+    return '';
+  }
+}
+
 /* Verify `<b64url(subject)>.<b64url(hmac)>` against the read secret, and check its expiry.
    Returns { ok, subject } — never throws, so a malformed token is a refusal rather than a
    500 that the client would read as "the edge is broken". */
@@ -451,16 +482,41 @@ export function createDataPlane({
     const builtAt = Number(url.searchParams.get('builtAt') || request.headers.get('x-netpulse-built-at') || 0) || 0;
     const rev = url.searchParams.get('rev') || request.headers.get('x-netpulse-rev') || '';
 
-    await kv.put(type, text, {
-      metadata: {
-        builtAt: builtAt,
-        rev: rev,
-        bytes: text.length,
-        publishedAt: now()
-      }
-    });
+    /* THE LABEL FOR THESE BYTES. The publisher reads it back from /data/_meta and skips the
+       write when the edge already holds the same payload, which is the difference between
+       1,440 KV writes a day and one that fits under the free plan's 1,000. MEASURED
+       2026-09-27: the day that counter ran out, every publish answered `1101` and the whole
+       fleet served the last bytes it had been given. */
+    const hash = await bodyHash(text, subtle);
 
-    return dataJson({ ok: true, type: type, bytes: text.length, builtAt: builtAt, rev: rev },
+    try {
+      await kv.put(type, text, {
+        metadata: {
+          builtAt: builtAt,
+          rev: rev,
+          hash: hash,
+          bytes: text.length,
+          publishedAt: now()
+        }
+      });
+    } catch (err) {
+      /* A REFUSED WRITE IS AN ANSWER, NOT A CRASH.
+
+         MEASURED 2026-09-27: with the free plan's daily write budget spent, `kv.put` throws
+         (`KV PUT failed: 429`), nothing caught it, and the Worker answered Cloudflare's error
+         page — `HTTP 500, error code: 1101` — which is indistinguishable from this worker being
+         broken. The publisher could only report the code it was given.
+
+         The refusal is a state, and it is named as one: 503 with the binding's own words, so
+         the executions log says `kv_write_failed` and quotes the cause instead of relaying a
+         crash. 503 rather than 500 because nothing here is broken — the edge is declining a
+         write it cannot make, and its readers keep the payload they already have. */
+      const detail = String((err && err.message) || err).slice(0, 200);
+      log('publish refused for ' + type + ': ' + detail);
+      return dataJson({ error: 'kv_write_failed', type: type, detail: detail }, 503);
+    }
+
+    return dataJson({ ok: true, type: type, bytes: text.length, builtAt: builtAt, rev: rev, hash: hash },
                     200, stampHeaders({ builtAt: builtAt, rev: rev, publishedAt: now() }));
   }
 
@@ -512,6 +568,10 @@ export function createDataPlane({
         index[item.type] = item.entry
           ? { builtAt: item.entry.metadata.builtAt || 0,
               rev: item.entry.metadata.rev || '',
+              /* The label the publisher compares its own digest against, so it can decide
+                 whether there is anything to write at all. Additive: a reader that does not
+                 know the field cannot miss it. */
+              hash: item.entry.metadata.hash || '',
               bytes: item.entry.metadata.bytes || item.entry.value.length,
               publishedAt: item.entry.metadata.publishedAt || 0 }
           : null;

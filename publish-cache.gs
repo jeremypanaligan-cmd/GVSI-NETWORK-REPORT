@@ -46,6 +46,25 @@
 //   - anything when the properties are absent. A quiet, once-per-execution note says so, and
 //     every module keeps loading through /exec.
 //
+// THE WRITE BUDGET — WHY A PASS USUALLY WRITES NOTHING
+//
+// The pass rebuilds all five modules every 5 minutes, and this file used to publish all five
+// unconditionally: 288 x 5 = 1,440 KV writes a day. The free plan allows 1,000.
+//
+// MEASURED, 2026-09-27. The day the counter ran out, `kv.put` threw inside the worker, the worker
+// answered Cloudflare's error page — `HTTP 500 — error code: 1101` — and all five publishes
+// failed for ~7 hours while the fleet read the bytes from 02:30. Nothing was broken and no code
+// had changed. The workload had outgrown the plan it was on, and nothing said so out loud.
+//
+// So: A PAYLOAD THE EDGE ALREADY HOLDS IS NOT WRITTEN AGAIN. The worker labels what it stores
+// with the digest of the exact bytes, `/data/_meta` reports that label, and this half skips the
+// write when its own digest of the payload it just built matches it. A heartbeat keeps the skip
+// invisible, and a daily ceiling keeps the day under the plan. See EDGE_PUBLISH_HEARTBEAT_MS and
+// edgePublishDecision_() below for the numbers and the reasoning.
+//
+// WHAT DID NOT CHANGE: the bytes published, the stamp the chip reads, and the fail-open rule. A
+// skip is a decision about SPENDING, not about what a reader can see.
+//
 // FAIL-OPEN, ALWAYS
 //
 // Every exit of publishBuiltPayload_ is a return. A worker that is down, an HTTP refusal, a
@@ -72,10 +91,49 @@ var EDGE_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
    milliseconds, and a worker that is down fails by DNS or by connection, not by hanging — so a
    number here would be a comment pretending to be a safeguard. */
 
+/* How long the edge's copy may go unwritten even when nothing about it changed, in ms.
+
+   DELIBERATELY BELOW the client's own staleness threshold (STALE_AFTER_MS = 10 minutes in
+   fetch-gate.js). The freshness chip says "Data as of HH:MM" from the builtAt stamp, so a
+   payload that is never rewritten ages past that threshold while being perfectly current — a red
+   warning on a healthy fleet, which is worse than no warning at all. At 8 minutes the stamp is
+   never more than 8 minutes old and the chip behaves exactly as it does today.
+
+   It also bounds the spend: each type is written at most 24h / 8min = 180 times a day, so the
+   five together cannot exceed 900 writes even if nothing ever changes. */
+var EDGE_PUBLISH_HEARTBEAT_MS = 8 * 60 * 1000;
+
+/* The ceiling for one UTC day, in writes — the same day the plan's own counter is keyed to.
+
+   Below the free plan's 1,000 so a publish that lands while this counter is being read cannot be
+   the one that tips it over.
+
+   WHAT IT BOUNDS IS THE HEARTBEAT, NOT A CHANGE. Once the day is committed, an unchanged payload
+   stops being rewritten and a CHANGED one is still published: a missed heartbeat costs the age
+   in the chip, and a missed change costs a reader the truth. A day in which every type changes on
+   every pass would still overrun this number — that day is 100% churn, and the counter on the
+   pass's own log line is what makes it visible rather than silent. */
+var EDGE_PUBLISH_DAILY_CEILING = 900;
+var EDGE_PUBLISH_COUNTER_PREFIX = 'netpulse_publish_used_';
+
 /* Per execution (Apps Script resets module state every run), so a worker that is down produces
-   one line per warm pass rather than one per module. */
+   one note per warm pass rather than one per module. */
 var _edgeNoteLogged = false;
-var _edgeFailureLogged = false;
+
+/* What publishing actually DID this execution: published, skipped, failed.
+
+   This replaces a single `_edgeFailureLogged` boolean, and the outage above is the reason. One
+   line per execution, with OLT always published first, meant FIVE failures looked like ONE — an
+   operator read `edge publish failed for olt` for an entire night and reasonably concluded that
+   one module was having a bad day. */
+var _edgeTally = null;
+
+/* What the edge says it holds, read at most ONCE per execution. `_edgeHeldRead` is a separate
+   flag from `_edgeHeld` because null is a real answer here — "the edge could not tell us" — and
+   re-reading five times a pass to keep getting null spends five requests on a question that has
+   already been asked. */
+var _edgeHeld = null;
+var _edgeHeldRead = false;
 
 function edgeScriptProperties_() {
   return PropertiesService.getScriptProperties();
@@ -191,9 +249,181 @@ function edgeTokenForLogin_(username) {
 }
 
 /**
+ * A read token for this half of the deployment, one minute long.
+ *
+ * The ONE place a read token is minted for a non-login caller, so the day the credential changes
+ * (a Supabase JWT in place of this HMAC) this is the line that changes. The label travels inside
+ * the token and comes back out of `/data/_meta` as `subject`, which is what lets an operator tell
+ * the pass's own read apart from a hand-run diagnostic one.
+ *
+ * `diagnoseEdgeSecrets_()` deliberately does NOT go through here: it probes with several WRONG
+ * spellings of the secret on purpose, which is a different job with a different token.
+ *
+ * @param {string} [label] who is reading — 'publish' by default, 'diagnostics' by hand
+ */
+function edgeReadToken_(label) {
+  return mintEdgeToken_(label || 'publish', Date.now() + 60000);
+}
+
+/** The UTC day the plan's write counter is keyed to — the same day, so the two agree. */
+function edgeUtcDay_() {
+  try {
+    return Utilities.formatDate(new Date(), 'UTC', 'yyyyMMdd');
+  } catch (err) {
+    /* Still a stable per-day key, which is all this has to be. */
+    return String(Math.floor(Date.now() / 86400000));
+  }
+}
+
+/** How many writes this deployment has spent today. A counter that cannot be read is 0. */
+function edgeWritesUsedToday_() {
+  try {
+    var props = edgeScriptProperties_();
+    return Number(props.getProperty(EDGE_PUBLISH_COUNTER_PREFIX + edgeUtcDay_())) || 0;
+  } catch (err) {
+    return 0;
+  }
+}
+
+/**
+ * Count one write against today.
+ *
+ * Deliberately unable to throw: a bookkeeping failure must never be the reason a payload a reader
+ * needs does not reach the edge. The cost of being wrong here is that the ceiling is applied one
+ * pass late, which is why the ceiling sits below the plan's own number rather than at it.
+ */
+function edgeCountWrite_() {
+  try {
+    var props = edgeScriptProperties_();
+    var key = EDGE_PUBLISH_COUNTER_PREFIX + edgeUtcDay_();
+    props.setProperty(key, String((Number(props.getProperty(key)) || 0) + 1));
+  } catch (err) { /* the next pass starts counting from whatever it can read */ }
+}
+
+/**
+ * What the edge holds, in the edge's own words — asked at most once per execution.
+ *
+ * @return {Object|null} type -> {hash, publishedAt, builtAt, rev, bytes}, or null when the edge
+ *                       could not answer. null is NOT "the edge holds nothing": the caller treats
+ *                       it as "cannot tell", which is the safe direction.
+ */
+function edgeHeld_() {
+  if (_edgeHeldRead) return _edgeHeld;
+  _edgeHeldRead = true;
+  _edgeHeld = null;
+
+  var cfg = readEdgeConfig_();
+  if (!cfg.url || !cfg.readSecret) return null;
+
+  try {
+    var response = UrlFetchApp.fetch(cfg.url + '/data/_meta', {
+      headers: { authorization: 'Bearer ' + edgeReadToken_() },
+      muteHttpExceptions: true
+    });
+    if (response.getResponseCode() !== 200) return null;
+
+    var parsed = JSON.parse(String(response.getContentText() || ''));
+    if (!parsed || !parsed.types || typeof parsed.types !== 'object') return null;
+    _edgeHeld = parsed.types;
+  } catch (err) {
+    _edgeHeld = null;
+  }
+  return _edgeHeld;
+}
+
+/**
+ * The digest of the exact bytes about to be sent, in the spelling the worker stores: unpadded
+ * base64url of SHA-256 — the same 43 characters `edgeBase64Url_` produces for a token.
+ *
+ * '' when it cannot be computed, and an EMPTY DIGEST NEVER SKIPS A WRITE. See the decision below.
+ *
+ * @param {string} json
+ * @return {string}
+ */
+function edgePayloadHash_(json) {
+  try {
+    return edgeBase64Url_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, json,
+                                                  Utilities.Charset.UTF_8));
+  } catch (err) {
+    return '';
+  }
+}
+
+/**
+ * Spend a write, or not? The one question the write budget turns on, in one place.
+ *
+ * @return {string} 'send'            the bytes differ, or the edge gave nothing to compare with
+ *                  'send-heartbeat'  identical, but the edge's copy is due a refresh
+ *                  'skip'            identical and young — no write is spent
+ *                  'skip-budget'     identical and due, but today's ceiling is already committed
+ */
+function edgePublishDecision_(type, json) {
+  var held = edgeHeld_();
+  if (!held) return 'send';                         /* the edge cannot say: publish */
+
+  var entry = held[type];
+  if (!entry || !entry.hash) return 'send';         /* nothing there, or nothing comparable */
+
+  var hash = edgePayloadHash_(json);
+  if (!hash || hash !== entry.hash) return 'send';  /* changed, unhashable, or never checked */
+
+  var publishedAt = Number(entry.publishedAt) || 0;
+  if (Date.now() - publishedAt < EDGE_PUBLISH_HEARTBEAT_MS) return 'skip';
+
+  return (edgeWritesUsedToday_() >= EDGE_PUBLISH_DAILY_CEILING) ? 'skip-budget' : 'send-heartbeat';
+}
+
+/** The pass's own tally of publishing, created on first use. */
+function edgeTally_() {
+  if (!_edgeTally) {
+    _edgeTally = { published: 0, skipped: 0, failed: 0, firstError: '',
+                   heldUnknown: false, budgetReached: false };
+  }
+  return _edgeTally;
+}
+
+/**
+ * The publish half of the warm pass's own summary line, as a suffix — '' when this execution
+ * decided nothing at all (no publish-cache.gs, or nothing was published).
+ *
+ * Read by warmDataCaches() in olt-cache-warmer.gs, and it exists because that is the line an
+ * operator actually reads: `5 of 5 module(s) rebuilt` stayed green through ~7 hours in which not
+ * one of the five publishes reached the edge. REBUILT and PUBLISHED are different claims, and the
+ * line a human reads has to separate them.
+ *
+ * @return {string} e.g. ', 1 of 5 published to the edge (4 unchanged)'
+ */
+function edgePublishSummary_() {
+  var t = _edgeTally;
+  if (!t) return '';
+
+  var decided = t.published + t.skipped + t.failed;
+  if (!decided) return '';
+
+  var line = ', ' + t.published + ' of ' + decided + ' published to the edge';
+  if (t.skipped) {
+    line += ' (' + t.skipped + ' unchanged' +
+            (t.budgetReached ? ', heartbeat paused at the ' + EDGE_PUBLISH_DAILY_CEILING +
+                               '/day ceiling' : '') + ')';
+  }
+  if (t.failed) {
+    line += ' — PUBLISH FAILED: ' + t.failed +
+            (t.firstError ? ' — first: ' + t.firstError : '');
+  }
+  if (t.heldUnknown) {
+    line += ' [the edge did not report what it holds, so every payload was sent]';
+  }
+  return line;
+}
+
+/**
  * Publish one built payload to the edge.
  *
  * Called from olt-cache-warmer.gs immediately after a build has been judged a success.
+ *
+ * @param {string} type  a member of DATA_TYPES in code.gs
+ * Skips the write entirely when the edge already holds these exact bytes and its copy is young:
+ * see the write-budget section in the header and edgePublishDecision_() below.
  *
  * @param {string} type  a member of DATA_TYPES in code.gs
  * @param {string} json  the exact response body that was just cached
@@ -221,6 +451,24 @@ function publishBuiltPayload_(type, json) {
     return false;
   }
 
+  /* THE WRITE BUDGET, DECIDED HERE — and deliberately AFTER the envelope refusal above, so a
+     failed build still costs no request at all.
+
+     The read happens once per execution and is memoized behind this call, so the five types in
+     one pass share a single `/data/_meta`. `edgeHeld_()` returning null means the edge could not
+     say what it holds, which is recorded in the tally rather than guessed at: unknown publishes,
+     on the rule that skipping is the only direction that can leave a reader with bytes nobody
+     vouched for. */
+  var tally = edgeTally_();
+  var decision = edgePublishDecision_(type, json);
+  if (!edgeHeld_()) tally.heldUnknown = true;
+
+  if (decision === 'skip' || decision === 'skip-budget') {
+    tally.skipped++;
+    if (decision === 'skip-budget') tally.budgetReached = true;
+    return false;
+  }
+
   /* THE AGE THE CHIP REPORTS. This is the moment the payload was produced, not the moment a
      reader asks for it — carried as metadata, so the freshness chip can say "Data as of 09:12"
      about bytes it did not just fetch. */
@@ -244,20 +492,37 @@ function publishBuiltPayload_(type, json) {
 
     var code = response.getResponseCode();
     if (code !== 200) {
-      if (!_edgeFailureLogged) {
-        _edgeFailureLogged = true;
-        Logger.log('⚠️ edge publish failed for ' + type + ': HTTP ' + code + ' — ' +
-                   String(response.getContentText() || '').slice(0, 200) +
-                   (code === 401 ? ' (the publish secret does not match PUBLISH_SECRET in the worker)' : ''));
+      tally.failed++;
+      var detail = String(response.getContentText() || '').slice(0, 200);
+
+      /* EVERY failure gets a line, not just the first.
+
+         This is the whole of the 2026-09-27 diagnostic failure: `_edgeFailureLogged` printed one
+         line per EXECUTION, and because OLT is published first in every pass, the four failures
+         behind it were never named. Five modules failing looked exactly like one module failing.
+         The first line keeps its detail and its likely cause; the rest are condensed to the code,
+         which is enough to see that it is all five and not one. */
+      if (!tally.firstError) {
+        tally.firstError = 'HTTP ' + code + ' — ' + detail +
+          (code === 401 ? ' (the publish secret does not match PUBLISH_SECRET in the worker)' : '');
+        Logger.log('⚠️ edge publish failed for ' + type + ': ' + tally.firstError);
+      } else {
+        Logger.log('⚠️ edge publish failed for ' + type + ': HTTP ' + code);
       }
       return false;
     }
+
+    tally.published++;
+    edgeCountWrite_();
     return true;
   } catch (err) {
-    if (!_edgeFailureLogged) {
-      _edgeFailureLogged = true;
+    tally.failed++;
+    if (!tally.firstError) {
+      tally.firstError = err.message;
       Logger.log('⚠️ edge publish threw for ' + type + ': ' + err.message +
                  ' — the edge keeps serving the last payload it was given');
+    } else {
+      Logger.log('⚠️ edge publish threw for ' + type + ': ' + err.message);
     }
     return false;
   }
@@ -276,7 +541,7 @@ function reportEdgeState() {
     return { configured: false };
   }
 
-  var token = mintEdgeToken_('diagnostics', Date.now() + 60000);
+  var token = edgeReadToken_('diagnostics');
   try {
     var response = UrlFetchApp.fetch(cfg.url + '/data/_meta', {
       headers: { authorization: 'Bearer ' + token },

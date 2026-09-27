@@ -24,6 +24,10 @@
 'use strict';
 
 const assert = require('assert');
+/* Node's own sha256, used ONLY to predict the digest the worker computes with crypto.subtle. A
+   second implementation on purpose: a test that asked the worker for the expected value and then
+   compared it to the worker's value would agree with itself no matter what the digest was. */
+const nodeCrypto = require('crypto');
 
 let passed = 0;
 let failed = 0;
@@ -141,6 +145,77 @@ async function readJson(response) {
     assert.strictEqual(kv.writes[0].metadata.builtAt, NOW, 'the build stamp rides with it');
     assert.strictEqual(kv.writes[0].metadata.rev, '7', 'and the revision, for later invalidation');
     assert.strictEqual(kv.writes[0].metadata.bytes, payload.length);
+  });
+
+  await test('every payload is labelled with a digest of its own bytes', async () => {
+    /* The label is what lets the publisher skip a write it does not need. The pass rebuilds five
+       modules every 5 minutes — 288 x 5 = 1,440 writes a day — and MEASURED 2026-09-27, the day
+       that counter ran out against a free plan of 1,000, every publish failed for ~7 hours while
+       the whole fleet read the bytes from 02:30. */
+    const payload = JSON.stringify([{ A: 'LUZON' }, { A: 'VISAYAS' }]);
+    const expected = b64url(nodeCrypto.createHash('sha256').update(payload, 'utf8').digest());
+
+    const kv = fakeKv();
+    const res = await plane(kv)(dataRequest('/publish?type=nap', {
+      method: 'POST', headers: { 'x-netpulse-secret': PUBLISH_SECRET }, body: payload
+    }));
+
+    assert.strictEqual(kv.writes[0].metadata.hash, expected,
+      'computed HERE rather than trusted from the caller: a wrong label is a payload that is '
+      + 'silently never rewritten');
+    assert.strictEqual((await readJson(res)).hash, expected, 'and handed back for the same reason');
+
+    const again = fakeKv();
+    await plane(again)(dataRequest('/publish?type=nap', {
+      method: 'POST', headers: { 'x-netpulse-secret': PUBLISH_SECRET }, body: payload
+    }));
+    assert.strictEqual(again.writes[0].metadata.hash, expected, 'the same bytes are the same label');
+
+    const oneByte = fakeKv();
+    await plane(oneByte)(dataRequest('/publish?type=nap', {
+      method: 'POST', headers: { 'x-netpulse-secret': PUBLISH_SECRET }, body: payload + ' '
+    }));
+    assert.notStrictEqual(oneByte.writes[0].metadata.hash, expected,
+      'one byte different is a different label — a length check could not tell these apart');
+  });
+
+  await test('/data/_meta reports the label, which is what the publisher compares against', async () => {
+    const kv = fakeKv();
+    const payload = '[]';
+    await plane(kv)(dataRequest('/publish?type=nap&builtAt=' + NOW, {
+      method: 'POST', headers: { 'x-netpulse-secret': PUBLISH_SECRET }, body: payload
+    }));
+
+    const token = await mintToken('publisher|' + (NOW + 60000), READ_SECRET);
+    const res = await plane(kv)(dataRequest('/data/_meta', { headers: { authorization: 'Bearer ' + token } }));
+    const body = await readJson(res);
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.types.nap.hash,
+      b64url(nodeCrypto.createHash('sha256').update(payload, 'utf8').digest()),
+      'the publisher reads its own next decision back out of here');
+    assert.strictEqual(body.types.nap.bytes, payload.length);
+    assert.strictEqual(body.types.nap.builtAt, NOW, 'and the stamp the chip reads, unchanged');
+  });
+
+  await test('a REFUSED WRITE is named, not crashed — the 1101 outage', async () => {
+    /* MEASURED 2026-09-27: with the plan's daily write budget spent, `kv.put` throws
+       (`KV PUT failed: 429`). Nothing caught it, so the Worker answered Cloudflare's error page —
+       `HTTP 500, error code: 1101` — which is indistinguishable from this worker being broken, and
+       that is all the executions log could report. A refusal is a state, and a state is named. */
+    const kv = fakeKv();
+    kv.put = async () => { throw new Error('KV PUT failed: 429 Too Many Requests'); };
+
+    const res = await plane(kv, { log: () => {} })(dataRequest('/publish?type=nap', {
+      method: 'POST', headers: { 'x-netpulse-secret': PUBLISH_SECRET }, body: '[]'
+    }));
+
+    assert.strictEqual(res.status, 503, 'the edge is declining a write it cannot make — not broken');
+    const body = await readJson(res);
+    assert.strictEqual(body.error, 'kv_write_failed');
+    assert.strictEqual(body.type, 'nap', 'which type was refused');
+    assert.ok(body.detail.indexOf('429') !== -1,
+      'the binding\'s own words are relayed — the entire difference from a 1101: ' + body.detail);
   });
 
   await test('an ERROR ENVELOPE is never published', async () => {
