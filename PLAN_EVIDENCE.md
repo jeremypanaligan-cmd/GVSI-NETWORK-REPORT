@@ -1977,3 +1977,131 @@ nobody has taken yet.
 
 **Release.** 3.9.28 → **3.9.29**, every label moved together in the same push as the bytes they
 describe; the guard stays frozen at 3.10.0. **26 suites, 0 failed.**
+
+---
+
+### PART-030 — 1,440 writes a day against a plan that allows 1,000 (2026-09-28)
+
+**The report was one sentence and one log line.** *"Hindi nag a update ang data mula 2:30am (lahat
+ng module)"*, with new LCP rows already visible in `/exec`, and the executions page showing
+
+    edge publish failed for olt: HTTP 500 — error code: 1101
+
+**`1101` is the only truthful thing in that line.** It is Cloudflare's *this Worker threw* page, so
+the worker was reached, the secret matched, and something after the secret matched threw. Everything
+after that — the module named, the number of failures — was wrong, and `olt` was the most misleading
+part of it.
+
+**Why the log named one module when five had failed.** `publish-cache.gs` held a
+`_edgeFailureLogged` boolean and printed **one line per execution**; `warmDataCaches()` publishes OLT
+first, so the four failures behind it were never named. Five modules failing and one module failing
+produced identical logs. This is the same silent-lie shape the pass's own `judgeWarmResponse_()` was
+written to kill, one layer down, and it is why the incident first read as a single module's bad day.
+
+**What narrowed it, from outside, in four requests** (no secret needed — every one of these answers
+before the secret is compared, or does not involve it at all):
+
+| probe | answer | what it rules out |
+|---|---|---|
+| `GET /data/nap` | `401 no_token` | not `503 field:"DATA"`, so the KV binding reaches the Worker |
+| `POST /publish?type=nap`, no secret | `401` | the route exists and the compare is reached |
+| `POST /publish?type=nap`, wrong secret | `401 unauthorized` | and it fails closed |
+| `GET /?type=nap` | `200` in 1.65 s | the pass-through is untouched |
+
+**The KV namespace was readable and not writable, and only one thing in the publish path can produce
+that.** After the secret check, `handlePublish` had exactly two unguarded awaits — `request.text()`
+and `await kv.put(...)`. Reads work (the `401`s above prove `gateRead` passed its `!kv` check, since a
+missing binding answers `503 field:"DATA"`), so the binding is present and `get` succeeds while `put`
+throws. On the free plan the two are metered an order of magnitude apart: **1,000 writes to different
+keys per day against 100,000 reads per day**, with 1 write/second per key, 1,024 bytes of metadata and
+a 25 MiB value ceiling nowhere near this app's 0.5–54 KB payloads.
+
+**The arithmetic was the whole incident, and the pass had been over budget since the day it went
+live.** `warmDataCaches()` runs every 5 minutes — 288 passes a day — and published **all five
+types unconditionally, whether or not anything had changed**: 288 × 5 = **1,440 writes a day against a
+plan that allows 1,000**. The counter therefore lasts 1,000 / 1,440 of a day = **16 h 40 m**, and the
+remaining **~7 h 20 m** of every UTC day is served from whatever the edge was last given. With
+publishing beginning around 02:00 UTC after the re-paste, the thousandth write lands at ~18:40 UTC =
+**02:40 PHT** — the operator's 02:30, to within ten minutes, and the first minute at which anything
+looked wrong.
+
+**And the app was already telling the truth about it.** `fetch-gate.js` holds `STALE_AFTER_MS = 10
+minutes` and paints `data-state="stale"` (red, no pulse) from the `x-netpulse-built-at` the edge
+serves, so every module's ticker should have been red with *"Data as of 02:3x"* from ~02:40 onwards.
+The freshness chip, the honest-age work of PART-022 and PART-026, did its job; nobody was looking at
+it. That is a finding about the signal, not about the data, and it is recorded here rather than acted
+on in the same change.
+
+**What fallback cost, measured before recommending it.** Turning the edge path off is one value
+(`window.NETPULSE_CDN`) but a release bump and a second release to turn it back on, so the cheaper
+move is to delete the five KV keys: `/data/<type>` becomes `404 not_published` and
+`/data/_bundle` a `200` with `missing: [all five]`. `boot-bundle.js` already refuses an unusable
+bundle — `if (!put.hydrated.length) … return null`, logged as *"the edge answered nothing usable —
+asking the origin"* — so the all-missing case was checked in the source **before** it was recommended,
+because the failure it guards against is a stale NOC becoming a blank one. `/exec` was measured
+tonight for the first time since the switch-on, and it is warm:
+
+| request | code | time | bytes |
+|---|---|---|---|
+| `?type=nap` | 200 | 1.72 s | 949 |
+| `?type=lcp` | 200 | 1.44 s | 1,846 |
+| `?type=node` | 200 | 1.37 s | 2 |
+| `?type=backbone` | 200 | 1.15 s | 1,985 |
+| `?action=bundle` | 200 | **1.34 s** (all five) | 5,093 |
+| `?action=getSettings` | 200 | 2.06 s | 21 |
+
+The sizes match KV to the byte, so the two paths hold the same payloads — and `?type=olt` answered
+2.27 s / 54,077 B, which is the **unshaped** payload and not a regression: the dashboard asks for
+`shape=3` (216 B). An earlier session measured `?type=nap` and `?action=bundle` timing out at 8,005 /
+8,001 ms; **that did not reproduce**, which is recorded because the fallback advice rests on tonight's
+numbers and not on the older ones.
+
+**Not measured, and it is stated rather than papered over.** The cutoff is the operator's report, not
+a timestamp read out of the store: no KV key metadata (`publishedAt` per type) and no Cloudflare
+usage screen was read on this turn, so the 02:30 minute is inferred from the arithmetic plus the
+report. The confirmation is scheduled instead of declared — the free plan's write counter resets at
+**00:00 UTC (08:00 PHT)**, so if this is the cause, the next 5-minute pass republishes all five with
+nothing done and `reportEdgeState()` shows five fresh `publishedAt` values. If publishing does **not**
+resume at 08:00 PHT, the diagnosis is wrong and the temporary fallback comes back off.
+
+**The fix, in four parts, all server-side.** (1) `handlePublish` wraps `kv.put` and answers **`503`**
+with `{error:"kv_write_failed", detail}` — a refused write is a state, and a state is named, so the
+executions log reads `first: HTTP 503 — {"error":"kv_write_failed","detail":"KV PUT failed: 429…"}`
+instead of relaying a crash. (2) The worker **labels every payload with the digest of its own bytes**
+(unpadded base64url of SHA-256, computed on the worker's side so the label cannot lie about the value
+it sits beside) and reports it in `/data/_meta`. (3) `publish-cache.gs` publishes only what changed:
+one `_meta` read per execution, skip when its own digest matches **and** the edge's copy is younger
+than `EDGE_PUBLISH_HEARTBEAT_MS` (8 min, deliberately **below** the chip's 10-minute threshold so the
+heartbeat is invisible), with `EDGE_PUBLISH_DAILY_CEILING = 900` counted per UTC day — the ceiling
+gives way before a change does. **Unknown always publishes**: a failed read, a type the edge has never
+held, a payload with no label, or a digest that cannot be computed sends the write, because skipping
+on an unknown state is the only direction that can leave a reader with bytes nobody vouched for.
+(4) The tally replaces the boolean: every failure gets a line (first with detail and likely cause,
+the rest condensed), and `warmDataCaches()`'s own summary line — the one a human reads — now carries
+`, N of 5 published to the edge` beside `N of 5 module(s) rebuilt`. `5 of 5 module(s) rebuilt` was
+true and useless on every pass for seven hours.
+
+**Where the budget lands, stated with its residual.** Each type is written at most 24 h / 8 min = 180
+times a day, so the heartbeat half cannot exceed 900 writes and a quiet network costs exactly that —
+under the plan, with 100 to spare. Changes are spent on top and never suppressed, so a day in which
+every type changed on every pass would still overrun; that day is 100% churn, and the counter on the
+pass's own log line is what makes it visible instead of silent. The ceiling bounds the **heartbeat**,
+not the truth.
+
+**The seam that has to agree, tested the way the token seam is.** Two implementations of one digest —
+`Utilities.computeDigest` on one side, `crypto.subtle` on the other, two separate pastes that cannot
+be compiled against each other — and a single byte of disagreement would not be an error message
+anywhere; it would be a payload that silently stops being republished until the heartbeat catches it.
+`tests/publish-server.test.js` hands the same four payloads to both and compares them byte for byte,
+exactly as PART-029's token tests hand a minted token to the real verifier.
+
+**Suite counts after the change: 24 in `publish-server` (12 new), 23 in `publish-auth` (3 new — the
+`kv.put` refusal, the label, and the label in `_meta`), 16 in `cache-warmer` (2 new — the publish half
+on the pass line, and the pass line unchanged when `publish-cache.gs` is absent).** `publish-cache.gs`
+on disk was also restored to HEAD first: the working copy had reverted `edgeSecretLooksReal_` (from
+`3e6ef9c`) and carried LF endings, the fingerprint of a file copied back out of the Apps Script
+editor — so the version being pasted is the one with the placeholder guard in it.
+
+**Release.** No client bytes changed, so nothing moved: **3.9.29** stays, `REQUIRED_APP_VERSION` stays
+frozen at **3.10.0**, and `bump-version --check` is clean. **26 suites, 0 failed.** The worker and the
+two `.gs` files are pastes, as every server-side change in this project has been.

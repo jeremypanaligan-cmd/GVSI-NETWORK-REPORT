@@ -144,7 +144,7 @@ app reads it from the edge in tens of milliseconds. Apps Script is not in the re
 
 | route | method | auth | what it does |
 |---|---|---|---|
-| `/publish?type=nap` | POST | `x-netpulse-secret` = `PUBLISH_SECRET` | stores the exact JSON body in KV, with `{builtAt, rev, bytes, publishedAt}` as metadata |
+| `/publish?type=nap` | POST | `x-netpulse-secret` = `PUBLISH_SECRET` | stores the exact JSON body in KV, with `{builtAt, rev, hash, bytes, publishedAt}` as metadata |
 | `/data/nap` | GET | `Authorization: Bearer <login token>` | the payload, edge-cached 60 s, with `x-netpulse-built-at` |
 | `/data/_bundle` | GET | same | all five in **one** read (assembled at the edge), plus per-type stamps |
 | `/data/_meta` | GET | same | the stamps and sizes, without the payloads |
@@ -284,6 +284,57 @@ inverted the one decision the verifier exists to make. The decode and the `subtl
 guarded in this source now, with `publish-auth` covering six malformed shapes — **but the fix lives
 only in the repo until the worker is pasted again.** A deployed copy that answers 500 here needs that
 re-paste, not another secret.
+
+## The write budget, and the four ways a publish can be refused
+
+**MEASURED 2026-09-28 — the incident this section exists for.** The free plan allows **1,000 writes to
+different keys per day** (against 100,000 reads). `warmDataCaches()` runs every 5 minutes and published
+all five types whether or not anything had changed: **288 × 5 = 1,440 writes a day**, 44% over. The
+counter therefore lasts 16 h 40 m of a 24-hour UTC day, and the remaining **~7 h 20 m is served from
+whatever the edge was last given** — reported as "no module has updated since 02:30", with the
+executions page showing `edge publish failed for olt: HTTP 500 — error code: 1101`.
+
+**The 1101 was this file's own doing, and the publisher could not have known it.** `kv.put` throws when
+the daily counter is spent (`KV PUT failed: 429`), nothing caught it, so Cloudflare answered outside the
+handler with its exception page — indistinguishable from the Worker being broken. `handlePublish` now
+catches it and answers a **`503`** carrying the binding's own words, so the executions log reads:
+
+    ⚠️ edge publish failed for olt: HTTP 503 — {"error":"kv_write_failed","detail":"KV PUT failed: 429…"}
+
+| answer | means | who fixes it |
+|---|---|---|
+| `401 unauthorized` | `x-netpulse-secret` does not match `PUBLISH_SECRET` | re-paste ONE secret into both sides |
+| `400 unknown type` | not a member of `DATA_TYPES` | the caller |
+| `400 refused_error_envelope` | `{error:…}` is a failed build, not data | nothing — the build has to succeed first |
+| `413 payload too large` | over `MAX_PUBLISH_BYTES` (512 KB) | the caller |
+| **`503 kv_write_failed`** | **the namespace refused the write — spend, quota or permissions** | **the plan (`EDGE_PUBLISH_DAILY_CEILING`) or the account** |
+| `503 edge_not_configured` + `field` | `PUBLISH_SECRET`, `READ_SECRET` or `DATA` is missing | the paste that `field` names |
+
+**What keeps the pass under 1,000.** The worker labels every stored payload with the digest of its own
+bytes and reports it in `/data/_meta`; `publish-cache.gs` reads that index **once per execution** and
+skips the write when its own digest of the payload it just built matches **and** the edge's copy is
+younger than `EDGE_PUBLISH_HEARTBEAT_MS` (**8 minutes**). Eight is deliberately **below** the client's
+`STALE_AFTER_MS` (10 minutes, `fetch-gate.js`), so a current payload can never age into a red chip: the
+operator sees no difference at all, only fewer writes. Each type is therefore written at most
+24 h / 8 min = **180 times a day**, so the heartbeat half cannot exceed **900**, and a change is spent
+on top and never suppressed — `EDGE_PUBLISH_DAILY_CEILING = 900` (per UTC day, in Script Properties) is
+what makes the heartbeat give way first. **Unknown always publishes:** a read the edge refused, a
+payload with no label, a type it has never held, or a digest that cannot be computed all send the write,
+because skipping on an unknown state is the only direction that can leave a reader with bytes nobody
+vouched for.
+
+**What a skip costs, stated rather than assumed.** A skip leaves the `builtAt` stamp on the edge where
+it was, so the heartbeat is the only thing keeping "Data as of HH:MM" honest — which is why the
+heartbeat must stay under the chip's threshold, and why `tests/publish-server.test.js` asserts that
+relationship against the client's own constant instead of against a comment. And the ceiling bounds the
+**heartbeat**, not the truth: a day in which every type changed on every pass would still overrun 1,000,
+that day is 100% churn, and the counter on the pass's log line is what makes it visible.
+
+**One diagnostic rule came out of this that is worth more than the fix.** The log used to print **one**
+publish failure per execution, and OLT is published first in every pass — so five failing modules looked
+exactly like one failing module, for about seven hours. Every failure is now named, and the pass's own
+summary line carries `, N of 5 published to the edge` beside `N of 5 module(s) rebuilt`. **REBUILT and
+PUBLISHED are different claims**, and the line a human reads has to separate them.
 
 ## Which bytes are ACTUALLY live — ask the API, never guess
 

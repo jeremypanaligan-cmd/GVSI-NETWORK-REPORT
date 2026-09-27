@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 26, 2026 · **3.9.29 is pushed — THE EDGE READ PATH IS LIVE.** Apps Script is no longer in the read path for any of the five data modules: the payload the warm pass has already built is published to Cloudflare KV, and the app reads it from the edge with `/exec` as the automatic fallback. All four Cloudflare steps are done, all five types are published (**nap 950 B, lcp 1,846 B, olt 216 B, node 2 B, backbone 1,983 B**) and the 5-minute trigger republishes them · **the rollback is one value**, `window.NETPULSE_CDN`, and it is the first thing to try if the edge misbehaves (see the item below) · before this, **3.9.28** (the worker half, built and dormant) and **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24) · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed for everything BELOW this item, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** September 28, 2026 · 🟥 **ANG PUBLISH OUTAGE NG SEPT 27 AY NADIAGNOSE AT NAAYOS SA REPO — ang deployment ay paste pa rin** (1,440 KV writes/araw laban sa 1,000 ng free plan; **burahin ang 5 KV keys ngayon** at muling i-activate sa 08:00 PHT — tingnan ang unang P1 sa ibaba) · **3.9.29 is pushed — THE EDGE READ PATH IS LIVE.** Apps Script is no longer in the read path for any of the five data modules: the payload the warm pass has already built is published to Cloudflare KV, and the app reads it from the edge with `/exec` as the automatic fallback. All four Cloudflare steps are done, all five types are published (**nap 950 B, lcp 1,846 B, olt 216 B, node 2 B, backbone 1,983 B**) and the 5-minute trigger republishes them · **the rollback is one value**, `window.NETPULSE_CDN`, and it is the first thing to try if the edge misbehaves (see the item below) · before this, **3.9.28** (the worker half, built and dormant) and **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24) · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed for everything BELOW this item, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -13,6 +13,78 @@
 - **A to-do item lives on disk or it does not exist.** Conversation history does not survive between sessions, so anything decided in chat and worth keeping gets written here.
 
 **Not the same as `GVSI_NetPulse_System_Roadmap.md`.** That file is a **dated audit** (Aug 26, 2026, against app v3.3.0) with its own signature and priority tables. Treat it as history: useful context, but **re-verify each item before working it** — several have already landed (see the bottom of this file).
+
+---
+
+## 🟥 P1 — Ang publish outage ng Sept 27: 1,440 writes/araw laban sa 1,000 (Sept 28, 2026)
+
+**Status.** Nadiagnose at naayos **sa repo**. **Hindi pa deployed** — dalawang paste ang kailangan
+(worker + dalawang `.gs`). **Walang client bytes na nagbago, kaya walang release bump** at walang
+sw.js/manifest na gagalawin.
+
+**Ang sintomas.** *"Hindi nag-a-update ang data mula 2:30am (lahat ng module)"*, bagong LCP data sa
+`/exec`, at sa executions page: `edge publish failed for olt: HTTP 500 — error code: 1101`.
+
+**Ang sanhi, sa isang linya ng aritmetika.** 288 passes/araw × 5 types = **1,440 KV writes/araw** na
+isinusulat **kahit walang nagbago**; ang free plan ay **1,000 writes/araw** (reads: 100,000). Kaya
+16 h 40 m lang ng bawat UTC day ang may publishing, at **~7 h 20 m bawat araw** na ang fleet ay
+nagbabasa ng huling bytes na binigay sa kanya. Ang pagtanggi ng `kv.put` ay *uncaught exception* →
+Cloudflare's 1101 page, kaya wala itong paliwanag. Tumutugma ang oras: kung nagsimula ang publishing
+~10:00 PHT, ang ika-1,000 na write ay ~02:40 PHT — ang "2:30am" ng operator.
+
+**Bakit "olt" lang ang sinasabi ng log — at ito ang tunay na diagnostic failure.** Ang
+`_edgeFailureLogged` ay isang boolean na **isang linya kada execution**, at ang OLT ang laging unang
+naka-publish. Kaya **limang failure ang eksaktong itsura ng isang failure**. Hindi "isang module ang
+sira"; lima, sa bawat pass, sa loob ng ~7 oras.
+
+**Ang ginawa (nasa repo na):**
+
+- `proxy/netpulse-proxy.mjs` — naka-wrap ang `kv.put` → **`503 {error:"kv_write_failed", detail}`**, at
+  ang linyang ipi-print ay `publish refused for olt: KV PUT failed: 429…`. Isang estado ang pagtanggi,
+  at pinapangalanan ito.
+- Ang worker ay naglalagay ng **content digest** (base64url ng SHA-256 ng eksaktong bytes) sa KV
+  metadata at iniuulat ito sa `/data/_meta`. Sinusukat ito **sa worker side** para hindi makapagsinungaling
+  ang label tungkol sa katabi nitong value.
+- `publish-cache.gs` — **i-publish lang ang nagbago**: isang `GET /data/_meta` bawat execution
+  (memoized), skip kapag tugma ang digest **at** bago pa sa **`EDGE_PUBLISH_HEARTBEAT_MS` (8 min)**.
+  Ang 8 min ay **sadya na mas mababa sa `STALE_AFTER_MS` (10 min)** ng client: hindi nagbabago ang
+  kahulugan ng chip, ang dami ng write lang. **`EDGE_PUBLISH_DAILY_CEILING = 900`** per UTC day, at
+  **ang heartbeat ang bumibigay bago ang isang pagbabago**. **Ang "hindi alam" ay "i-publish"** —
+  bigong `_meta` read, type na hindi pa hawak, walang label, o hindi makompyut na digest.
+- Ang tally ay pumapalit sa boolean: **bawat** failure ay may linya (verbose ang una, condensed ang
+  iba), at ang summary ng `warmDataCaches()` ay may **`, N of 5 published to the edge`** sa tabi ng
+  `N of 5 module(s) rebuilt`. Ang "5 of 5 module(s) rebuilt" ay totoo at walang silbi sa loob ng
+  pitong oras.
+
+**Ang mga dapat gawin (mano-mano, sa inyo):**
+
+1. **Ngayon:** burahin ang 5 KV keys sa Cloudflare (KV → `NETPULSE_DATA` → `nap`, `lcp`, `olt`, `node`,
+   `backbone`). Bawat type ay babalik sa `/exec` — **nasukat ngayong gabi: 1.15–1.72 s bawat module,
+   bundle 1.34 s para sa lima** — **walang release at walang paste**. Kung tama ang diagnosis,
+   **kusang bumabalik ang edge** kapag nag-reset ang write counter sa **00:00 UTC = 08:00 PHT**.
+   Kung mali ito at gumagana pala ang publish, babalik din ang keys sa loob ng isang pass.
+2. **Bantayan ang 08:00 PHT:** patakbuhin ang **`reportEdgeState()`** — limang sariwang `publishedAt`
+   ang inaasahan. Kung **hindi** bumalik ang publishing nang walang ginalaw, **mali ang diagnosis** at
+   dapat ibalik ang fallback.
+3. **I-paste ang worker** (`proxy/netpulse-proxy.mjs`) at **i-Promote** — `Save version` ≠ deploy, at
+   `Promote version` ang nasa **Deployments → Version History → ⋯**.
+4. **I-paste ang `publish-cache.gs` at `olt-cache-warmer.gs`.** Ang `publish-cache.gs` ay **ibalik
+   muna sa HEAD**: ang nasa disk ay nag-revert ng `edgeSecretLooksReal_` (mula sa `3e6ef9c`) at LF ang
+   endings — ang fingerprint ng file na kinopya pabalik mula sa editor.
+5. **Ang decisive test ng skip logic:** patakbuhin ang **`warmDataCaches()` dalawang beses** nang
+   sunod-sunod — ang **ikalawa ay dapat `0 of 5 published to the edge (5 unchanged)`**.
+
+**Ang acceptance.** Isang buong UTC day sa Cloudflare KV usage screen na **< 1,000 writes** habang
+sariwa ang lima sa `/data/_meta`. Measured, hindi assumed.
+
+**Ang natitirang panganib, sinabi nang tapat.** Kung ang **bawat** type ay nagbabago sa **bawat** pass,
+lalampas pa rin ang araw sa 1,000 — 100% churn iyon, at ang counter sa log line ang gagawa nitong
+nakikita. Ang 900 na ceiling ay ceiling ng **heartbeat**, hindi ng katotohanan.
+
+**At ang chip ay kanina pang pula.** Ang `fetch-gate.js` ay may `STALE_AFTER_MS = 10 min` at
+`data-state="stale"` (pula, walang pulse) mula sa `x-netpulse-built-at` ng edge, kaya mula ~02:40 ay
+dapat pula ang bawat ticker at *"Data as of 02:3x"*. **Nagsasabi ng totoo ang app; walang nakatutok.**
+Hiwalay na item iyon (P2 sa ibaba) at hindi ito sinama sa change na ito.
 
 ---
 
@@ -289,6 +361,28 @@ of either.
 **Known and deliberately not fixed here.** The **60 s `cacheTtl`** a client-built `node`/`olt`/
 `backbone` entry gets (against 180 s for nap/lcp, and 330 s when the warmer writes it). It only
 matters once the warmer is dead, and changing it is a freshness trade rather than a bug fix.
+
+---
+
+## 🔴 P2 — Ang stale chip ay isang senyales na walang nakatutok (Sept 28, 2026)
+
+**Nakita habang ginagawa ang unang P1, at hindi sinama sa change na iyon.** Ayon sa code, mula ~02:40
+ng Sept 28 ay dapat **pula** ang bawat ticker ng app at may *"Data as of 02:3x"* — `fetch-gate.js` ay
+may `STALE_AFTER_MS = 10 min` at `data-state="stale"` (pula, walang pulse), kinukuha ang edad mula sa
+`x-netpulse-built-at` na ibinibigay ng edge. Ang tumawag ng pansin sa outage ay ang **data**, hindi ang
+chip.
+
+**Bakit mahalaga.** Ang NOC display na tahimik na nagpapakita ng lumang outage ay ang tanging failure
+na hindi kayang ipakita ng app na ito — nasa sariling komento na iyon ng `proxy/netpulse-proxy.mjs` at
+ng `sw.js`. Pero ang kasalukuyang senyales ay isang maliit na colored dot sa tab, at ang edad ay nasa
+isang ticker na hindi binabasa ng nakatutok sa telepono o sa dingding.
+
+**Ang kailangang desisyon, at ang sukat na kulang pa.** (a) Alert-level na banner kapag lampas sa isang
+threshold ang edad (hal. 3× `STALE_AFTER_MS`), hindi lamang isang kulay; (b) isang senyales na
+pare-pareho sa lahat ng module, para hindi maging limang magkakaibang hint; (c) isang bagay na
+naririnig o nakikita sa NOC wall. **Bago ang alinman:** kumpirmahin muna kung pula nga ba talaga ito
+ngayon sa isang live na session — hindi pa natin nasukat iyon, at isang bug sa chip ang magpapabago sa
+lahat ng nasa itaas.
 
 ---
 

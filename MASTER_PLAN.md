@@ -699,6 +699,30 @@ could be measured at all.
     with `sw.js`'s bare host as STRINGS and went red on a correct tree, so it now asserts the
     invariant (same host, and the excluded string really occurs in the URL the app builds) instead
 
+**Amendment, 2026-09-28 — the first day of real traffic through the phase.** The read path was live for
+about a day when the whole fleet stopped updating, reported as `edge publish failed for olt: HTTP 500 —
+error code: 1101`. Nothing had changed and nothing was broken. The pass rebuilds five modules every 5
+minutes and published all five **whether or not anything had changed** — 288 × 5 = **1,440 KV writes a
+day against a free plan of 1,000** — so the day's counter ran out after 16 h 40 m and every publish was
+refused for the remaining ~7 h 20 m. The worker did not catch the refusal, so it answered Cloudflare's
+exception page instead of a named state; and the publisher logged **one** failure per execution while
+OLT is published first, so five failing modules looked exactly like one module failing, for about seven
+hours. The fix changed no client bytes: the worker names `503 kv_write_failed` and labels each payload
+with the digest of its own bytes, and `publish-cache.gs` publishes only what changed — with an 8-minute
+heartbeat, deliberately below the chip's 10-minute threshold so the operator sees nothing, and a 900/day
+ceiling that the heartbeat gives way to before a change does. See PART-030.
+
+- [x] Part 24: the write budget, and a failure that names itself
+  - Outcome: a pass that rebuilds five identical payloads spends one write instead of five, a changed
+    payload is always written, a refused write answers `503 kv_write_failed` with the binding's own
+    words rather than a 1101, every failed publish is named in the log, and an UNKNOWN state publishes
+    rather than skipping
+  - Evidence: PART-030 — 12 new cases in `tests/publish-server.test.js` (skip, change, heartbeat,
+    ceiling, unknown, all five failures named, the pass line, and the digest agreed with the worker's
+    `crypto.subtle` across the two separate pastes), 3 in `tests/publish-auth.test.js` (the refusal,
+    the label, the label in `_meta`), 2 in `tests/cache-warmer.test.js`; 26 suites, 0 failed; no
+    release bump, because no client bytes moved
+
 ## Notes
 
 - Authored by hand from `templates/` — the `plannable` CLI is not runnable in this
