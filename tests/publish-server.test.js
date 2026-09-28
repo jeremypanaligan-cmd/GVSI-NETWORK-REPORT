@@ -310,17 +310,30 @@ function configured() {
       'nine minutes is past the 8-minute heartbeat, so a current payload cannot age into a red chip');
   });
 
-  await test("the heartbeat stays BELOW the freshness chip's own staleness threshold", () => {
-    /* The two numbers live in different files and in different languages of a sort — one in
-       fetch-gate.js for the client, one here for the pass. A heartbeat above the chip's threshold
-       turns a healthy, unchanging module permanently red, which is worse than no warning. */
-    const source = read('fetch-gate.js');
-    const minutes = Number((source.match(/STALE_AFTER_MS = ([0-9]+) \* 60 \* 1000/) || [])[1]);
+  await test("a healthy copy can never be named stale: heartbeat + one warm cycle < the chip's threshold", () => {
+    /* Three numbers in three files, and not one of them means anything alone.
+
+       An unchanged payload is rewritten only once the edge's copy is older than
+       EDGE_PUBLISH_HEARTBEAT_MS, and the pass that asks that question runs every
+       OLT_WARM_INTERVAL_SECONDS. So a HEALTHY copy arrives at the heartbeat question somewhere
+       between 8 and 13 minutes old, and what the chip's STALE_AFTER_MS has to clear is THAT SUM —
+       not the heartbeat. Merely staying above the heartbeat is how 10 minutes spent 2026-09-28
+       naming a working edge stale in the seconds before every heartbeat: a red chip over good data,
+       which is worse than no warning at all. */
+    const gate = read('fetch-gate.js');
+    const minutes = Number((gate.match(/STALE_AFTER_MS = ([0-9]+) \* 60 \* 1000/) || [])[1]);
     assert.ok(minutes > 0, 'fetch-gate.js no longer declares STALE_AFTER_MS = N * 60 * 1000');
 
+    const warmer = read('olt-cache-warmer.gs');
+    const cycleSeconds = Number((warmer.match(/OLT_WARM_INTERVAL_SECONDS = ([0-9]+)/) || [])[1]);
+    assert.ok(cycleSeconds > 0, 'olt-cache-warmer.gs no longer declares OLT_WARM_INTERVAL_SECONDS = N');
+
     const s = sandboxOn(() => ({ getResponseCode: () => 200 }));
-    assert.ok(s.EDGE_PUBLISH_HEARTBEAT_MS < minutes * 60 * 1000,
-      'heartbeat ' + s.EDGE_PUBLISH_HEARTBEAT_MS + 'ms must be under the chip\'s ' + minutes + ' min');
+    const worstMs = s.EDGE_PUBLISH_HEARTBEAT_MS + cycleSeconds * 1000;
+    assert.ok(worstMs < minutes * 60 * 1000,
+      'the oldest a healthy copy can be when it is rewritten is ' + Math.round(worstMs / 60000) +
+      ' min (heartbeat ' + Math.round(s.EDGE_PUBLISH_HEARTBEAT_MS / 60000) + ' + one ' +
+      Math.round(cycleSeconds / 60) + '-min pass), and the chip names stale at ' + minutes + ' min');
   });
 
   await test('UNKNOWN means publish — and the pass says it was flying blind', () => {

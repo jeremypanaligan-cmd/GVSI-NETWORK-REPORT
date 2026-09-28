@@ -24,7 +24,9 @@ function deferred() {
 const ACTIVE_TIMERS = [];
 
 // Fresh sandbox per test → isolated gate state.
-function makeSandbox() {
+function makeSandbox(opts) {
+  opts = opts || {};
+
   /* `now` pins the gate's clock when set, so ticker granularity can be tested
      without waiting real minutes. */
   const state = { fetchCount: 0, pending: [], now: null };
@@ -96,9 +98,36 @@ function makeSandbox() {
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
+
+  /* A stand-in for cdn-source.js. It matches the real file at the one seam the escape turns on:
+     the build stamp is handed to the gate from INSIDE this promise, before the gate's own success
+     handler runs — which is the order that makes a stale stamp visible to a read at all. */
+  const edge = { calls: 0, pending: [] };
+  if (opts.cdn) {
+    sandbox.cdnSource = {
+      enabled: opts.cdnEnabled || (() => true),
+      dataUrl: type => 'edge/' + type,
+      bundleUrl: () => 'edge/_bundle',
+      fetchJson: function (type, url) {
+        edge.calls++;
+        const d = deferred();
+        edge.pending.push({ type, url, d });
+        return d.promise;
+      }
+    };
+  }
+  /* Answer edge read #i the way cdn-source.js does: stamp the gate first, then resolve. A builtAt
+     of 0 means the answer carried no stamp — legal, and not stale. */
+  edge.answer = function (i, data, builtAt) {
+    const rec = edge.pending[i];
+    if (builtAt > 0) sandbox.fetchGate.noteBuiltAt(rec.type, builtAt);
+    rec.d.resolve(data);
+    return rec;
+  };
+
   vm.runInContext(GATE_SRC, sandbox, { filename: 'fetch-gate.js' });
 
-  return { gate: sandbox.fetchGate, state, tabs };
+  return { gate: sandbox.fetchGate, state, tabs, edge, document: sandbox.document };
 }
 
 function tickerChip(tabs, type) {
@@ -431,6 +460,12 @@ async function test(name, fn) {
        long before. The chip has to report the snapshot, because that is what is
        on screen. */
     const { gate, state, tabs } = makeSandbox();
+
+    /* The threshold that was in force on 2026-09-18, pinned so this case keeps testing the incident
+       it was written for. The default is 15 minutes now (see STALE_AFTER_MS in fetch-gate.js), and
+       at that setting eleven minutes is simply not stale, which would quietly turn this test into
+       an assertion about a chip that happens to be green. */
+    gate.configure({ staleAfterMs: 10 * 60 * 1000 });
     state.now = 1700000000000;
     const builtAt = state.now - 11 * 60 * 1000;   // built 11 minutes before the fetch
 
@@ -555,6 +590,185 @@ async function test(name, fn) {
 
     gate.refreshTicker('olt');
     assert.strictEqual(tickerChip(tabs, 'olt').textContent, 'Updated just now');
+  });
+
+  /* -------------------- the stale escape (an edge copy that is too old) -------------------- */
+
+  await test('stale: the default threshold clears a heartbeat plus one warm cycle', async () => {
+    /* The two server numbers this has to survive: EDGE_PUBLISH_HEARTBEAT_MS (8 min) plus the
+       5-minute pass means a HEALTHY copy can be thirteen minutes old at the very moment it is
+       rewritten. Crossing that line is what put a red chip in front of the operator on 2026-09-28,
+       so the default is asserted here on the real clock: a default is behavior, not a comment.
+       The cross-file half of the invariant is in tests/publish-server.test.js. */
+    const { gate, tabs } = makeSandbox();
+    const now = Date.now();
+
+    gate.noteBuiltAt('nap', now - 13 * 60 * 1000);
+    assert.strictEqual(gate.isStale('nap'), false, 'the worst healthy age is not stale');
+    gate.refreshTicker('nap');
+    assert.strictEqual(tickerChip(tabs, 'nap').getAttribute('data-state'), 'ok');
+
+    gate.noteBuiltAt('nap', now - 16 * 60 * 1000);
+    assert.strictEqual(gate.isStale('nap'), true, 'a missed heartbeat is named');
+    gate.refreshTicker('nap');
+    assert.strictEqual(tickerChip(tabs, 'nap').getAttribute('data-state'), 'stale');
+  });
+
+  await test('escape: a stale edge copy buys exactly one origin read, and the screen is repaired', async () => {
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+    const drawn = [];
+
+    const q = gate.fetchQueued('nap', 'exec/nap', d => drawn.push(d));
+    assert.strictEqual(edge.calls, 1, 'the edge is tried first');
+    assert.strictEqual(state.fetchCount, 0, 'and /exec is not asked while the edge is answering');
+
+    edge.answer(0, [{ A: 'edge' }], state.now - 16 * 60 * 1000);   // sixteen minutes old
+    await q;
+
+    assert.strictEqual(gate.isStale('nap'), true, 'sixteen minutes is past the threshold');
+    assert.strictEqual(state.fetchCount, 1, 'so one origin read is spent on it');
+    assert.strictEqual(state.lastUrl, 'exec/nap', 'the URL the module itself gave the gate');
+    assert.strictEqual(edge.calls, 1, 'and the escape does not ask the edge again');
+
+    state.pending[0].resolve([{ A: 'origin' }]);
+    await sleep(0);
+
+    assert.deepStrictEqual(drawn, [[{ A: 'edge' }], [{ A: 'origin' }]],
+      'the module is redrawn from the origin — the screen is repaired, not just the console');
+    assert.strictEqual(gate.isStale('nap'), false,
+      'and the edge stamp is dropped: four of the five payloads carry none of their own, so keeping ' +
+      'an old one would leave the chip red over bytes fetched a moment ago');
+    assert.strictEqual(gate.dataBuiltAt('nap'), 0);
+  });
+
+  await test('escape: a current edge copy spends nothing at all', async () => {
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+
+    const q = gate.fetchQueued('lcp', 'exec/lcp', () => {});
+    edge.answer(0, [], state.now - 60 * 1000);
+    await q;
+
+    assert.strictEqual(state.fetchCount, 0, 'a minute-old copy is healthy, not an outage');
+    assert.strictEqual(gate.escapeState('lcp'), null, 'and no episode is opened for it');
+  });
+
+  await test('escape: refused for a type nothing has drawn, for a hidden tab, and with the edge off', async () => {
+    /* (1) Foreground only. The loader is handed the data and renders it itself, registering no
+       applier — so an escape would fetch bytes with nothing able to draw them. */
+    const a = makeSandbox({ cdn: true });
+    a.state.now = 1700000000000;
+    const qa = a.gate.run('nap', 'exec/nap');
+    a.edge.answer(0, [], a.state.now - 20 * 60 * 1000);
+    await qa;
+    assert.strictEqual(a.state.fetchCount, 0, 'no applier, no escape');
+
+    /* (2) A tab nobody is looking at. visibilitychange brings a refresh when it returns, and that
+       read escapes then — which is the second half of this case. */
+    const b = makeSandbox({ cdn: true });
+    b.state.now = 1700000000000;
+    b.document.visibilityState = 'hidden';
+    b.gate.fetchQueued('nap', 'exec/nap', () => {});
+    b.edge.answer(0, [], b.state.now - 20 * 60 * 1000);
+    await sleep(0);
+    assert.strictEqual(b.state.fetchCount, 0, 'a hidden tab does not spend an execution');
+
+    b.document.visibilityState = 'visible';
+    b.gate.refreshTicker('nap');
+    assert.strictEqual(b.state.fetchCount, 1, 'the same crossing acts once the tab is visible');
+
+    /* (3) The edge switched off or in cooldown: /exec is already the source, so an escape would
+       mean asking that same origin a second time. */
+    const c = makeSandbox({ cdn: true, cdnEnabled: () => false });
+    c.state.now = 1700000000000;
+    c.gate.fetchQueued('nap', 'exec/nap', () => {});
+    assert.strictEqual(c.edge.calls, 0, 'a disabled edge is not read at all');
+    c.state.pending[0].resolve([]);
+    await sleep(0);
+    c.gate.noteBuiltAt('nap', c.state.now - 20 * 60 * 1000);
+    c.gate.refreshTicker('nap');
+    assert.strictEqual(c.state.fetchCount, 1, 'and no second origin read is bought for it');
+  });
+
+  await test('escape: the gap holds, the backoff doubles, and a current read ends the episode', async () => {
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+
+    const q = gate.fetchQueued('nap', 'exec/nap', () => {});
+    edge.answer(0, [], state.now - 20 * 60 * 1000);
+    await q;
+    assert.strictEqual(state.fetchCount, 1, 'the first escape');
+    assert.strictEqual(gate.escapeState('nap').gapMs, 5 * 60 * 1000, 'five minutes before the next');
+
+    /* Let that read land and put the stamp back to stale: the origin answered and the publisher is
+       still behind, which is the state the backoff exists for. */
+    const settleEscape = async (i) => { state.pending[i].resolve([]); await sleep(0); };
+    await settleEscape(0);
+
+    state.now += 60 * 1000;
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);
+    gate.refreshTicker('nap');
+    assert.strictEqual(state.fetchCount, 1, 'a repaint one minute later spends nothing');
+
+    state.now += 4 * 60 * 1000;
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);
+    gate.refreshTicker('nap');
+    assert.strictEqual(state.fetchCount, 2, 'five minutes on, the escape is allowed again');
+    assert.strictEqual(gate.escapeState('nap').gapMs, 10 * 60 * 1000,
+      'and because the last one did not cure it, the next waits twice as long');
+    await settleEscape(1);
+
+    state.now += 5 * 60 * 1000;
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);
+    gate.refreshTicker('nap');
+    assert.strictEqual(state.fetchCount, 2, 'ten minutes after the second is not yet twenty');
+
+    state.now += 5 * 60 * 1000;
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);
+    gate.refreshTicker('nap');
+    assert.strictEqual(state.fetchCount, 3, 'the doubled gap elapses at ten minutes');
+
+    gate.noteBuiltAt('nap', state.now);
+    assert.strictEqual(gate.escapeIfStale('nap'), false, 'a current read has nothing to escape');
+    assert.strictEqual(gate.escapeState('nap').count, 0, 'and it forgets the whole episode');
+    assert.strictEqual(gate.escapeState('nap').gapMs, 5 * 60 * 1000, 'backoff included');
+  });
+
+  await test('escape: an edge refusal that falls back to /exec is not escaped again', async () => {
+    /* The expired-token shape: the edge is enabled, the read is refused, and the very same read is
+       answered by /exec — which is the escape's own destination. Escaping it would spend an
+       execution re-reading the source that just answered. */
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);   // the stamp already on the chip, and old
+    const q = gate.fetchQueued('nap', 'exec/nap', () => {});
+    edge.pending[0].d.reject(new Error('edge HTTP 401'));
+    await sleep(0);
+    assert.strictEqual(state.fetchCount, 1, 'the refusal itself falls through to /exec');
+    assert.strictEqual(state.lastUrl, 'exec/nap');
+
+    state.pending[0].resolve([]);
+    await q;
+    assert.strictEqual(state.fetchCount, 1, 'and that fallback is not escaped on top of itself');
+  });
+
+  await test('escape: one crossing is one read, and a busy type buys nothing', async () => {
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+
+    const q = gate.fetchQueued('nap', 'exec/nap', () => {});
+    edge.answer(0, [], state.now - 20 * 60 * 1000);
+    await q;
+    assert.strictEqual(state.fetchCount, 1, 'the crossing spent its one read');
+    assert.strictEqual(gate.isBusy('nap'), true, 'and that read is still in flight');
+
+    /* The chip repaints once a second for as long as the tab lives, and the type being busy is one
+       of the reasons escapeIfStale() refuses: an answer is already on its way. */
+    gate.refreshTicker('nap');
+    gate.refreshTicker('nap');
+    assert.strictEqual(state.fetchCount, 1, 'a busy type buys a second execution for nothing');
   });
 
   // Ticker tests leave 1s intervals running — sweep them so node can exit.

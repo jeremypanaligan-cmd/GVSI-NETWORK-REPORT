@@ -25,6 +25,16 @@
 // start() reads the payload from the edge first and falls back to the `/exec` URL it was given.
 // Without that file, or with the host blank, every line below behaves exactly as it did before it
 // existed — which is why the switch for the whole feature is one value in index.html.
+//
+// THE EDGE, WHEN IT IS STALE, IS NOT AN ANSWER EITHER.
+//
+// An edge that answers is not an edge that is CURRENT. publish-cache.gs refuses to spend a write
+// when the bytes have not changed, so the copy the edge holds can legitimately be minutes old —
+// that is what the skip is FOR — and if publishing stops, the edge keeps answering with those same
+// bytes forever. This gate already knew how old a payload was (the build stamp cdn-source.js hands
+// it), so there are two things it does with a stale stamp now: the chip says so, and the gate
+// spends exactly ONE origin read on that type (escapeIfStale). That second one is the only reason
+// the fleet keeps updating through an edge outage without anyone clicking REFRESH.
 
 (function () {
   'use strict';
@@ -42,6 +52,11 @@
   var inflight = {};    // type -> raw fetch promise (rejects on failure)
   var lastFetchAt = {}; // type -> timestamp of last successful fetch (any path)
   var deferred = {};    // type -> timer handle of a throttled background refetch
+  var lastRead = {};    // type -> {url, apply} — how this type was last read, so an escape has both a
+                        // URL to ask the origin for and a way to draw what comes back
+  var escape = {};      // type -> {count, lastAt, gapMs} — see escapeIfStale()
+  var readSource = {};  // type -> 'edge' | 'origin' for the read now settling: only an edge answer
+                        // can be current-but-old, and only a landed read may spend an escape
 
   function nowMs() {
     return Date.now();
@@ -119,21 +134,39 @@
      Deliberately NOT a second gate: dedupe, the 30 s ceiling, the throttle and the freshness
      stamping all live here already, so a payload from the edge is counted, deduped and aged
      exactly like one from Apps Script — which is the only way the two can be compared. */
-  function start(type, url) {
+  function start(type, url, origin) {
     var attempt;
 
-    if (window.cdnSource && typeof window.cdnSource.enabled === 'function' && window.cdnSource.enabled()) {
+    /* `origin` is the escape talking: the edge's copy has already been measured and found too old,
+       so asking the edge again would be a paid no-op. */
+    var fromEdge = !origin && !!window.cdnSource &&
+                   typeof window.cdnSource.enabled === 'function' && window.cdnSource.enabled();
+
+    if (fromEdge) {
       attempt = window.cdnSource.fetchJson(type, window.cdnSource.dataUrl(type))
         .catch(function (err) {
           if (window.console && console.warn) {
             console.warn('[FetchGate] ' + type + ': edge read refused (' +
                          ((err && err.message) || err) + ') — asking /exec as before');
           }
+          /* The edge refused, so this read is about to be an ORIGIN read despite the edge being enabled,
+             and the success handler has to see it that way: an escape here would spend an execution
+             re-reading the very source that is answering. This is the expired-token case, which is the
+             normal end of a session rather than an incident. */
+          readSource[type] = 'origin';
           return fetchWithRetry(url);
         });
     } else {
       attempt = fetchWithRetry(url);
     }
+
+    /* WHICH SOURCE IS ANSWERING, read by the success handlers below — not a decision here.
+
+       The escape cannot be fired from inside this function even though this is where the edge is
+       known: the type is still BUSY at that point (this very promise is what is in flight), and
+       escapeIfStale() refuses a busy type on purpose. So the source is recorded, the read is
+       allowed to land, and the handler that runs afterwards is the one that gets to spend. */
+    readSource[type] = fromEdge ? 'edge' : 'origin';
 
     var p = withTimeout(attempt, type);
     inflight[type] = p;
@@ -152,10 +185,17 @@
   function run(type, url) {
     if (inflight[type]) return inflight[type];
     clearDeferred(type); // a foreground fetch supersedes any pending background one
+    recordRead(type, url, null); // the loader renders what comes back; it brings no applier
 
     var p = start(type, url);
     return settle(type, p).then(function (data) {
       stampSuccess(type);
+
+      /* A read that landed is the only place an edge's age can be acted on — see escapeIfStale().
+         A foreground load on a tab that was drawn before has an applier on file, so this is not a
+         dead check: it is the REFRESH button and the visibilitychange refresh getting the same
+         repair as a background read. */
+      if (readSource[type] === 'edge') escapeIfStale(type);
       return data;
     });
     // rejection propagates untouched — callers keep their existing error UI
@@ -163,6 +203,7 @@
 
   /* Background path: joins in-flight, throttled, never rejects. */
   function fetchQueued(type, url, apply) {
+    recordRead(type, url, apply);
     if (inflight[type]) {
       // Join the same round-trip; the starter of the request owns its own
       // success handling, we only mirror it to this caller.
@@ -181,11 +222,29 @@
     return startQueued(type, url, apply);
   }
 
-  function startQueued(type, url, apply) {
-    var p = start(type, url);
+  function startQueued(type, url, apply, origin) {
+    var p = start(type, url, origin);
     return settle(type, p).then(
       function (data) {
         stampSuccess(type);
+
+        /* The edge ANSWERED. That is not the same claim as the edge being CURRENT — the stamp it
+           just handed the chip (noted inside that same promise, in cdn-source.js) is the only
+           evidence either way, and on a warm tab a read is the only place staleness is ever
+           noticed. An origin read is never checked here: it is already the escape. */
+        if (readSource[type] === 'edge') escapeIfStale(type);
+
+        /* THE ORIGIN'S OWN ANSWER, AND WHAT MAY BE CLAIMED ABOUT IT.
+
+           An escape has just established that the edge's copy was too old, and four of the five
+           payloads carry no build stamp of their own: keeping the edge's old stamp would leave the
+           chip red over bytes that were fetched a moment ago, and would invite the next escape. So
+           the stamp is dropped and the chip falls back to the fetch time — the weaker claim, and
+           the same one this app made for these four modules before the edge existed. OLT needs no
+           help here either way: its payload carries meta.builtAt, and applyOltPayload() stamps it
+           while the applier below runs. */
+        if (origin) delete dataBuiltAt[type];
+
         if (apply) apply(data);
         return data;
       },
@@ -205,6 +264,88 @@
   }
 
   /* ------------------------------------------------------------------ *
+     The stale escape — ONE origin read for a type the edge can only
+     answer with an old copy.
+
+     THE CHIP AND THE READ ARE THE SAME DECISION, which is why this lives next to the ticker: a
+     red chip with nothing behind it is a complaint, not a repair.
+
+     WHY ONE AND NOT EVERY TIME. Four of these types are on an hour, half an hour or ten minutes of
+     their own refresh cadence (index.html), so a tab left open can show old bytes for a long time;
+     but an escape is an Apps Script execution against a metered quota, and this project has already
+     removed one feature for spending too many of those. So the first escape costs one, a repeat
+     doubles the wait, and the doubling stops at twenty minutes — four types at the cap is twelve
+     executions an hour, and only ever while publishing is actually down.
+
+     WHAT IT DOES NOT DO: it never fires while the type is busy, never for a tab that is hidden,
+     and never for a type nothing has ever drawn (no applier, no redraw — see escapeIfStale).
+   * ------------------------------------------------------------------ */
+
+  var ESCAPE_MIN_GAP_MS = 5 * 60 * 1000;
+  var ESCAPE_MAX_GAP_MS = 20 * 60 * 1000;
+
+  /* How this type was last read, so an escape has somewhere to put what it finds. The applier is
+     kept when a later caller brings none: run() is the foreground loader and hands its data back to
+     the module instead of taking a callback, and it must not erase the one fetchQueued supplied a
+     moment earlier. */
+  function recordRead(type, url, apply) {
+    var prev = lastRead[type];
+    lastRead[type] = {
+      url: url,
+      apply: (typeof apply === 'function') ? apply : (prev ? prev.apply : null)
+    };
+  }
+
+  /* A read that came back current forgets the whole episode, including the backoff. */
+  function forgetEscape(type) {
+    if (escape[type]) {
+      escape[type].gapMs = ESCAPE_MIN_GAP_MS;
+      escape[type].count = 0;
+    }
+  }
+
+  /* THE ONE PLACE A STALE STAMP BECOMES A REQUEST.
+
+     Called from the two paths that can see a build stamp: every edge read, and the chip as it
+     crosses into 'stale'. It refuses far more often than it fires, and every refusal is a reason:
+
+       - the stamp is not stale: the healthy case, and overwhelmingly the common one;
+       - no applier recorded yet: the type was only ever read foreground, so there is nothing that
+         could draw what an escape would find — the module's own next draw registers one, and the
+         ticker tries again on the next paint;
+       - the edge is off (no host, no token, or a cooldown): /exec is already the source, and
+         escaping it would mean asking the same origin twice;
+       - the tab is hidden: nobody is reading it, and visibilitychange brings a refresh anyway;
+       - the type is busy: an answer is already on its way;
+       - the gap has not elapsed, or the last escape did not fix it and the gap has doubled.
+
+     @return {boolean} whether an origin read was actually issued
+   */
+  function escapeIfStale(type) {
+    if (!isStale(type)) { forgetEscape(type); return false; }
+
+    var last = lastRead[type];
+    if (!last || typeof last.apply !== 'function') return false;
+    if (!window.cdnSource || typeof window.cdnSource.enabled !== 'function' ||
+        !window.cdnSource.enabled()) return false;
+    if (!isVisible_()) return false;
+    if (inflight[type]) return false;
+
+    var e = escape[type] || (escape[type] = { count: 0, lastAt: 0, gapMs: ESCAPE_MIN_GAP_MS });
+    if (e.lastAt && (nowMs() - e.lastAt) < e.gapMs) return false;
+
+    /* An escape that did not bring a current stamp is evidence about the publisher, not about the
+       edge's age, so the next one waits longer. Counted here rather than on every read so the
+       backoff can only grow on reads that actually spent something. */
+    if (e.count > 0) e.gapMs = Math.min(e.gapMs * 2, ESCAPE_MAX_GAP_MS);
+    e.count++;
+    e.lastAt = nowMs();
+
+    startQueued(type, last.url, last.apply, true);
+    return true;
+  }
+
+  /* ------------------------------------------------------------------ *
      Refresh ticker — per-module "Updated Xs ago / Refreshing in Ys" chip.
      State lives here (single source of truth); the chip element is
      recreated after every render, so modules just call
@@ -217,11 +358,22 @@
   var _tickerTimers = {};   /* type -> interval handle driving the countdown */
   var _tickerDeferred = {}; /* type -> timestamp when the deferred refetch fires */
 
-  /* How old the DATA shown may get before the chip says so. Two warm intervals
-     (see olt-cache-warmer.gs): late enough that a normal cycle never trips it,
-     early enough to name a real problem — a missed trigger, a failed rebuild,
-     or a revision the app was never told about. */
-  var STALE_AFTER_MS = 10 * 60 * 1000;
+  /* How old the DATA shown may get before the chip says so — and before this gate stops
+     trusting the edge for that type.
+
+     THE ARITHMETIC, because 10 was wrong and a red chip over a healthy module is worse than no
+     warning at all. publish-cache.gs rewrites an unchanged payload only once the edge's copy is
+     older than EDGE_PUBLISH_HEARTBEAT_MS (8 min), and the pass that asks that question runs every
+     OLT_WARM_INTERVAL_SECONDS (5 min). So the age of a healthy copy at the moment it is rewritten
+     is somewhere between 8 and 13 minutes — and 10 therefore named a working system stale for up
+     to ~3 minutes before every heartbeat. Measured on 2026-09-28: lcp was rewritten at 9 m 58 s,
+     two seconds under the old threshold.
+
+     15 = that 13-minute worst case plus margin for a late trigger and a device clock a little
+     behind, and still inside three warm cycles, so a publisher that has genuinely stopped is
+     named within one heartbeat. The invariant is asserted across the two files in
+     tests/publish-server.test.js: heartbeat + one warm cycle < this. */
+  var STALE_AFTER_MS = 15 * 60 * 1000;
 
   /* When the payload a module is showing was BUILT on the server, if the server
      said. Deliberately separate from lastFetchAt, which is when we ASKED: those
@@ -235,14 +387,32 @@
     if (isFinite(n) && n > 0) dataBuiltAt[type] = n;
   }
 
+  /* The one staleness question, asked by the chip and by the escape, so a red chip and an origin
+     read can never disagree about what "stale" means.
+
+     An UNKNOWN stamp is not stale: four of the five payloads carry no build time of their own, and
+     for those the chip already falls back to the fetch time — the weaker claim, and the honest
+     one. Only a stamp the server actually sent can be old. */
+  function isStale(type) {
+    var built = dataBuiltAt[type];
+    return !!built && (nowMs() - built) > STALE_AFTER_MS;
+  }
+
+  /* Spending an Apps Script execution on a tab nobody is looking at is worse than the staleness it
+     would repair, and a hidden tab has its own way back: index.html refreshes every module on
+     visibilitychange, which arrives here as a read, which escapes then if the stamp is still old.
+     Absent a document (the tests) the answer is yes — the same reading rev-watch.js takes. */
+  function isVisible_() {
+    return (typeof document === 'undefined') || !document.visibilityState ||
+           document.visibilityState !== 'hidden';
+  }
+
   function tickerNoteDeferred(type, atMs) { _tickerDeferred[type] = atMs; }
   function tickerClearDeferred(type) { delete _tickerDeferred[type]; }
 
   function tickerState(type) {
     if (_tickerDeferred[type]) return 'deferred';
-    var built = dataBuiltAt[type];
-    if (built && (nowMs() - built) > STALE_AFTER_MS) return 'stale';
-    return 'ok';
+    return isStale(type) ? 'stale' : 'ok';
   }
 
   /* Wall clock, HH:MM. Minutes stop being useful exactly when staleness starts
@@ -313,6 +483,19 @@
 
     var state = tickerState(type);
     if (chip.getAttribute('data-state') !== state) chip.setAttribute('data-state', state);
+
+    /* A CHIP CROSSING INTO 'stale' IS THE ONLY READER A WARM TAB HAS.
+
+       Everything else that could notice is either an hour away (NAP's own background refresh) or
+       does not exist: nothing refetches because the data got old, only because a clock or a click
+       said so.
+
+       So this asks every second the chip is red, and that is affordable precisely because the
+       decision is NOT here: escapeIfStale() owns the rate — the gap, the doubling backoff, the
+       visibility check and the busy check — and refuses rather than queues. One owner, so a red
+       chip cannot become sixty reads a minute, and a crossing that could not act (no applier yet,
+       a hidden tab, a busy type) simply asks again on the next paint. */
+    if (state === 'stale') escapeIfStale(type);
   }
 
   /* Called after every module render: restores the chip if the tab's HTML
@@ -362,6 +545,15 @@
     isBusy: function (type) { return !!inflight[type]; },
     lastFetch: function (type) { return lastFetchAt[type] || 0; },
     dataBuiltAt: function (type) { return dataBuiltAt[type] || 0; },
+
+    /* The staleness question and the escape that follows from it. Exposed for the tests, for the
+       console, and for any future diagnostic that wants to ask before spending. */
+    isStale: isStale,
+    escapeIfStale: escapeIfStale,
+    escapeState: function (type) {
+      var e = escape[type];
+      return e ? { count: e.count, lastAt: e.lastAt, gapMs: e.gapMs } : null;
+    },
     shouldDefer: function (type) {
       return (nowMs() - (lastFetchAt[type] || 0)) < MIN_INTERVAL_MS;
     },
@@ -374,6 +566,12 @@
       }
       if (opts && typeof opts.staleAfterMs === 'number' && opts.staleAfterMs > 0) {
         STALE_AFTER_MS = opts.staleAfterMs;
+      }
+      if (opts && typeof opts.escapeMinGapMs === 'number' && opts.escapeMinGapMs >= 0) {
+        ESCAPE_MIN_GAP_MS = opts.escapeMinGapMs;
+      }
+      if (opts && typeof opts.escapeMaxGapMs === 'number' && opts.escapeMaxGapMs > 0) {
+        ESCAPE_MAX_GAP_MS = opts.escapeMaxGapMs;
       }
     }
   };
