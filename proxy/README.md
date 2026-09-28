@@ -313,9 +313,13 @@ catches it and answers a **`503`** carrying the binding's own words, so the exec
 **What keeps the pass under 1,000.** The worker labels every stored payload with the digest of its own
 bytes and reports it in `/data/_meta`; `publish-cache.gs` reads that index **once per execution** and
 skips the write when its own digest of the payload it just built matches **and** the edge's copy is
-younger than `EDGE_PUBLISH_HEARTBEAT_MS` (**8 minutes**). Eight is deliberately **below** the client's
-`STALE_AFTER_MS` (10 minutes, `fetch-gate.js`), so a current payload can never age into a red chip: the
-operator sees no difference at all, only fewer writes. Each type is therefore written at most
+younger than `EDGE_PUBLISH_HEARTBEAT_MS` (**8 minutes**). What has to clear the client's
+`STALE_AFTER_MS` (`fetch-gate.js`) is the heartbeat **plus one pass**, not the heartbeat alone: the pass
+asks every 5 minutes, so a healthy copy is between 8 and 13 minutes old when it is rewritten, and the
+threshold is **15 minutes**. Ten was the first setting, and it named a working edge stale in the seconds
+before every heartbeat (measured 2026-09-28: lcp rewritten at 9 m 58 s) — a red chip over good data,
+which is worse than no warning at all. A copy that does go past it is now read from `/exec` once by the
+client's stale escape, so the operator sees a repair rather than only a warning. Each type is therefore written at most
 24 h / 8 min = **180 times a day**, so the heartbeat half cannot exceed **900**, and a change is spent
 on top and never suppressed — `EDGE_PUBLISH_DAILY_CEILING = 900` (per UTC day, in Script Properties) is
 what makes the heartbeat give way first. **Unknown always publishes:** a read the edge refused, a

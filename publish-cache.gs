@@ -93,11 +93,21 @@ var EDGE_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 /* How long the edge's copy may go unwritten even when nothing about it changed, in ms.
 
-   DELIBERATELY BELOW the client's own staleness threshold (STALE_AFTER_MS = 10 minutes in
-   fetch-gate.js). The freshness chip says "Data as of HH:MM" from the builtAt stamp, so a
-   payload that is never rewritten ages past that threshold while being perfectly current — a red
-   warning on a healthy fleet, which is worse than no warning at all. At 8 minutes the stamp is
-   never more than 8 minutes old and the chip behaves exactly as it does today.
+   DELIBERATELY BELOW the client's own staleness threshold — BUT THE SUM IS WHAT MATTERS, NOT THIS
+   NUMBER ALONE. The freshness chip says "Data as of HH:MM" from the builtAt stamp, so a payload
+   that is never rewritten ages while being perfectly current, and a red warning on a healthy fleet
+   is worse than no warning at all. What a heartbeat cannot do is rewrite at a fixed age: the pass
+   asks this question once every OLT_WARM_INTERVAL_SECONDS (5 min), so a healthy copy is between 8
+   and 13 minutes old at the moment it is rewritten. THE INVARIANT IS THEREFORE:
+
+       EDGE_PUBLISH_HEARTBEAT_MS + OLT_WARM_INTERVAL_SECONDS*1000  <  STALE_AFTER_MS
+                8 min           +            5 min                 <      15 min
+
+   It read 10 minutes for the first day of this design, which named a working edge stale in the
+   seconds before every heartbeat — measured 2026-09-28: lcp rewritten at 9 m 58 s. The client moved
+   to 15 that day, and a copy that does go past it is now read from /exec once instead of only
+   turning red (the stale escape in fetch-gate.js). tests/publish-server.test.js asserts the
+   invariant across the two files, because neither number means anything on its own.
 
    It also bounds the spend: each type is written at most 24h / 8min = 180 times a day, so the
    five together cannot exceed 900 writes even if nothing ever changes. */

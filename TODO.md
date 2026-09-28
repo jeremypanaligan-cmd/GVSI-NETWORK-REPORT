@@ -47,8 +47,11 @@ sira"; lima, sa bawat pass, sa loob ng ~7 oras.
   ang label tungkol sa katabi nitong value.
 - `publish-cache.gs` — **i-publish lang ang nagbago**: isang `GET /data/_meta` bawat execution
   (memoized), skip kapag tugma ang digest **at** bago pa sa **`EDGE_PUBLISH_HEARTBEAT_MS` (8 min)**.
-  Ang 8 min ay **sadya na mas mababa sa `STALE_AFTER_MS` (10 min)** ng client: hindi nagbabago ang
-  kahulugan ng chip, ang dami ng write lang. **`EDGE_PUBLISH_DAILY_CEILING = 900`** per UTC day, at
+  Ang invariant ay hindi ang 8 laban sa threshold kundi ang **kabuuan**: ang pass ay tuwing 5 minuto,
+  kaya **8 + 5 = 13 minuto** ang pinakamatandang edad ng isang healthy na kopya sa sandali ng
+  pag-rewrite — kaya **15 minuto** ang threshold ng client (dating 10, na pinangalanang stale ang
+  gumaganang edge; tingnan ang **P1 sa ibaba** tungkol sa threshold at sa stale escape).
+  **`EDGE_PUBLISH_DAILY_CEILING = 900`** per UTC day, at
   **ang heartbeat ang bumibigay bago ang isang pagbabago**. **Ang "hindi alam" ay "i-publish"** —
   bigong `_meta` read, type na hindi pa hawak, walang label, o hindi makompyut na digest.
 - Ang tally ay pumapalit sa boolean: **bawat** failure ay may linya (verbose ang una, condensed ang
@@ -81,10 +84,46 @@ sariwa ang lima sa `/data/_meta`. Measured, hindi assumed.
 lalampas pa rin ang araw sa 1,000 — 100% churn iyon, at ang counter sa log line ang gagawa nitong
 nakikita. Ang 900 na ceiling ay ceiling ng **heartbeat**, hindi ng katotohanan.
 
-**At ang chip ay kanina pang pula.** Ang `fetch-gate.js` ay may `STALE_AFTER_MS = 10 min` at
-`data-state="stale"` (pula, walang pulse) mula sa `x-netpulse-built-at` ng edge, kaya mula ~02:40 ay
-dapat pula ang bawat ticker at *"Data as of 02:3x"*. **Nagsasabi ng totoo ang app; walang nakatutok.**
-Hiwalay na item iyon (P2 sa ibaba) at hindi ito sinama sa change na ito.
+**At ang chip ay pula mula pa kanina.** Ang `fetch-gate.js` ay may `data-state="stale"` (pula, walang
+pulse) mula sa `x-netpulse-built-at` ng edge, kaya mula ~02:40 ay dapat pula ang bawat ticker at
+*"Data as of 02:3x"*. **Nagsasabi ng totoo ang app; walang nakatutok.** Iyon ang naging susunod na
+hakbang: ang threshold ay naging **15 minuto** at may **stale escape** na — tingnan ang P1 sa ibaba.
+
+---
+
+## 🟩 P1 — Ang pulang chip sa healthy na edge: threshold + stale escape (Sept 28, 2026 · 3.9.30)
+
+**Status.** Nasa repo at naka-test (**26 suites, 0 failed**); **kailangan ng push** para umabot ang
+bytes sa mga device. Ang release label ay umakyat sa **3.9.30**; hindi gumalaw ang
+`REQUIRED_APP_VERSION` (3.10.0).
+
+**Ang depekto, nasukat.** Ang skip logic ay nag-rewrite lang kapag ang kopya sa edge ay **bago pa sa
+8 minuto**, at ang pass ay tuwing **5 minuto** — kaya ang edad ng isang **healthy** na kopya sa
+sandali ng pag-rewrite ay **8 hanggang 13 minuto**. Ang `STALE_AFTER_MS` noon ay **10 minuto**, kaya
+pinangalanan nitong stale ang isang gumaganang edge sa loob ng hanggang ~3 minuto bago ang bawat
+heartbeat. Nasukat noong Sept 28, 12:30 PHT: ang lcp ay na-rewrite sa **9 m 58 s** — **2 segundong
+palugit lang**. Isang pulang chip sa mabuting data, at iyon ang huling bagay na gusto mong ipaliwanag
+sa susunod na *"hindi nag-a-update"* na report.
+
+**Ang dalawang pagbabago — `fetch-gate.js`, client lamang (walang server bytes na kailangan):**
+
+- **`STALE_AFTER_MS`: 10 → 15 minuto**, kasama ang invariant na nakasulat sa `fetch-gate.js` at
+  `publish-cache.gs`, at **ina-assert sa dalawang file** (`tests/publish-server.test.js`):
+  **`EDGE_PUBLISH_HEARTBEAT_MS (8) + OLT_WARM_INTERVAL_SECONDS (5) < STALE_AFTER_MS (15)`**.
+- **Ang stale escape.** Kapag lumampas ang stamp sa threshold, **isang `/exec` read** ang ginagastos
+  para sa type na iyon at **itinatapon ang stamp ng edge** — sapat para muling iguhit ng module ang
+  sariwang bytes. **Kaya nagpapatuloy ang pag-update sa gitna ng edge outage**, hindi naghihintay ng
+  click o ng 60-minutong cadence ng NAP. Isang lugar ang may hawak ng rate: **5 minutong gap**,
+  **dinodoble** kapag hindi naayos ng escape (cap 20 minuto), **hindi tumatakbo sa naka-hide na tab**,
+  at hindi tumatakbo habang busy ang type. Apat na type sa cap = 12 execution/oras — at **habang
+  nakahinto lang ang publishing**, kaya zero sa normal na araw.
+
+**Ang natitirang pahayag, tapat.** (a) Hindi ito makakapag-escape para sa type na wala pang applier
+(isang cold load na hindi pa nabuksan ang tab) o sa isang naka-hide na tab — babalik iyon sa
+`visibilitychange` refresh. (b) **Hindi nito tinatanggal ang ugat:** ang OLT ay sumusulat pa rin ng
+288/araw dahil sa `builtAt` sa loob ng payload nito, at ang mga heartbeat ay ~144/type/araw. (c) Ang
+comment lamang ang nabago sa `publish-cache.gs` — kaya **hindi kailangan ang paste para gumana**, pero
+ipa-paste kung gusto mong tugma ang deployment at ang repo.
 
 ---
 
@@ -371,6 +410,11 @@ ng Sept 28 ay dapat **pula** ang bawat ticker ng app at may *"Data as of 02:3x"*
 may `STALE_AFTER_MS = 10 min` at `data-state="stale"` (pula, walang pulse), kinukuha ang edad mula sa
 `x-netpulse-built-at` na ibinibigay ng edge. Ang tumawag ng pansin sa outage ay ang **data**, hindi ang
 chip.
+
+**Update, Sept 28 (3.9.30).** Ang **maling** pagpula — ang 10-minutong threshold laban sa 8 + 5 = 13
+minutong healthy na pagitan — ay naayos na sa P1 sa itaas, kasama ang **stale escape** na kusang
+nagbabasa sa `/exec`. Ang natitira sa item na ito ay ang **totoong** senyales: isang alert-level na
+babala kapag tumigil talaga ang publishing, hindi isang maliit na kulay sa tab.
 
 **Bakit mahalaga.** Ang NOC display na tahimik na nagpapakita ng lumang outage ay ang tanging failure
 na hindi kayang ipakita ng app na ito — nasa sariling komento na iyon ng `proxy/netpulse-proxy.mjs` at

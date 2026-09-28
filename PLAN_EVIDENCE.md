@@ -2105,3 +2105,61 @@ editor — so the version being pasted is the one with the placeholder guard in 
 **Release.** No client bytes changed, so nothing moved: **3.9.29** stays, `REQUIRED_APP_VERSION` stays
 frozen at **3.10.0**, and `bump-version --check` is clean. **26 suites, 0 failed.** The worker and the
 two `.gs` files are pastes, as every server-side change in this project has been.
+
+---
+
+### PART-031 — A chip that was never red over good data, and a client that repairs a stale copy (2026-09-28)
+
+**What this corrects in PART-030.** PART-030 said the 8-minute heartbeat was "deliberately below the
+chip's 10-minute threshold". The comparison was wrong, and wrong in the direction that produces false
+alarms: the pass asks the heartbeat question once every 5 minutes, so a healthy copy is **between 8 and
+13 minutes old** at the moment it is rewritten. A threshold of 10 therefore named a working edge stale
+for up to ~3 minutes before every heartbeat.
+
+**Measured, not derived — which is how small the margin really was.** The five KV keys were read
+directly at 12:30 PHT: lcp had been written at `04:20:35.933Z` and rewritten at `04:30:34Z`, an age of
+**9 m 58 s** at the rewrite — **two seconds** under the old threshold. olt, whose payload embeds its own
+`builtAt`, was rewritten on every pass (`04:20:32 → 04:25:31 → 04:30:32`), which is also the confirmation
+of the one type that can never be a digest match.
+
+**The two changes, both client-side.** (1) `STALE_AFTER_MS`: **10 → 15 minutes**, with the arithmetic
+written in `fetch-gate.js` and in `publish-cache.gs`, and the invariant asserted across the two files in
+`tests/publish-server.test.js`:
+
+    EDGE_PUBLISH_HEARTBEAT_MS + OLT_WARM_INTERVAL_SECONDS*1000  <  STALE_AFTER_MS
+             8 min           +            5 min                 <      15 min
+
+The SUM is the claim, not the heartbeat, and the test now fails if either file moves without the other
+being reconsidered. (2) **The stale escape** — a stamp past the threshold spends **one `/exec` read** for
+that type instead of only colouring the chip: the read goes out on the URL the module itself supplied,
+the module's own applier redraws from it, and the edge's stamp is **dropped** (four of the five payloads
+carry no build time of their own, so keeping an old one would leave the chip red over bytes fetched a
+moment ago). **That is what makes an edge outage something other than a fleet showing stale numbers until
+somebody clicks REFRESH.**
+
+**Where the rate lives, and why in one place.** The chip repaints once a second for as long as a tab
+lives, and NAP's own background refresh is an hour apart — so the crossing has to spend, and nothing about
+the crossing may decide how often. `escapeIfStale()` owns that: a **5-minute gap** per type, **doubled**
+when the previous escape did not produce a current stamp (capped at 20 minutes), refused while the type is
+busy, refused for a hidden tab (`visibilitychange` brings a refresh, and that read escapes then), and
+refused when the edge is off or in cooldown — because then `/exec` is already the source. At the cap that
+is at most 12 executions an hour across five types, and only while publishing is actually stopped.
+
+**The refusals are the design, and each one is a case.** A foreground-only type has no applier recorded,
+so an escape would fetch bytes with nothing able to draw them: the module's own next draw registers one
+and the chip asks again on the next paint. One question (is it stale?) is asked by both the chip and the
+escape, so a red chip and a spent read cannot disagree about what stale means. And an UNKNOWN stamp is
+never stale: the four modules without a stamp of their own keep the wording they always had.
+
+**Honest gaps.** (a) There is still no browser-level observation of a red chip going green after an
+escape — no sessioned tab was available on this turn, so it stays owed and is listed rather than implied.
+(b) It does not fix the root: **olt is still written on every pass** (288/day) because its bytes carry
+`builtAt`, so it can never be a digest match; the other four are heartbeat-bound at ~144/day each. (c) The
+comment inside the pasted `publish-cache.gs` is now older than the repo's — comment-only, the pasted
+behavior is unchanged and correct, and a re-paste is optional.
+
+**Suites: 32 in `fetch-gate` (7 new — the default threshold on the real clock, one escape and the redraw
+it repairs, a current copy spending nothing, the three refusals, the gap and its doubling, a busy type,
+and a refused edge read whose /exec fallback is not escaped on top of itself), 24 in `publish-server` (the invariant case rewritten to include the pass interval), 16 in
+`cache-warmer`.** 26 suites, 0 failed. `fetch-gate.js` is precached, so this moved the release label:
+**3.9.30** (from 3.9.29), `REQUIRED_APP_VERSION` frozen at **3.10.0**, `bump-version --check` clean.

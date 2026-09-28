@@ -709,8 +709,33 @@ exception page instead of a named state; and the publisher logged **one** failur
 OLT is published first, so five failing modules looked exactly like one module failing, for about seven
 hours. The fix changed no client bytes: the worker names `503 kv_write_failed` and labels each payload
 with the digest of its own bytes, and `publish-cache.gs` publishes only what changed — with an 8-minute
-heartbeat, deliberately below the chip's 10-minute threshold so the operator sees nothing, and a 900/day
-ceiling that the heartbeat gives way to before a change does. See PART-030.
+heartbeat and a 900/day ceiling that the heartbeat gives way to before a change does. See PART-030.
+
+**Amendment, 2026-09-28 (later the same day) — the half of that claim that was wrong, and the client
+change it forced.** PART-030 said the 8-minute heartbeat was "deliberately below the chip's 10-minute
+threshold". What has to clear that threshold is the heartbeat **plus one pass**: the pass asks every 5
+minutes, so a healthy copy is **8–13 minutes** old when it is rewritten, and **10 therefore named a
+working edge stale for up to ~3 minutes before every heartbeat** — measured the same day: lcp rewritten
+at **9 m 58 s**, two seconds of margin. So `STALE_AFTER_MS` is **15 minutes** now; the invariant is
+written on both sides and asserted across the two files in `tests/publish-server.test.js`; and a copy
+that does pass the threshold is no longer only turned red: `fetch-gate.js` spends **one `/exec` read**
+on that type (the stale escape — 5-minute gap, doubling to a 20-minute cap, never for a hidden tab or a
+busy type) and drops the edge's stamp, so the app keeps updating through an edge outage instead of only
+complaining about one. This moved client bytes, so the release label moved with them: **3.9.30**. See
+PART-031.
+
+- [x] Part 25: a chip that is never red over good data, and a client that repairs a stale copy
+  - Outcome: a healthy edge copy can no longer be named stale (the chip's threshold sits above the
+    heartbeat **plus one pass**, and that invariant is asserted across the client and the pass), and a
+    copy that does pass the threshold is repaired rather than only reported — one `/exec` read for that
+    type, on the URL the module itself supplied, rate-limited by a gap that doubles to a 20-minute cap,
+    never for a hidden tab, a busy type, or a type nothing has drawn
+  - Evidence: PART-031 — 7 new cases in `tests/fetch-gate.test.js` (the default threshold on the real
+    clock, one escape and the redraw it repairs, a current copy spending nothing, the three refusals,
+    the gap and its doubling, a busy type, and a refused edge read whose `/exec` fallback is not escaped
+    on top of itself) and the cross-file invariant case in
+    `tests/publish-server.test.js` rewritten to include the pass interval; 26 suites, 0 failed;
+    **3.9.30**, because this one did move client bytes
 
 - [x] Part 24: the write budget, and a failure that names itself
   - Outcome: a pass that rebuilds five identical payloads spends one write instead of five, a changed
