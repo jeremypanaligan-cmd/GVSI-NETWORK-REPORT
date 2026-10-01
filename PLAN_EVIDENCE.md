@@ -2163,3 +2163,58 @@ it repairs, a current copy spending nothing, the three refusals, the gap and its
 and a refused edge read whose /exec fallback is not escaped on top of itself), 24 in `publish-server` (the invariant case rewritten to include the pass interval), 16 in
 `cache-warmer`.** 26 suites, 0 failed. `fetch-gate.js` is precached, so this moved the release label:
 **3.9.30** (from 3.9.29), `REQUIRED_APP_VERSION` frozen at **3.10.0**, `bump-version --check` clean.
+
+### PART-032 — A red chip with no way back: the stamp only the edge could clear (2026-10-01)
+
+**The report.** Four red *"Data as of"* chips — **NAP, LCP, NODE, BACKBONE** — with **OLT green**. It was
+neither the threshold (PART-031) nor the write budget (PART-030).
+
+**The defect, in one sentence.** `dataBuiltAt[type]` had exactly two writers — a **live edge read**
+(`cdn-source.js`) and the opening bundle — and exactly one deleter, the escape path. An `/exec` read
+never touched it. So once those four held an edge stamp, **only the edge could refresh or clear it**, and
+the escape's own precondition is a live edge.
+
+**Why that is a permanent red and not a delay.** When the edge is off — an expired or cleared token, the
+five-minute cooldown after two consecutive misses, a worker that is down — every read falls back to
+`/exec`. That path works: the data arrives every time. But it cannot touch the stamp, so `isStale()` stays
+true, and `escapeIfStale()` refuses at `!window.cdnSource.enabled()` — deliberately, because `/exec` is
+already the source and escaping it would mean asking the same origin twice. The one situation that needed
+the repair was the one situation that forbade it. The chip stayed red with no path back, and the REDDER
+it got the more it looked like a publishing outage that was not happening.
+
+**Why OLT was immune, for the third time and the same reason.** Its payload carries `meta.builtAt` **inside
+its own bytes**, so `applyOltPayload()` re-stamps it on every read — including `/exec`
+(`olt-module.js`). The other four carry no stamp of their own, which is exactly what makes an edge header
+their only source of one, and therefore the only thing that can age them.
+
+**The fix — one rule, in one place (`landRead()` in `fetch-gate.js`).** An **edge** answer keeps its stamp
+and may buy an escape; an **origin** answer **drops** it. The chip then falls back to the fetch time — the
+weaker claim (*"we asked just now"* is not *"what you see is recent"*), and precisely the claim this app
+made for these four modules before the edge existed. It is keyed on `readSource`, not on the `origin` flag
+the escape passes, so the **expired-token fallback** — an origin read that began as an edge read — is
+repaired too. OLT needs no special case in either direction: its applier re-stamps it while the module
+redraws.
+
+**Two smaller holes closed with it.** (1) **`fetchGate.registerApplier(type, render)`** — `run()` takes no
+callback, so a first load that came that way left **no applier on file**, and `escapeIfStale()` refused for
+that reason alone; the four modules now register their renderer at their own fetch entry point. (2) **A
+console line**, `escapeState(type).lastRefused`, naming why a repair is being held back — the previous
+silence is what turned a five-minute field report into a code audit. The note is cleared with the crossing
+(a green chip has nothing held back), so the next red is a fresh question.
+
+**Also corrected in passing:** the escape's own backoff now only grows on escapes that did **not** cure the
+staleness, which is what the comment always claimed, because a cured type resets its episode when it
+paints green.
+
+**Tests: 7 new cases in `fetch-gate` (39 total, was 32).** The origin answer that drops the stamp (the
+field report, written as one test), an edge refusal that falls through to `/exec`, a **current** edge
+answer that keeps its stamp, OLT restamping from its own payload, a foreground-only type that is now
+repairable, junk refused by `registerApplier` (and the URL a read supplied preserved), and the refusal
+reason named. **26 suites, 0 failed.** Client bytes moved → **3.9.31** (from 3.9.30),
+`REQUIRED_APP_VERSION` still frozen at **3.10.0**, `bump-version --check` clean.
+
+**Honest gaps.** (a) There is still no browser-level observation of a red chip going green after one of
+these paths — no sessioned tab was available, so it stays owed. (b) **OLT still spends 288 writes a day**
+because its bytes carry `builtAt` and can never be a digest match; the other four are heartbeat-bound at
+~144/day each. (c) `analytics-module.js` reads all five through `run()`, so a foreground analytics read
+with the edge off will now also drop those stamps — the same rule, applied without a special case.

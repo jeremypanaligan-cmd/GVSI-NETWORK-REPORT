@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** September 28, 2026 · 🟥 **ANG PUBLISH OUTAGE NG SEPT 27 AY NADIAGNOSE AT NAAYOS SA REPO — ang deployment ay paste pa rin** (1,440 KV writes/araw laban sa 1,000 ng free plan; **burahin ang 5 KV keys ngayon** at muling i-activate sa 08:00 PHT — tingnan ang unang P1 sa ibaba) · **3.9.29 is pushed — THE EDGE READ PATH IS LIVE.** Apps Script is no longer in the read path for any of the five data modules: the payload the warm pass has already built is published to Cloudflare KV, and the app reads it from the edge with `/exec` as the automatic fallback. All four Cloudflare steps are done, all five types are published (**nap 950 B, lcp 1,846 B, olt 216 B, node 2 B, backbone 1,983 B**) and the 5-minute trigger republishes them · **the rollback is one value**, `window.NETPULSE_CDN`, and it is the first thing to try if the edge misbehaves (see the item below) · before this, **3.9.28** (the worker half, built and dormant) and **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24) · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed for everything BELOW this item, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** October 1, 2026 · 🟩 **3.9.31 NA SA REPO — ang pulang chip na walang lunas: ang stamp na walang writer sa `/exec`** (NAP/LCP/NODE/BACKBONE pula, OLT berde; kailangan ng push para umabot ang bytes) · 🟥 **ANG PUBLISH OUTAGE NG SEPT 27 AY NADIAGNOSE AT NAAYOS SA REPO — ang deployment ay paste pa rin** (1,440 KV writes/araw laban sa 1,000 ng free plan; **burahin ang 5 KV keys ngayon** at muling i-activate sa 08:00 PHT — tingnan ang unang P1 sa ibaba) · **3.9.29 is pushed — THE EDGE READ PATH IS LIVE.** Apps Script is no longer in the read path for any of the five data modules: the payload the warm pass has already built is published to Cloudflare KV, and the app reads it from the edge with `/exec` as the automatic fallback. All four Cloudflare steps are done, all five types are published (**nap 950 B, lcp 1,846 B, olt 216 B, node 2 B, backbone 1,983 B**) and the 5-minute trigger republishes them · **the rollback is one value**, `window.NETPULSE_CDN`, and it is the first thing to try if the edge misbehaves (see the item below) · before this, **3.9.28** (the worker half, built and dormant) and **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24) · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed for everything BELOW this item, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -88,6 +88,60 @@ nakikita. Ang 900 na ceiling ay ceiling ng **heartbeat**, hindi ng katotohanan.
 pulse) mula sa `x-netpulse-built-at` ng edge, kaya mula ~02:40 ay dapat pula ang bawat ticker at
 *"Data as of 02:3x"*. **Nagsasabi ng totoo ang app; walang nakatutok.** Iyon ang naging susunod na
 hakbang: ang threshold ay naging **15 minuto** at may **stale escape** na — tingnan ang P1 sa ibaba.
+
+---
+
+## 🟩 P1 — Ang pulang chip na WALANG LUNAS: ang stamp na walang writer sa `/exec` (Okt 1, 2026 · 3.9.31)
+
+**Ang report.** Apat na pulang *"Data as of"* chip — **NAP, LCP, NODE, BACKBONE** — at **berde ang OLT**.
+Hindi ito ang threshold (naayos na sa 3.9.30) at hindi rin ito ang write cap.
+
+**Status.** Nasa repo at naka-test (**26 suites, 0 failed**, 7 bagong case sa `fetch-gate`); **kailangan ng
+push**. Release label: **3.9.30 → 3.9.31**; hindi gumalaw ang `REQUIRED_APP_VERSION` (3.10.0).
+
+**Ang ugat, isang pangungusap.** Ang `dataBuiltAt[type]` ay may **dalawang writers lamang** — ang isang
+**live edge read** (`cdn-source.js`) at ang opening bundle — at **isang deleter lang**, ang escape path.
+Ang isang `/exec` read ay **hindi ito ginagalaw**. Kaya kapag naka-stamp na ang apat mula sa edge, **ang
+edge lang** ang makakapag-refresh o makakapag-clear ng stamp nila — at ang precondition ng escape mismo ay
+isang **buhay na edge**.
+
+**Bakit permanente ang pula, at hindi lang naantala.** Kapag naka-off ang edge — expired o na-clear na
+token, ang **5-minutong cooldown** pagkatapos ng dalawang miss, o down ang worker — bumabalik ang bawat
+read sa `/exec`. **Gumagana ang path na iyon**: dumarating ang data sa bawat pagkakataon. Pero hindi nito
+magagalaw ang stamp, kaya nananatiling `isStale() === true`, at **tumatanggi ang `escapeIfStale()`** sa
+`!window.cdnSource.enabled()` — sadya, dahil `/exec` na ang source at ang pag-escape dito ay pagsusubok
+sa parehong origin nang dalawang beses. **Ang tanging sitwasyon na nangangailangan ng lunas ang siyang
+nagbabawal dito.** Pula ang chip, walang daan pabalik — at habang tumatagal, mas mukha itong isang
+publish outage na hindi naman nangyayari.
+
+**Bakit immune ang OLT (ikatlong beses, parehong dahilan).** Ang payload nito ay may sariling
+`meta.builtAt` **sa loob ng bytes**, kaya ang `applyOltPayload()` ay **nagre-restamp nito sa bawat read**
+— kasama ang `/exec` (`olt-module.js`). Ang apat ay walang stamp sa loob ng payload, at iyon mismo ang
+dahilan kung bakit ang edge header ang tanging pinagmumulan ng stamp nila — at samakatwid ang tanging
+bagay na makakapagpatanda sa kanila.
+
+**Ang fix — isang panuntunan, isang lugar (`landRead()` sa `fetch-gate.js`).** Ang isang **edge** answer
+ay nagtatago ng stamp at maaaring gumastos ng escape; ang isang **origin** answer ay **nagtatapon** nito.
+Bumabalik ang chip sa fetch time — ang weaker claim (*"we asked just now"* ay hindi *"what you see is
+recent"*), at eksaktong ang claim na ginamit ng app para sa apat na ito bago pa umiral ang edge. Naka-key
+ito sa `readSource`, hindi sa `origin` flag na ipinapasa ng escape — kaya ang **expired-token na
+fallback** (isang origin read na nagsimula bilang edge read) ay naaayos din.
+
+**Dalawang mas maliit na butas na isinara kasama nito.** (1) **`fetchGate.registerApplier(type,
+render)`** — ang `run()` ay walang callback, kaya ang isang first load na ganoon ay **walang applier sa
+file**, at tumatanggi ang escape sa dahilang iyon lamang; ang apat na module ay nagrerehistro na ng
+renderer nila sa sariling fetch entry point. (2) **Isang linya sa console**
+(`escapeState(type).lastRefused`) na nagsasabi kung **bakit** hinaharang ang lunas — ang dating katahimikan
+ang gumawa ng isang limang-minutong report na naging isang code audit.
+
+**Test.** 7 bagong case: ang origin answer na nagtatapon ng stamp (ang field report, isang test), ang edge
+refusal na bumabagsak sa `/exec`, ang isang **kasalukuyang** edge answer na nagtatago pa rin ng stamp, ang
+OLT na nagre-restamp mula sa sariling payload, ang foreground-only na type na naaayos na, ang junk na
+tinatanggihan ng `registerApplier`, at ang dahilan na pinangalanan na ngayon.
+
+**Natitirang utang.** (a) Wala pa ring **browser-level na obserbasyon** ng isang pulang chip na nagiging
+berde (walang sessioned na tab sa turn na ito). (b) Ang **OLT ay sumusulat pa rin ng 288/araw** dahil sa
+`builtAt` sa loob ng bytes nito.
 
 ---
 

@@ -724,6 +724,31 @@ busy type) and drops the edge's stamp, so the app keeps updating through an edge
 complaining about one. This moved client bytes, so the release label moved with them: **3.9.30**. See
 PART-031.
 
+**Amendment, 2026-10-01 — the third way this path could mislead: a chip with no way back.** Reported
+from the field as four red *"Data as of"* chips — **NAP, LCP, NODE, BACKBONE** — with **OLT green**.
+Neither the threshold nor the write budget was at fault. `dataBuiltAt` had exactly two writers, a live
+edge read and the opening bundle, and exactly one deleter, the escape path; an `/exec` read never
+touched it. So once those four held an edge stamp, **only the edge could refresh or clear it** — and the
+escape's own precondition is a live edge. When the edge was off (an expired token, the two-miss cooldown,
+a worker down) every read fell back to `/exec`, the escape refused at `cdnSource.enabled()` by design, and
+the chip stayed red **permanently**. A red warning with no path back is not a warning. OLT was immune for
+the same reason it always is: its payload carries `meta.builtAt`, so its applier re-stamps it on every
+read, `/exec` included. The fix is one rule in `landRead()`: an **edge** answer keeps its stamp and may
+buy an escape, an **origin** answer **drops** it and the chip falls back to the fetch time — the weaker
+claim this app made for these four modules before the edge existed. Closed with it: `registerApplier()`,
+so a foreground-only first load is no longer a type the escape must refuse, and a console line naming the
+reason a repair is held back, because a silent refusal is what turned a five-minute report into a code
+audit. Client bytes moved: **3.9.31**. See PART-032.
+
+- [x] Part 26: a red chip with no way back — the stamp only the edge could clear
+  - Outcome: an origin answer replaces the edge's age claim, so `/exec` is a repair and not merely a
+    fallback; a module registers its own renderer so the escape is never refused for a cold load; and a
+    held-back repair names its reason in the console instead of failing silently
+  - Evidence: PART-032 — 7 new cases in `tests/fetch-gate.test.js` (the origin answer dropping the stamp,
+    an edge refusal falling through to `/exec`, a current edge answer keeping its stamp, OLT restamping
+    from its own payload, the foreground-only type now repairable, junk refused by `registerApplier`, and
+    the refusal reason named); 39 cases in `fetch-gate`, 26 suites, 0 failed; **3.9.31**
+
 - [x] Part 25: a chip that is never red over good data, and a client that repairs a stale copy
   - Outcome: a healthy edge copy can no longer be named stale (the chip's threshold sits above the
     heartbeat **plus one pass**, and that invariant is asserted across the client and the pass), and a
