@@ -13,18 +13,27 @@ function transformBbService(raw) {
    goes to the network (refreshCurrentTab / backgroundRefresh). See the catch below. */
 let backboneHasDrawn = false;
 
+/* The one place BACKBONE data is drawn after a read, so the stale-escape always has something to
+   draw with even if this tab was never redrawn from cache. See fetchGate.registerApplier(). */
+function applyBackbonePayload(data) {
+  if (!data) return; // gate swallows failures — keep cached content on screen
+  if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
+  else { dataCache.backbone = []; renderBackboneEmptyState(); }
+}
+
 async function fetchBackboneData(forceRefresh = false) {
+  /* Registered on EVERY entry point, not just the cached one below: a first load goes through
+     fetchGate.run(), which takes no callback, and escapeIfStale() refuses for a type with no
+     applier — leaving a red chip that only a tab switch could clear. */
+  if (window.fetchGate) fetchGate.registerApplier('backbone', applyBackbonePayload);
+
   if (!forceRefresh && dataCache.backbone) {
     if (Array.isArray(dataCache.backbone) && dataCache.backbone.length > 0) {
       renderBackboneReport(dataCache.backbone);
     } else {
       renderBackboneEmptyState();
     }
-    fetchGate.fetchQueued('backbone', BASE_API_URL + "?type=backbone", data => {
-      if (!data) return; // gate swallows failures — keep cached content on screen
-      if (Array.isArray(data) && data.length > 0) { dataCache.backbone = data; renderBackboneReport(data); }
-      else { dataCache.backbone = []; renderBackboneEmptyState(); }
-    });
+    fetchGate.fetchQueued('backbone', BASE_API_URL + "?type=backbone", applyBackbonePayload);
     return;
   }
 

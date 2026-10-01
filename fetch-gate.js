@@ -57,6 +57,7 @@
   var escape = {};      // type -> {count, lastAt, gapMs} — see escapeIfStale()
   var readSource = {};  // type -> 'edge' | 'origin' for the read now settling: only an edge answer
                         // can be current-but-old, and only a landed read may spend an escape
+  var _refusalNoted = {}; // type -> the reason last logged for a repair that was held back
 
   function nowMs() {
     return Date.now();
@@ -181,6 +182,36 @@
     });
   }
 
+  /* WHAT A LANDED READ IS ALLOWED TO CLAIM ABOUT ITS OWN AGE.
+
+     Two answers can land on one type, and they age differently.
+
+     An EDGE answer carries the server's build stamp, so the chip can say "Data as of 09:12" — and
+     if that stamp is old, the escape gets to spend one origin read on it (see escapeIfStale).
+
+     An ORIGIN answer carries no stamp at all for four of the five types, and that is the whole
+     reason this function exists. Without it the edge's old stamp stays on the chip over bytes
+     fetched a moment ago — and because the escape's own precondition is a LIVE edge, the chip
+     would stay red for as long as the edge was down, in its five-minute cooldown, or holding an
+     expired token. A red warning with no way back is not a warning; on 2026-10-01 it was exactly
+     the shape reported from the field (NAP, LCP, NODE, BACKBONE red, OLT fine), because /exec was
+     answering every one of them and nothing was allowed to say so.
+
+     So an origin answer DROPS the stamp and the chip falls back to the fetch time. That is the
+     weaker claim — "we asked just now" is not "what you see is recent" — and it is precisely the
+     claim this app made for these four modules before the edge existed, so nothing is being
+     smuggled in under cover of a repair. It is also how a device whose edge token just expired
+     recovers: the /exec read that answers in the edge's place IS a fresh answer, and it has to be
+     allowed to say so.
+
+     OLT needs no special case in either direction: its payload carries meta.builtAt, so its own
+     applier re-stamps it while the module redraws, after this runs.
+   */
+  function landRead(type) {
+    if (readSource[type] === 'edge') { escapeIfStale(type); return; }
+    delete dataBuiltAt[type];
+  }
+
   /* Foreground path: dedupe only, no throttle. Rejects on failure. */
   function run(type, url) {
     if (inflight[type]) return inflight[type];
@@ -190,12 +221,11 @@
     var p = start(type, url);
     return settle(type, p).then(function (data) {
       stampSuccess(type);
-
-      /* A read that landed is the only place an edge's age can be acted on — see escapeIfStale().
-         A foreground load on a tab that was drawn before has an applier on file, so this is not a
-         dead check: it is the REFRESH button and the visibilitychange refresh getting the same
-         repair as a background read. */
-      if (readSource[type] === 'edge') escapeIfStale(type);
+      /* A read that landed is the only place an edge's age can be acted on — a foreground load on
+         a tab that was drawn before has an applier on file, so this is not a dead check: it is the
+         REFRESH button, the visibilitychange refresh and the analytics tab getting the same
+         treatment as a background read. See landRead(). */
+      landRead(type);
       return data;
     });
     // rejection propagates untouched — callers keep their existing error UI
@@ -227,24 +257,10 @@
     return settle(type, p).then(
       function (data) {
         stampSuccess(type);
-
-        /* The edge ANSWERED. That is not the same claim as the edge being CURRENT — the stamp it
-           just handed the chip (noted inside that same promise, in cdn-source.js) is the only
-           evidence either way, and on a warm tab a read is the only place staleness is ever
-           noticed. An origin read is never checked here: it is already the escape. */
-        if (readSource[type] === 'edge') escapeIfStale(type);
-
-        /* THE ORIGIN'S OWN ANSWER, AND WHAT MAY BE CLAIMED ABOUT IT.
-
-           An escape has just established that the edge's copy was too old, and four of the five
-           payloads carry no build stamp of their own: keeping the edge's old stamp would leave the
-           chip red over bytes that were fetched a moment ago, and would invite the next escape. So
-           the stamp is dropped and the chip falls back to the fetch time — the weaker claim, and
-           the same one this app made for these four modules before the edge existed. OLT needs no
-           help here either way: its payload carries meta.builtAt, and applyOltPayload() stamps it
-           while the applier below runs. */
-        if (origin) delete dataBuiltAt[type];
-
+        /* The edge ANSWERED, or the origin did. Which one it was decides what may be claimed about
+           the age — an edge answer is checked for staleness and may buy an escape, an origin answer
+           drops the edge's stamp. Both live in landRead(). */
+        landRead(type);
         if (apply) apply(data);
         return data;
       },
@@ -285,9 +301,9 @@
   var ESCAPE_MAX_GAP_MS = 20 * 60 * 1000;
 
   /* How this type was last read, so an escape has somewhere to put what it finds. The applier is
-     kept when a later caller brings none: run() is the foreground loader and hands its data back to
-     the module instead of taking a callback, and it must not erase the one fetchQueued supplied a
-     moment earlier. */
+     kept when a later caller brings none: run() is the foreground loader and hands its data back
+     to the module instead of taking a callback, and it must not erase the one fetchQueued supplied
+     a moment earlier. */
   function recordRead(type, url, apply) {
     var prev = lastRead[type];
     lastRead[type] = {
@@ -296,11 +312,50 @@
     };
   }
 
+  /* THE MODULE'S OWN WAY TO DRAW THIS TYPE, REGISTERED ONCE PER TYPE RATHER THAN PER READ.
+
+     WHY IT EXISTS. recordRead() only ever learns an applier from a caller that brought one, and
+     the modules bring one only on their CACHED branch (fetchGate.fetchQueued). Every other route
+     to a type goes through run() — the first load, the hourly / ten-minute / five-minute refresh,
+     the rev watch, visibilitychange, the analytics tab — and run() hands its data back and takes
+     no callback. So a device whose first load of a type was foreground had NO applier on file, and
+     escapeIfStale() refuses for exactly that reason: there would be nothing to draw what an escape
+     found. The chip then stayed red until the user happened to leave the tab and come back, which
+     is the one repair nobody should have to perform.
+
+     The URL is deliberately left to recordRead(): an applier registered before any read has no URL
+     yet, and by the time a stamp exists that could go stale, a read has supplied one. */
+  function registerApplier(type, apply) {
+    if (typeof apply !== 'function') return false;
+    var prev = lastRead[type];
+    lastRead[type] = { url: (prev && prev.url) || '', apply: apply };
+    return true;
+  }
+
   /* A read that came back current forgets the whole episode, including the backoff. */
   function forgetEscape(type) {
+    delete _refusalNoted[type];
     if (escape[type]) {
       escape[type].gapMs = ESCAPE_MIN_GAP_MS;
       escape[type].count = 0;
+      escape[type].lastRefused = '';
+    }
+  }
+
+  /* WHY A REPAIR IS BEING HELD BACK, SAID OUT LOUD ONCE.
+
+     escapeIfStale() refuses far more often than it fires, and every refusal used to be silent. A
+     chip that is red for minutes with nothing in the console is a complaint nobody can act on —
+     on 2026-10-01 the field report was four red chips and no way to tell which precondition was
+     holding them there. One line per (type, reason), cleared the moment the type is healthy, so a
+     permanently red chip leaves exactly the evidence needed to name its cause and no noise. */
+  function refuseEscape_(type, reason) {
+    var e = escape[type] || (escape[type] = { count: 0, lastAt: 0, gapMs: ESCAPE_MIN_GAP_MS });
+    e.lastRefused = reason;
+    if (_refusalNoted[type] === reason) return;
+    _refusalNoted[type] = reason;
+    if (window.console && console.info) {
+      console.info('[FetchGate] ' + type + ' is stale and the origin repair is held back: ' + reason);
     }
   }
 
@@ -325,14 +380,26 @@
     if (!isStale(type)) { forgetEscape(type); return false; }
 
     var last = lastRead[type];
-    if (!last || typeof last.apply !== 'function') return false;
+    if (!last || typeof last.apply !== 'function') {
+      /* Repaired by registerApplier() at the module's own fetch entry point — a type this device
+         has drawn at least once has one, so this is the cold-load hole and nothing else. */
+      refuseEscape_(type, 'no applier is registered for this type');
+      return false;
+    }
     if (!window.cdnSource || typeof window.cdnSource.enabled !== 'function' ||
-        !window.cdnSource.enabled()) return false;
-    if (!isVisible_()) return false;
-    if (inflight[type]) return false;
+        !window.cdnSource.enabled()) {
+      refuseEscape_(type, 'the edge is off (no host, no token, or a cooldown), so /exec is already the source');
+      return false;
+    }
+    if (!isVisible_()) { refuseEscape_(type, 'the tab is hidden'); return false; }
+    if (inflight[type]) { refuseEscape_(type, 'a read for this type is already in flight'); return false; }
 
     var e = escape[type] || (escape[type] = { count: 0, lastAt: 0, gapMs: ESCAPE_MIN_GAP_MS });
-    if (e.lastAt && (nowMs() - e.lastAt) < e.gapMs) return false;
+    if (e.lastAt && (nowMs() - e.lastAt) < e.gapMs) {
+      refuseEscape_(type, 'the gap before the next repair has not elapsed (' +
+                          Math.round(e.gapMs / 60000) + 'm after the last one)');
+      return false;
+    }
 
     /* An escape that did not bring a current stamp is evidence about the publisher, not about the
        edge's age, so the next one waits longer. Counted here rather than on every read so the
@@ -340,6 +407,8 @@
     if (e.count > 0) e.gapMs = Math.min(e.gapMs * 2, ESCAPE_MAX_GAP_MS);
     e.count++;
     e.lastAt = nowMs();
+    e.lastRefused = '';
+    delete _refusalNoted[type];
 
     startQueued(type, last.url, last.apply, true);
     return true;
@@ -495,7 +564,14 @@
        visibility check and the busy check — and refuses rather than queues. One owner, so a red
        chip cannot become sixty reads a minute, and a crossing that could not act (no applier yet,
        a hidden tab, a busy type) simply asks again on the next paint. */
-    if (state === 'stale') escapeIfStale(type);
+    if (state === 'stale') {
+      escapeIfStale(type);
+    } else {
+      /* A chip that is GREEN has nothing held back, so the refusal note from the last crossing is
+         dropped with it. A repair that was refused and then stopped being needed must not leave
+         escapeState() describing a condition that is no longer true. */
+      forgetEscape(type);
+    }
   }
 
   /* Called after every module render: restores the chip if the tab's HTML
@@ -535,6 +611,10 @@
        with meta.builtAt from the response they just rendered. */
     noteBuiltAt: noteBuiltAt,
 
+    /* The module's own renderer for this type, so the escape is never blocked by "no applier"
+       on a device whose first load of it was foreground. See registerApplier(). */
+    registerApplier: registerApplier,
+
     /* The fetch time of a payload restored from storage. See cache-store.js. */
     seedLastFetch: seedLastFetch,
 
@@ -552,7 +632,8 @@
     escapeIfStale: escapeIfStale,
     escapeState: function (type) {
       var e = escape[type];
-      return e ? { count: e.count, lastAt: e.lastAt, gapMs: e.gapMs } : null;
+      return e ? { count: e.count, lastAt: e.lastAt, gapMs: e.gapMs,
+                   lastRefused: e.lastRefused || '' } : null;
     },
     shouldDefer: function (type) {
       return (nowMs() - (lastFetchAt[type] || 0)) < MIN_INTERVAL_MS;

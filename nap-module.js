@@ -8,14 +8,25 @@
    the same rule, written down. */
 let napHasDrawn = false;
 
+/* The one place NAP data is drawn after a read, so the stale-escape always has something to draw
+   with even if this tab was never redrawn from cache. See fetchGate.registerApplier(). */
+function applyNapPayload(data) {
+  if (!data) return;
+  dataCache.nap = data;
+  renderNapReport(data);
+}
+
 async function fetchNapData(forceRefresh = false) {
+  /* Registered on EVERY entry point, not just the cached one below: a first load goes through
+     fetchGate.run(), which takes no callback, and escapeIfStale() refuses for a type with no
+     applier — leaving a red chip that only a tab switch could clear. */
+  if (window.fetchGate) fetchGate.registerApplier('nap', applyNapPayload);
+
   // Show cached data instantly (no skeleton)
   if (!forceRefresh && dataCache.nap) {
     renderNapReport(dataCache.nap);
     // Still fetch fresh data in background (deduped + throttled by the shared gate)
-    fetchGate.fetchQueued('nap', BASE_API_URL + "?type=nap", data => {
-      if (data) { dataCache.nap = data; renderNapReport(data); }
-    });
+    fetchGate.fetchQueued('nap', BASE_API_URL + "?type=nap", applyNapPayload);
     return;
   }
 

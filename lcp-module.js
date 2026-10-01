@@ -1,12 +1,24 @@
 // ====================== LCP MODULE ======================
 
+/* The one place LCP data is drawn after a read, so the stale-escape always has something to draw
+   with even if this tab was never redrawn from cache. See fetchGate.registerApplier(). */
+function applyLcpPayload(data) {
+  if (data && data.lcpAging) {
+    dataCache.lcp = data;
+    renderLcpReport(data.lcpAging, data.lcpImpact || []);
+  }
+}
+
 async function fetchLcpData(forceRefresh = false) {
+  /* Registered on EVERY entry point, not just the cached one below: a first load goes through
+     fetchGate.run(), which takes no callback, and escapeIfStale() refuses for a type with no
+     applier — leaving a red chip that only a tab switch could clear. */
+  if (window.fetchGate) fetchGate.registerApplier('lcp', applyLcpPayload);
+
   if (!forceRefresh && dataCache.lcp) {
     renderLcpReport(dataCache.lcp.lcpAging, dataCache.lcp.lcpImpact);
     // Deduped + throttled background refresh via the shared gate
-    fetchGate.fetchQueued('lcp', BASE_API_URL + "?type=lcp", data => {
-      if (data && data.lcpAging) { dataCache.lcp = data; renderLcpReport(data.lcpAging, data.lcpImpact || []); }
-    });
+    fetchGate.fetchQueued('lcp', BASE_API_URL + "?type=lcp", applyLcpPayload);
     return;
   }
 

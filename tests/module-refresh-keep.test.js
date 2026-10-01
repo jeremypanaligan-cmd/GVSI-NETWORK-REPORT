@@ -140,7 +140,8 @@ function sandbox(moduleFile) {
     fetchGate: {
       run: () => Promise.reject(new Error('the test never installed a read')),
       fetchQueued: () => Promise.resolve(null),
-      refreshTicker: () => {}
+      refreshTicker: () => {},
+      registerApplier: () => true
     }
   };
   /* In a vm sandbox the context object IS the global, so `window` pointing back at it is what

@@ -5,18 +5,27 @@
    goes to the network (refreshCurrentTab / backgroundRefresh). See the catch below. */
 let nodeHasDrawn = false;
 
+/* The one place NODE data is drawn after a read, so the stale-escape always has something to draw
+   with even if this tab was never redrawn from cache. See fetchGate.registerApplier(). */
+function applyNodePayload(data) {
+  if (!data) return; // gate swallows failures — keep cached content on screen
+  if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
+  else { dataCache.node = []; renderNodeEmptyState(); }
+}
+
 async function fetchNodeData(forceRefresh = false) {
+  /* Registered on EVERY entry point, not just the cached one below: a first load goes through
+     fetchGate.run(), which takes no callback, and escapeIfStale() refuses for a type with no
+     applier — leaving a red chip that only a tab switch could clear. */
+  if (window.fetchGate) fetchGate.registerApplier('node', applyNodePayload);
+
   if (!forceRefresh && dataCache.node) {
     if (Array.isArray(dataCache.node) && dataCache.node.length > 0) {
       renderNodeReport(dataCache.node);
     } else {
       renderNodeEmptyState();
     }
-    fetchGate.fetchQueued('node', BASE_API_URL + "?type=node", data => {
-      if (!data) return; // gate swallows failures — keep cached content on screen
-      if (Array.isArray(data) && data.length > 0) { dataCache.node = data; renderNodeReport(data); }
-      else { dataCache.node = []; renderNodeEmptyState(); }
-    });
+    fetchGate.fetchQueued('node', BASE_API_URL + "?type=node", applyNodePayload);
     return;
   }
 

@@ -771,6 +771,160 @@ async function test(name, fn) {
     assert.strictEqual(state.fetchCount, 1, 'a busy type buys a second execution for nothing');
   });
 
+  /* -------------------- the stamp a LANDED read may claim (the permanent-red fix) -------------------- */
+
+  await test('landRead: an origin answer drops the edge stamp, so the chip cannot stay red with the edge off', async () => {
+    /* THE FIELD REPORT OF 2026-10-01, in one test. Four chips were red and would not repair, OLT was
+       fine, and the cause was not the threshold or the edge: it was that dataBuiltAt had no writer
+       on the /exec path. The stamp could only be refreshed or cleared by a LIVE edge, and the
+       escape's own precondition is a live edge — so the one situation that needed the repair was
+       the one situation that forbade it. */
+    const { gate, state, tabs } = makeSandbox({ cdn: true, cdnEnabled: () => false });
+    state.now = 1700000000000;
+    gate.registerApplier('nap', () => {});
+
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);   // the stamp the device is holding, and old
+    gate.refreshTicker('nap');
+    const chip = tickerChip(tabs, 'nap');
+    assert.strictEqual(chip.getAttribute('data-state'), 'stale', 'a twenty-minute stamp is red');
+
+    // The token expired, so every read is /exec now — and it answers.
+    const q = gate.fetchQueued('nap', 'exec/nap', () => {});
+    state.pending[0].resolve([]);
+    await q;
+
+    assert.strictEqual(gate.dataBuiltAt('nap'), 0,
+      'the origin answer drops the stamp it can no longer vouch for');
+    assert.strictEqual(gate.isStale('nap'), false, 'so the red chip has a way back');
+    gate.refreshTicker('nap');
+    assert.strictEqual(chip.getAttribute('data-state'), 'ok');
+    assert.strictEqual(chip.textContent, 'Updated just now',
+      'and it says the weaker, honest thing instead of staying red forever');
+  });
+
+  await test('landRead: an edge refusal that falls through to /exec clears the stamp too', async () => {
+    /* The expired-token path is an ORIGIN read even though the edge was enabled when it started.
+       readSource records that, which is why the fix is keyed on the source rather than on the
+       `origin` flag the escape passes. */
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);
+
+    const q = gate.fetchQueued('nap', 'exec/nap', () => {});
+    edge.pending[0].d.reject(new Error('edge HTTP 401'));
+    await sleep(0);
+    state.pending[0].resolve([]);
+    await q;
+
+    assert.strictEqual(state.lastUrl, 'exec/nap', 'the fallback answered');
+    assert.strictEqual(gate.dataBuiltAt('nap'), 0, '/exec answered, so /exec is what the chip reports');
+    assert.strictEqual(gate.isStale('nap'), false);
+  });
+
+  await test('landRead: a CURRENT edge answer still keeps its stamp, which is the whole point', async () => {
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+    const stamp = state.now - 4 * 60 * 1000;
+
+    const q = gate.fetchQueued('nap', 'exec/nap', () => {});
+    edge.answer(0, [], stamp);
+    await q;
+
+    assert.strictEqual(gate.dataBuiltAt('nap'), stamp,
+      'only an ORIGIN answer is weaker than the stamp — an edge answer still gets to claim it');
+    assert.strictEqual(state.fetchCount, 0, 'and a healthy stamp spends nothing');
+  });
+
+  await test('landRead: OLT is re-stamped by its own payload after the origin answer lands', async () => {
+    /* OLT carries meta.builtAt inside its bytes, so it never depended on the edge stamp — the fix
+       must not break the one module that was already immune. */
+    const { gate, state } = makeSandbox({ cdn: true, cdnEnabled: () => false });
+    state.now = 1700000000000;
+    gate.noteBuiltAt('olt', state.now - 30 * 60 * 1000);
+
+    const q = gate.fetchQueued('olt', 'exec/olt', d => gate.noteBuiltAt('olt', d.meta.builtAt));
+    state.pending[0].resolve({ meta: { builtAt: state.now - 3 * 60 * 1000 } });
+    await q;
+
+    assert.strictEqual(gate.dataBuiltAt('olt'), state.now - 3 * 60 * 1000,
+      'the applier restamps OLT from its own payload, exactly as applyOltPayload does');
+    assert.strictEqual(gate.isStale('olt'), false);
+  });
+
+  /* -------------------- registerApplier (the cold-load hole) -------------------- */
+
+  await test('registerApplier: a type whose only read was foreground can now be repaired', async () => {
+    /* run() takes no callback, so a first load that came that way left NO applier on file and
+       escapeIfStale() refused for that reason alone — the chip stayed red until the user happened
+       to leave the tab and come back. The module registers its renderer at its entry point now. */
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+    const drawn = [];
+
+    gate.registerApplier('nap', d => drawn.push(d));
+
+    const q = gate.run('nap', 'exec/nap');            // foreground: brings no applier of its own
+    edge.answer(0, [{ A: 'edge' }], state.now - 20 * 60 * 1000);
+    await q;
+
+    assert.strictEqual(state.fetchCount, 1,
+      'the registered renderer is enough for the stale stamp to buy one origin read');
+    state.pending[0].resolve([{ A: 'origin' }]);
+    await sleep(0);
+    assert.deepStrictEqual(drawn, [[{ A: 'origin' }]], 'and it is what draws the repair');
+  });
+
+  await test('registerApplier: junk is refused, and it never loses the URL a read supplied', async () => {
+    const { gate, state, edge } = makeSandbox({ cdn: true });
+    state.now = 1700000000000;
+
+    assert.strictEqual(gate.registerApplier('nap', null), false, 'null is not a renderer');
+    assert.strictEqual(gate.registerApplier('nap', 'renderNapReport'), false, 'nor is a string');
+
+    const q = gate.fetchQueued('nap', 'exec/nap', () => {});
+    edge.answer(0, [], state.now - 20 * 60 * 1000);
+    await q;
+    assert.strictEqual(state.fetchCount, 1, 'the applier fetchQueued supplied escapes as before');
+
+    /* A registration arriving AFTER the read keeps the URL that read recorded, so the next escape
+       is addressed to the same place rather than to an empty string. */
+    state.pending[0].resolve([]);
+    await sleep(0);
+    state.now += 6 * 60 * 1000;
+    gate.noteBuiltAt('nap', state.now - 20 * 60 * 1000);
+    gate.registerApplier('nap', () => {});
+    gate.refreshTicker('nap');
+    assert.strictEqual(state.fetchCount, 2, 'and it fires against the URL the read recorded');
+    assert.strictEqual(state.lastUrl, 'exec/nap');
+  });
+
+  /* -------------------- a held-back repair says why -------------------- */
+
+  await test('escapeState: a held-back repair names its reason instead of failing silently', async () => {
+    /* The reason the field report took a code audit to explain: a red chip logged nothing at all
+       about WHY nothing was happening. */
+    const edgeOff = makeSandbox({ cdn: true, cdnEnabled: () => false });
+    edgeOff.state.now = 1700000000000;
+    edgeOff.gate.registerApplier('nap', () => {});
+    edgeOff.gate.noteBuiltAt('nap', edgeOff.state.now - 20 * 60 * 1000);
+    edgeOff.gate.refreshTicker('nap');
+    assert.strictEqual(edgeOff.state.fetchCount, 0, 'the edge is off, so nothing is spent');
+    assert.ok(edgeOff.gate.escapeState('nap').lastRefused.indexOf('the edge is off') === 0,
+      'and it says so: ' + edgeOff.gate.escapeState('nap').lastRefused);
+
+    const noApplier = makeSandbox({ cdn: true });
+    noApplier.state.now = 1700000000000;
+    noApplier.gate.noteBuiltAt('nap', noApplier.state.now - 20 * 60 * 1000);
+    noApplier.gate.refreshTicker('nap');
+    assert.strictEqual(noApplier.gate.escapeState('nap').lastRefused,
+      'no applier is registered for this type', 'the other half of the hole, named');
+
+    // A live read clears the note, so the next red chip is a fresh question.
+    edgeOff.gate.noteBuiltAt('nap', edgeOff.state.now);
+    edgeOff.gate.refreshTicker('nap');
+    assert.strictEqual(edgeOff.gate.escapeState('nap').lastRefused, '');
+  });
+
   // Ticker tests leave 1s intervals running — sweep them so node can exit.
   ACTIVE_TIMERS.splice(0).forEach(h => clearInterval(h));
 
