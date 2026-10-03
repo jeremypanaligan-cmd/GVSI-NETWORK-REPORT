@@ -2,7 +2,7 @@
 
 **This is the current, ordered queue of work** — not an audit. Read it top-down; P1 is next.
 
-**Last updated:** October 1, 2026 · 🟩 **3.9.31 NA SA REPO — ang pulang chip na walang lunas: ang stamp na walang writer sa `/exec`** (NAP/LCP/NODE/BACKBONE pula, OLT berde; kailangan ng push para umabot ang bytes) · 🟥 **ANG PUBLISH OUTAGE NG SEPT 27 AY NADIAGNOSE AT NAAYOS SA REPO — ang deployment ay paste pa rin** (1,440 KV writes/araw laban sa 1,000 ng free plan; **burahin ang 5 KV keys ngayon** at muling i-activate sa 08:00 PHT — tingnan ang unang P1 sa ibaba) · **3.9.29 is pushed — THE EDGE READ PATH IS LIVE.** Apps Script is no longer in the read path for any of the five data modules: the payload the warm pass has already built is published to Cloudflare KV, and the app reads it from the edge with `/exec` as the automatic fallback. All four Cloudflare steps are done, all five types are published (**nap 950 B, lcp 1,846 B, olt 216 B, node 2 B, backbone 1,983 B**) and the 5-minute trigger republishes them · **the rollback is one value**, `window.NETPULSE_CDN`, and it is the first thing to try if the edge misbehaves (see the item below) · before this, **3.9.28** (the worker half, built and dormant) and **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24) · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed for everything BELOW this item, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
+**Last updated:** October 3, 2026 · 🟢 **3.9.32 NA-PUSH — naka-backfill na ang About → What's New: sampung release (3.9.22–3.9.31) na hindi naitala, at isang 3.9.32 entry; 3.9.20 pa ang huli bago nito** (ang `index.html` ay nasa precache, kaya gumalaw ang label 3.9.31 → 3.9.32; `cefdbdb`, buhay sa GitHub Pages — tingnan ang bagong item sa ibaba) · 🟩 **3.9.31 NA-PUSH — ang pulang chip na walang lunas: ang stamp na walang writer sa `/exec`** (NAP/LCP/NODE/BACKBONE pula, OLT berde) · 🟥 **ANG PUBLISH OUTAGE NG SEPT 27 AY NADIAGNOSE AT NAAYOS SA REPO — ang deployment ay paste pa rin** (1,440 KV writes/araw laban sa 1,000 ng free plan; **burahin ang 5 KV keys ngayon** at muling i-activate sa 08:00 PHT — tingnan ang unang P1 sa ibaba) · **3.9.29 is pushed — THE EDGE READ PATH IS LIVE.** Apps Script is no longer in the read path for any of the five data modules: the payload the warm pass has already built is published to Cloudflare KV, and the app reads it from the edge with `/exec` as the automatic fallback. All four Cloudflare steps are done, all five types are published (**nap 950 B, lcp 1,846 B, olt 216 B, node 2 B, backbone 1,983 B**) and the 5-minute trigger republishes them · **the rollback is one value**, `window.NETPULSE_CDN`, and it is the first thing to try if the edge misbehaves (see the item below) · before this, **3.9.28** (the worker half, built and dormant) and **3.9.27** (the zero-total rows) and 3.9.26 (the Module Health header alignment), with 3.9.25 carrying everything that had queued up behind it (3.9.21–3.9.24) · the NAP/LCP sheet ranges are committed and pushed too (`69fde49`, fixture moved with them) · **the server half is still owed for everything BELOW this item, and all of it is pastes** · **Security Roadmap Phase 1 (Tier 0 + Tier 3) is scheduled for off-peak — see the security section below**
 
 ---
 
@@ -96,8 +96,9 @@ hakbang: ang threshold ay naging **15 minuto** at may **stale escape** na — ti
 **Ang report.** Apat na pulang *"Data as of"* chip — **NAP, LCP, NODE, BACKBONE** — at **berde ang OLT**.
 Hindi ito ang threshold (naayos na sa 3.9.30) at hindi rin ito ang write cap.
 
-**Status.** Nasa repo at naka-test (**26 suites, 0 failed**, 7 bagong case sa `fetch-gate`); **kailangan ng
-push**. Release label: **3.9.30 → 3.9.31**; hindi gumalaw ang `REQUIRED_APP_VERSION` (3.10.0).
+**Status.** Nasa repo, naka-test (**26 suites, 0 failed**, 7 bagong case sa `fetch-gate`), at
+**naka-push** (`b5956cf`, `07c3f00`). Release label: **3.9.30 → 3.9.31**; hindi gumalaw ang
+`REQUIRED_APP_VERSION` (3.10.0).
 
 **Ang ugat, isang pangungusap.** Ang `dataBuiltAt[type]` ay may **dalawang writers lamang** — ang isang
 **live edge read** (`cdn-source.js`) at ang opening bundle — at **isang deleter lang**, ang escape path.
@@ -145,11 +146,41 @@ berde (walang sessioned na tab sa turn na ito). (b) Ang **OLT ay sumusulat pa ri
 
 ---
 
+## ✅ P3 — 3.9.32: ang What's New na sampung release na nahuli, naka-backfill na (Okt 3, 2026)
+
+**Status.** Naka-push (`cefdbdb`) at **buhay sa GitHub Pages**. Release label: **3.9.31 → 3.9.32**;
+hindi gumalaw ang `REQUIRED_APP_VERSION` (3.10.0).
+
+**Ang problema.** Ang *What's New* sa About ay tumigil sa **3.9.20** habang umaabot ang app sa
+**3.9.31** — **sampung release (3.9.22–3.9.31)** na wala kahit saan mababasa ng user. Ang **3.9.21 ay
+hindi kailanman na-release** (`version.json` ay dumiretso mula 3.9.20 sa 3.9.22), kaya sadyang wala
+itong entry.
+
+**Ang ginawa.** Sampung entry mula sa shipped commit history, isa kada release na tumakbo, sa sariling
+boses at format ng About (bold title + `(New)`/`(Fix)`/`(Improvement)`/`(Performance)`, pinakabago
+muna). May **3.9.32** entry na pinapangalanan ang backfill mismo sa halip na mag-imbento ng feature na
+wala naman.
+
+**Bakit kailangan ng label.** Ang `index.html` ay nasa `STATIC_ASSETS` (precache). Noong hindi pa
+gumagalaw ang label, sinabi ng `bump-version --check`: *"delivery set changed, release did not … These
+bytes will NOT reach an installed device."* Kaya 3.9.31 → 3.9.32 sa anim na label sites (`sw.js`
+`STATIC_CACHE`, dalawang `?v=` sa `index.html`, at manifest `version`/`id`/`start_url`). Mano-manong
+splice ang mga label para manatiling **CRLF** — LF kasi ang isinusulat ng script sa `version.json`.
+
+**Beripikasyon.** 26 suites, 0 failed; `bump-version --check` malinis; live: `version.json` 3.9.32,
+`STATIC_CACHE = gvsi-shell-v3.9.32`, nasa served `index.html` ang mga entry 3.9.22/31/32, at lahat ng
+`?v=` ay 3.9.32.
+
+**Utang.** Wala pang test na nagtatakda na ang pinakabagong *What's New* entry ay tumutugma sa
+`version.json`, o na walang shipped version na nawawala sa listahan — iyon ang gagawa nitong hindi na
+maulit.
+
+---
+
 ## 🟩 P1 — Ang pulang chip sa healthy na edge: threshold + stale escape (Sept 28, 2026 · 3.9.30)
 
-**Status.** Nasa repo at naka-test (**26 suites, 0 failed**); **kailangan ng push** para umabot ang
-bytes sa mga device. Ang release label ay umakyat sa **3.9.30**; hindi gumalaw ang
-`REQUIRED_APP_VERSION` (3.10.0).
+**Status.** Nasa repo, naka-test (**26 suites, 0 failed**), at **naka-push** (`fd41c79`). Ang release
+label ay umakyat sa **3.9.30**; hindi gumalaw ang `REQUIRED_APP_VERSION` (3.10.0).
 
 **Ang depekto, nasukat.** Ang skip logic ay nag-rewrite lang kapag ang kopya sa edge ay **bago pa sa
 8 minuto**, at ang pass ay tuwing **5 minuto** — kaya ang edad ng isang **healthy** na kopya sa

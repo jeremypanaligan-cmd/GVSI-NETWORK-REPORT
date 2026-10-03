@@ -2218,3 +2218,43 @@ these paths — no sessioned tab was available, so it stays owed. (b) **OLT stil
 because its bytes carry `builtAt` and can never be a digest match; the other four are heartbeat-bound at
 ~144/day each. (c) `analytics-module.js` reads all five through `run()`, so a foreground analytics read
 with the edge off will now also drop those stamps — the same rule, applied without a special case.
+
+### PART-033 — the What's New list, ten releases behind (2026-10-03)
+
+**The gap.** The About tab's *What's New* list ended at **3.9.20** while the app shipped through
+**3.9.31**. Ten releases — **3.9.22 through 3.9.31**, since 3.9.21 was never published — had no entry
+anywhere a user could read them: the edge read path, the single-request opening, the last-session
+restore, the zero-row NAP/LCP tables, the Module Health alignment, the stall-retry change, the
+failed-refresh keep, the threshold and the stale escape, and the origin repair. Every one of them was
+described in its own commit body and its own PART, and none of them in the app.
+
+**The backfill.** Ten entries were written from the shipped commit history — one per release that
+actually went out — in the About tab's own voice and format (bold title, `(New)` / `(Fix)` /
+`(Improvement)` / `(Performance)`, newest first). A **3.9.32** entry names the backfill itself rather
+than inventing a feature it does not have. **`Version 3.9.21` is deliberately absent**: it never
+shipped — `version.json` went from 3.9.20 straight to 3.9.22 — and an entry for a version nobody ran
+would be a fiction.
+
+**Why this needed a release label, and not just a commit.** `index.html` is in `STATIC_ASSETS`, the
+precache set `sw.js` re-fetches at install. `bump-version.mjs` has a check for exactly this shape —
+`unpublishedDrift` — and on the first edit, with the label still at 3.9.31, it said so in its own
+words: *"delivery set changed, release did not … These bytes will NOT reach an installed device."* A
+changed precached byte under an unchanged cache generation is the silent publish the whole tooling
+exists to refuse. So the label moved **3.9.31 → 3.9.32** across all six sites (`sw.js`
+`STATIC_CACHE`, the two `?v=` tokens in `index.html`, and manifest `version` / `id` / `start_url`),
+`version.json` moved with them, and **`REQUIRED_APP_VERSION` stayed frozen at 3.10.0**.
+
+**CRLF kept by hand.** The labels were spliced with a targeted replace rather than by running
+`bump-version.mjs patch`, because the script writes `version.json` as `JSON.stringify(...) + '\n'` —
+**LF**, against a CRLF checkout — and a bump that also re-encodes a file fights the diff for no
+reason. The four changed files are CRLF in and CRLF out, verified.
+
+**Verified.** `bump-version --check` clean, every label reading **3.9.32**; **26 suites, 0 failed**.
+Live on GitHub Pages: `version.json` = 3.9.32, `sw.js` `STATIC_CACHE = 'gvsi-shell-v3.9.32'`,
+`index.html` carrying the 3.9.22, 3.9.31 and 3.9.32 entries, and every `?v=` token reading 3.9.32.
+Commit `cefdbdb`, pushed `07c3f00..cefdbdb`.
+
+**The lesson, and the missing guard.** *What's New* is content inside a delivery asset, so editing it
+is a release, not a note. Nothing in the tree ties the list to `version.json`, which is why it could
+drift eleven versions without a single check turning red; a test asserting that the newest entry
+names the release — or that no shipped version is missing — would have caught this at 3.9.21.
