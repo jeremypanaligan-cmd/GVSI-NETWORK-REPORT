@@ -22,7 +22,7 @@
   <!-- Apple / iOS Home Screen Icon -->
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <link rel="stylesheet" href="styles.css?v=3.9.31">
+  <link rel="stylesheet" href="styles.css?v=3.9.32">
   <!-- DOMPurify for XSS Protection -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js" defer></script>
   <!-- Anti-FOUC: Force dark mode immediately before first paint -->
@@ -435,6 +435,76 @@
           <div class="dev-label">Developed by:</div>
           <div class="dev-name">GVSI Jeremy</div>
         </div>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.32 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>The Update History Is Whole Again (Fix):</strong> This list had stopped at Version 3.9.20 while the app kept shipping, so the ten releases after it — the edge read path, the single-request opening, the zero-row tables and the red-chip repairs — were nowhere a user could read them. Nothing in the app itself changed in this release; the history above and below it is simply complete now, and every entry matches a version that actually shipped.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+        <p><strong>Version 3.9.31 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>A Red Chip With A Way Back (Fix):</strong> The "Data as of" chip on NAP, LCP, NODE and BACKBONE could turn red and then stay red for the rest of the session, even while fresh data kept arriving underneath it. Its age came from a stamp only the edge server could move, and once the edge was out of the picture every read took the fallback route — which fetched working data but had no way to touch that stamp. The fallback is now a repair as well as a fallback: any successful origin read either clears the old stamp or asks for a rebuild, so a red chip can no longer be permanent. A module drawn for the first time is repairable too, and when a repair is deliberately held back the browser console says why, in one line, instead of leaving the next reader to guess.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.30 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>A Healthy Fleet Is Not Stale (Fix):</strong> The edge rewrites a healthy copy only once it is eight minutes old, but the chip called anything older than ten minutes stale — so a healthy copy spent a few minutes of every cycle looking like a fault, and the reward for a healthy fleet was a red warning. The threshold is fifteen minutes now, comfortably above the rewrite it is judging.</li>
+                  <li><strong>A Stale Copy Repairs Itself (New):</strong> When the chip does go red, the app now spends a single origin read for that module, redraws from it and drops the old stamp — so an edge outage no longer means a fleet of stale numbers until somebody presses REFRESH. The repair runs at most once every five minutes per module, and is skipped for a hidden tab, a read already in flight, or a module with nothing of its own to draw.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.29 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Reads Come From The Edge (Performance):</strong> The five data modules are now served from Cloudflare's edge in tens of milliseconds instead of paying Apps Script's fixed cost on every request. The origin stays as the fallback on any refusal, so nothing can be lost — and if the edge misses twice in a row the app stands itself down for five minutes rather than hammering it.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.28 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Fewer Waits Per Read (Performance):</strong> Every module read used to carry Apps Script's fixed cost — about 1.2 to 1.8 seconds, a redirect, and one execution of quota — to move a few kilobytes. Each payload the server has already built is now published to the edge, and the app reads it from there instead. It is fail-open throughout: with the setting blank, or on any refusal, every read falls back to the origin and the app behaves exactly as it did before.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.27 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>Rows Of Zeros Are Not Rows (Improvement):</strong> The NAP and LCP sheets keep fixed row ranges, so an area with nothing pending arrives as 0/0/0/0 and was drawn under AREA / PROVINCE like a count. Those lines are now left out, and when nothing survives the tab says "No Pending NAP Ticket." or "No Pending LCP Ticket." instead of a TOTAL line of zeros. A row that carries real counts is still listed even when the sheet's TOTAL cell is blank, and CSV and PDF leave the empty rows out too.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.26 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>The Module Health Headers Line Up (Fix):</strong> On the admin Module Health card the header row sat left-aligned over right-aligned numbers, so a value like "10s" fell between two columns with nothing saying which one it belonged to. Each header now carries the alignment of its own column — the numbers to the right, the module names to the left.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.25 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>The Last Session Opens Before The First Request (New):</strong> A cold start began empty and waited on the network, so a slow server could leave the very first screen saying the report would not load. The last good payload of each module is now kept on the device and drawn before the first request. It is only used while it is younger than that module's own refresh interval, a timestamp in the future is refused rather than trusted forever, and if storage is unavailable the app simply behaves as if the file were never there.</li>
+                  <li><strong>The Chip Shows A Real Age (Fix):</strong> The freshness chip is told when each restored payload was actually fetched, so it reports a true age instead of "No data yet" over a table full of rows.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.24 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>A Failed Refresh Keeps The Screen (Fix):</strong> A refresh empties a module before it asks, so a failed read used to write "Error loading data." over rows that were on screen a second earlier — and NODE and BACKBONE answered a read that never completed with an all-clear screen that also stamped the current minute as its check time. A failed read now keeps what is already drawn; only a tab that has never drawn anything says the report could not be loaded.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.23 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>A Stalled Server Is Not Retried Into The Stall (Fix):</strong> When the server stalled — 7.5 s, 16 s and 30 s measured for routes that later answered in about 1.5 s — the retry fired a quarter of a second later, inside the same stall: three times the wait and three times the load on a server already struggling. An attempt that burns five seconds or more now ends the sequence instead of being retried.</li>
+                </ul>
+
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
+                <p><strong>Version 3.9.22 — What's New:</strong></p>
+                <ul style="list-style-type: disc; margin-left: 20px; padding-left: 10px;">
+                  <li><strong>The App Opens In One Request (Performance):</strong> The opening screen used to cost one request per module. The five modules now arrive in a single read, with the old path as a fallback on any hiccup, so opening is one round trip instead of five.</li>
+                  <li><strong>And Says What It Waited For (New):</strong> A slow build now records which module, which sheet, which stage, and how long — and the admin Module Health card shows what this device actually waited, which no server-side report can see. So "it was slow" can be traced instead of guessed.</li>
+                  <li><strong>The Warm Copy Outlives Its Cycle (Fix):</strong> The warm-up rebuilt every five minutes but kept the copy for only three, so a share of every cycle landed on a full cold build. It is kept for five and a half minutes now, comfortably above the cadence, so an open is answered from a warm copy.</li>
+                </ul>
 
         <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color);">
         <p><strong>Version 3.9.20 — What's New:</strong></p>
@@ -1645,7 +1715,7 @@ function closeNodeModal(event) {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=3.9.31').then((reg) => {
+      navigator.serviceWorker.register('./sw.js?v=3.9.32').then((reg) => {
         /* APPLYING AN UPDATE WITHOUT A SECOND LAUNCH
 
            The worker is cache-first for the shell, so the navigation that TRIGGERS an
